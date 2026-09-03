@@ -60,7 +60,6 @@ async function closeApplication(app: ElectronApplication | undefined, process: C
     dataDirectory,
     process,
     removeDirectory: async (directory: string) => rm(directory, { force: true, recursive: true }),
-    waitForExit,
     waitForExitWithin,
   });
 }

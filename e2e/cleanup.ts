@@ -7,36 +7,102 @@ export type CleanupOptions = {
   dataDirectory?: string;
   process?: CleanupProcess;
   removeDirectory(directory: string): Promise<void>;
-  waitForExit(process: CleanupProcess): Promise<void>;
+  waitForCloseWithin?(close: Promise<void>, milliseconds: number): Promise<boolean>;
   waitForExitWithin(process: CleanupProcess, milliseconds: number): Promise<boolean>;
 };
 
+const cleanupTimeoutMilliseconds = 5_000;
+
+function waitForCloseWithin(close: Promise<void>, milliseconds: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => resolve(false), milliseconds);
+    close.then(
+      () => {
+        clearTimeout(timeout);
+        resolve(true);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * A bounded forced process exit is a successful cleanup recovery. Cleanup fails
+ * only when close cannot be recovered, the process remains alive, or removal fails.
+ */
 export async function cleanupApplication(options: CleanupOptions): Promise<void> {
-  let primaryError: unknown;
+  const cleanupErrors: unknown[] = [];
+  let closeError: unknown;
+  let removeError: unknown;
   try {
-    if (options.app !== undefined) {
+    let alreadyExited = false;
+    if (options.process !== undefined) {
       try {
-        await options.app.close();
+        alreadyExited = await options.waitForExitWithin(options.process, 0);
       } catch (error) {
-        primaryError = error;
+        cleanupErrors.push(error);
       }
     }
-    if (options.process !== undefined && !await options.waitForExitWithin(options.process, 5_000)) {
-      options.process.kill('SIGKILL');
-      await options.waitForExit(options.process);
-      primaryError ??= new Error('Electron did not exit after Playwright close; forced termination was required');
+    if (options.app !== undefined && !alreadyExited) {
+      try {
+        const close = Promise.resolve().then(() => options.app!.close());
+        if (!await (options.waitForCloseWithin ?? waitForCloseWithin)(close, cleanupTimeoutMilliseconds)) {
+          closeError = new Error(`Playwright close did not settle within ${cleanupTimeoutMilliseconds}ms`);
+        }
+      } catch (error) {
+        closeError = error;
+      }
+    }
+    if (options.process !== undefined && !alreadyExited) {
+      let exited = false;
+      try {
+        exited = await options.waitForExitWithin(
+          options.process,
+          closeError === undefined ? cleanupTimeoutMilliseconds : 0,
+        );
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      if (!exited) {
+        try {
+          options.process.kill('SIGKILL');
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        let exitedAfterKill = false;
+        try {
+          exitedAfterKill = await options.waitForExitWithin(options.process, cleanupTimeoutMilliseconds);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        if (!exitedAfterKill) {
+          if (closeError !== undefined) cleanupErrors.push(closeError);
+          cleanupErrors.push(new Error(`Electron remained alive ${cleanupTimeoutMilliseconds}ms after forced termination`));
+        }
+      }
+    } else if (options.process === undefined && closeError !== undefined) {
+      cleanupErrors.push(closeError);
     }
   } catch (error) {
-    primaryError ??= error;
+    cleanupErrors.push(error);
   } finally {
     if (options.dataDirectory !== undefined) {
       try {
         await options.removeDirectory(options.dataDirectory);
-      } catch (removeError) {
-        if (primaryError !== undefined) throw new AggregateError([primaryError, removeError], 'Electron cleanup and data-directory removal failed');
-        throw removeError;
+      } catch (error) {
+        removeError = error;
       }
     }
   }
-  if (primaryError !== undefined) throw primaryError;
+  if (removeError !== undefined) {
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError([...cleanupErrors, removeError], 'Electron cleanup and data-directory removal failed');
+    }
+    throw removeError;
+  }
+  if (cleanupErrors.length === 1) throw cleanupErrors[0];
+  if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors, 'Electron cleanup failed');
 }
