@@ -11,8 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cloudflare/kumo": "^2.13.0",
     "@catbots/contracts": "workspace:*",
+    "@cloudflare/kumo": "^2.13.0",
     "@phosphor-icons/react": "^2.1.10",
     "better-sqlite3": "^12.6.2",
     "react": "^19.2.4",
@@ -27,12 +27,14 @@
     "@electron-forge/plugin-vite": "^7.10.2",
     "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.13",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^40.4.1",
+    "jsdom": "^30.0.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
