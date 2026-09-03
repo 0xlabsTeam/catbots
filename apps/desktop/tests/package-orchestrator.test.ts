@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { createRunner, createSignalController, runPackaging } from '../../../scripts/package-desktop.mjs';
+import { createRunner, createSignalController, runPackaging, waitForChildThenRestore } from '../../../scripts/package-desktop.mjs';
 
 describe('package orchestrator runner', () => {
   it('uses the desktop directory by default and propagates nonzero child exits', async () => {
@@ -14,6 +14,14 @@ describe('package orchestrator runner', () => {
     await run('forge', []);
     expect(calls[0]?.cwd).toMatch(/apps\/desktop$/);
   });
+});
+
+it('forwards a signal to the active child before restoring', async () => {
+  const child = new EventEmitter() as EventEmitter & { kill(signal: string): void };
+  const calls: string[] = []; child.kill = (signal) => calls.push(signal);
+  const pending = waitForChildThenRestore(child, 'SIGTERM', async () => calls.push('restore'));
+  expect(calls).toEqual(['SIGTERM']); child.emit('exit'); await pending;
+  expect(calls).toEqual(['SIGTERM', 'restore']);
 });
 
 describe('package signal controller', () => {

@@ -17,6 +17,12 @@ export function createRunner(spawnCommand = spawn) {
   };
 }
 
+export async function waitForChildThenRestore(child, signal, restoreHost) {
+  child.kill(signal);
+  await new Promise((resolveExit) => child.once('exit', resolveExit));
+  await restoreHost();
+}
+
 export async function runPackaging({ rebuildElectron, forge, restoreHost }) {
   let primary;
   try {
