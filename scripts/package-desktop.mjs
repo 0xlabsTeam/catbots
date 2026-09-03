@@ -19,23 +19,46 @@ export function createRunner(spawnCommand = spawn) {
 }
 
 export function waitForChildExit(child) {
+  if (child.exitCode !== null && child.exitCode !== undefined) return Promise.resolve();
+  if (child.signalCode !== null && child.signalCode !== undefined) return Promise.resolve();
   return new Promise((resolveExit) => child.once('exit', resolveExit));
 }
 
-export async function runPackaging({ rebuildElectron, forge, restoreHost }) {
+export async function runPackaging({ rebuildElectron, forge, restoreHost, signalOptions }) {
+  let activeChild;
+  let restorePromise;
+  const restoreOnce = () => restorePromise ??= restoreHost();
+  const controller = signalOptions === undefined ? undefined : createSignalController({
+    ...signalOptions,
+    terminate: (signal) => activeChild?.kill(signal),
+    waitForExit: () => activeChild === undefined ? Promise.resolve() : waitForChildExit(activeChild),
+    restoreHost: restoreOnce,
+  });
+  const runStage = async (stage) => {
+    try {
+      await stage((child) => { activeChild = child; });
+    } finally {
+      activeChild = undefined;
+    }
+  };
   let primary;
   try {
-    await rebuildElectron();
-    await forge();
+    await runStage(rebuildElectron);
+    await runStage(forge);
   } catch (error) {
     primary = error;
   }
   try {
-    await restoreHost();
+    await restoreOnce();
   } catch (restoreError) {
-    if (primary !== undefined) throw new Error('Catbots packaging and host ABI restoration failed');
+    if (primary !== undefined) {
+      controller?.remove();
+      throw new Error('Catbots packaging and host ABI restoration failed');
+    }
+    controller?.remove();
     throw restoreError;
   }
+  controller?.remove();
   if (primary !== undefined) throw primary;
 }
 
@@ -97,25 +120,16 @@ async function restoreHost() {
 }
 
 async function main() {
-  let restored = false;
-  const restoreOnce = async () => {
-    if (restored) return;
-    restored = true;
-    await restoreHost();
-  };
   await runPackaging({
-    rebuildElectron: () => run(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3']),
-    forge: () => runForgeWithSignalHandling({
-      runCommand: run,
-      command: resolve(root, 'node_modules/.bin/electron-forge'),
-      args: [process.argv[2] ?? 'package'],
+    rebuildElectron: (onSpawn) => run(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3'], desktop, onSpawn),
+    forge: (onSpawn) => run(resolve(root, 'node_modules/.bin/electron-forge'), [process.argv[2] ?? 'package'], desktop, onSpawn),
+    restoreHost,
+    signalOptions: {
       on: process.on.bind(process),
       off: process.off.bind(process),
       exit: (code) => process.exit(code),
-      restoreHost: restoreOnce,
       report: (message) => console.error(message),
-    }),
-    restoreHost: restoreOnce,
+    },
   });
 }
 

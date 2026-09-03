@@ -110,6 +110,75 @@ describe('Forge child signal wiring', () => {
 });
 
 describe('package lifecycle', () => {
+  it('resolves immediately for an already-exited child', async () => {
+    const child = fakeChild() as SpawnedChild & { exitCode: number | null; signalCode: string | null };
+    child.exitCode = 0;
+    child.signalCode = null;
+    await expect((await import('../../../scripts/package-desktop.mjs')).waitForChildExit(child)).resolves.toBeUndefined();
+  });
+
+  it('handles SIGINT during native rebuild, waits for the child, and restores once', async () => {
+    const listeners = new Map<string, () => Promise<void>>();
+    const calls: string[] = [];
+    const child = fakeChild();
+    child.kill = (signal: string) => calls.push(`kill:${signal}`);
+    const running = runPackaging({
+      rebuildElectron: async (onSpawn?: (child: SpawnedChild) => void) => {
+        onSpawn?.(child);
+        await new Promise<void>((_resolve, reject) => child.once('exit', () => reject(new Error('interrupted rebuild'))));
+      },
+      forge: async () => { throw new Error('Forge must not run'); },
+      restoreHost: async () => { calls.push('restore'); },
+      signalOptions: {
+        on: (signal: string, handler: () => Promise<void>) => listeners.set(signal, handler),
+        off: (signal: string) => listeners.delete(signal),
+        exit: (code: number) => calls.push(`exit:${code}`),
+      },
+    });
+
+    const interrupted = listeners.get('SIGINT')?.();
+    expect(calls).toEqual(['kill:SIGINT']);
+    child.emit('exit', null, 'SIGINT');
+    await interrupted;
+    await expect(running).rejects.toThrow('interrupted rebuild');
+    expect(calls).toEqual(['kill:SIGINT', 'restore', 'exit:130']);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('waits for an in-progress host restore when SIGTERM arrives during restoration', async () => {
+    const listeners = new Map<string, () => Promise<void>>();
+    const calls: string[] = [];
+    let markRestoreStarted: (() => void) | undefined;
+    let finishRestore: (() => void) | undefined;
+    const restoreStarted = new Promise<void>((resolveStarted) => {
+      markRestoreStarted = resolveStarted;
+    });
+    const restoreGate = new Promise<void>((resolveRestore) => {
+      finishRestore = () => { calls.push('restore-finished'); resolveRestore(); };
+    });
+    const running = runPackaging({
+      rebuildElectron: async () => undefined,
+      forge: async () => undefined,
+      restoreHost: async () => {
+        calls.push('restore-started');
+        markRestoreStarted?.();
+        await restoreGate;
+      },
+      signalOptions: {
+        on: (signal: string, handler: () => Promise<void>) => listeners.set(signal, handler),
+        off: (signal: string) => listeners.delete(signal),
+        exit: (code: number) => calls.push(`exit:${code}`),
+      },
+    });
+    await restoreStarted;
+    const interrupted = listeners.get('SIGTERM')?.();
+    finishRestore?.();
+    await interrupted;
+    await running;
+    expect(calls).toEqual(['restore-started', 'restore-finished', 'exit:143']);
+    expect(listeners.size).toBe(0);
+  });
+
   it('restores after Forge failure', async () => {
     const calls: string[] = [];
     await expect(runPackaging({

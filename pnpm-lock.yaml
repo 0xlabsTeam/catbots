@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@electron/asar':
+        specifier: ^3.4.1
+        version: 3.4.1
 
   apps/desktop:
     dependencies:

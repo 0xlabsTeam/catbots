@@ -1,7 +1,9 @@
 {
   "name": "catbots",
   "private": true,
-  "engines": { "node": ">=22 <23" },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "dev": "pnpm --filter @catbots/desktop start",
@@ -18,5 +20,8 @@
       "electron",
       "esbuild"
     ]
+  },
+  "devDependencies": {
+    "@electron/asar": "^3.4.1"
   }
 }
