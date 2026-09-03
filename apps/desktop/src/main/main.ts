@@ -1,7 +1,9 @@
-import { app, ipcMain } from 'electron';
+import { app } from 'electron';
 import { join } from 'node:path';
+import { BotRepository } from './bots/bot-repository';
+import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
-import { assertTrustedAppSenderUrl } from './ipc-security';
+import { registerIpcHandlers } from './ipc/register-ipc';
 import { registerAppProtocol } from './register-app-protocol';
 import { ApplicationDatabase } from './storage/database';
 
@@ -10,24 +12,41 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 const appOrigin = 'catbots://app';
 const database = new ApplicationDatabase();
+const stoppedRuntime = {
+  getStatus: () => ({ state: 'stopped' as const, activeBots: 0 }),
+  subscribeStatus: () => () => undefined,
+};
 
 app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
-    database.start(app.getPath('userData'));
+    const dataDirectory = app.getPath('userData');
+    const connection = database.start(dataDirectory);
 
     registerAppProtocol({
       rendererDirectory: join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`),
       developmentServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
     });
 
-    ipcMain.handle('app:get-version', (event) => {
-      assertTrustedAppSenderUrl(event.senderFrame?.url);
-      return app.getVersion();
-    });
-
     const mainWindow = createMainWindow();
+    const configRepository = new ConfigRepository(dataDirectory);
+    const botRepository = new BotRepository(connection);
+    registerIpcHandlers({
+      app: {
+        getVersion: () => app.getVersion(),
+        showMainWindow: () => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        },
+        quitApplication: () => app.quit(),
+      },
+      configRepository,
+      botRepository,
+      runtime: stoppedRuntime,
+    });
     await mainWindow.loadURL(`${appOrigin}/index.html`);
   })
   .catch(() => {
