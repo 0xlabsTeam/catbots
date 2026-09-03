@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { createRunner, runPackaging } from '../../../scripts/package-desktop.mjs';
+import { createRunner, createSignalController, runPackaging } from '../../../scripts/package-desktop.mjs';
 
 describe('package orchestrator runner', () => {
   it('uses the desktop directory by default and propagates nonzero child exits', async () => {
@@ -13,6 +13,32 @@ describe('package orchestrator runner', () => {
     });
     await run('forge', []);
     expect(calls[0]?.cwd).toMatch(/apps\/desktop$/);
+  });
+});
+
+describe('package signal controller', () => {
+  it('restores once, removes listeners, and exits conventionally on SIGINT', async () => {
+    const listeners = new Map<string, () => Promise<void>>();
+    const calls: string[] = [];
+    createSignalController({
+      on: (signal: string, handler: () => Promise<void>) => listeners.set(signal, handler),
+      off: (signal: string) => listeners.delete(signal),
+      terminate: () => calls.push('terminate'),
+      restoreHost: async () => calls.push('restore'),
+      exit: (code: number) => calls.push(`exit:${code}`),
+    });
+    await listeners.get('SIGINT')?.();
+    expect(calls).toEqual(['terminate', 'restore', 'exit:130']);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('uses SIGTERM exit code and does not restore twice for duplicate signals', async () => {
+    const listeners = new Map<string, () => Promise<void>>();
+    const calls: string[] = [];
+    createSignalController({ on: (s, h) => listeners.set(s, h), off: (s) => listeners.delete(s), terminate: () => calls.push('terminate'), restoreHost: async () => calls.push('restore'), exit: (code) => calls.push(`exit:${code}`) });
+    await listeners.get('SIGTERM')?.();
+    await listeners.get('SIGTERM')?.();
+    expect(calls).toEqual(['terminate', 'restore', 'exit:143']);
   });
 });
 

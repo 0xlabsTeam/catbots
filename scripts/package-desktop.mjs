@@ -34,6 +34,26 @@ export async function runPackaging({ rebuildElectron, forge, restoreHost }) {
   if (primary !== undefined) throw primary;
 }
 
+export function createSignalController({ on, off, exit, terminate, restoreHost }) {
+  let restored = false;
+  const restore = async () => {
+    if (restored) return;
+    restored = true;
+    await restoreHost();
+  };
+  const handle = (signal) => async () => {
+    terminate(signal);
+    await restore();
+    off('SIGINT', handlers.SIGINT);
+    off('SIGTERM', handlers.SIGTERM);
+    exit(signal === 'SIGINT' ? 130 : 143);
+  };
+  const handlers = { SIGINT: handle('SIGINT'), SIGTERM: handle('SIGTERM') };
+  on('SIGINT', handlers.SIGINT);
+  on('SIGTERM', handlers.SIGTERM);
+  return { dispose: async () => { await restore(); off('SIGINT', handlers.SIGINT); off('SIGTERM', handlers.SIGTERM); } };
+}
+
 const run = createRunner();
 
 const nativePath = resolve(root, 'node_modules/better-sqlite3');
