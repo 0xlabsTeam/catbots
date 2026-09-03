@@ -10,7 +10,7 @@
 
 ## 1. Product Contract
 
-The user selects a market and describes a strategy in natural language. An AI Agent builds and revises a versioned Strategy Graph, validates it, invokes the Backtest Tool, explains the results, and renders a read-only node visualization. A user-approved strategy version can be bound to a Paper or Live Bot Deployment. Live execution becomes autonomous only inside user-approved risk limits.
+The user installs the open-source Electron desktop app, creates a local profile, selects a market, and describes a strategy in natural language. An AI Agent builds and revises a versioned Strategy Graph, validates it, invokes the Backtest Tool, explains the results, and renders a read-only node visualization. A user-approved strategy version can be bound to a Paper or Live Bot Deployment. Live execution becomes autonomous only inside user-approved risk limits.
 
 The canonical representation is JSON, but JSON is an internal contract. MVP users neither read nor edit it directly.
 
@@ -26,6 +26,7 @@ The canonical representation is JSON, but JSON is an internal contract. MVP user
 8. Every triggered evaluation and every execution attempt produces an append-only audit trace.
 9. Live execution fails closed when required data, risk validation, entitlement, or durable pre-execution logging is unavailable.
 10. Strategy logic cannot modify Deployment risk limits.
+11. Profiles, configuration, strategies, Backtests, runtime state, and audit data are local-first and do not depend on a Catbots cloud account.
 
 ## 3. Canonical Graph
 
@@ -271,7 +272,7 @@ Third-party seller onboarding, payouts, arbitrary user webhooks, and provider se
 
 ## 12. Agent Tool Loop
 
-The AI Agent receives a catalog of available nodes and data products, then uses explicit tools:
+The AI Agent connects through a locally configured OpenAI-compatible or Anthropic-compatible API. It receives a catalog of available nodes and data products, then uses explicit tools:
 
 1. `list_nodes` and `list_data_products`
 2. `validate_strategy`
@@ -341,7 +342,7 @@ Ordering is guaranteed within one trace by a monotonic sequence number. Cross-tr
 
 ### 14.2 Storage and access
 
-Supabase Postgres stores immutable audit metadata and indexed trace events. Large Backtest traces are stored as compressed immutable artifacts with a manifest and integrity hash; every triggered evaluation remains recoverable. The UI loads a summarized timeline first and expands node inputs, decisions, and execution details on demand.
+The local embedded SQLite database stores immutable audit metadata and indexed trace events. Large Backtest traces are stored as compressed immutable artifacts with a manifest and integrity hash; every triggered evaluation remains recoverable. The UI loads a summarized timeline first and expands node inputs, decisions, and execution details on demand.
 
 Retention is mode-specific but never silently deletes Live audit records. A later retention-policy change requires an explicit product and compliance decision.
 
@@ -360,7 +361,7 @@ Risk rejection is a normal, fully logged flow outcome. Live execution is denied 
 
 ## 16. Visualization and Explainability
 
-The read-only visualization uses three primary columns:
+The read-only visualization uses `@xyflow/react` with custom nodes and three primary columns:
 
 ```text
 TRIGGER          CONDITION GRAPH                 ACTION
@@ -370,6 +371,8 @@ Interval 15m → [RSI < 30] ───────┐
 ```
 
 Users can inspect node configuration, current or historical evaluation results, data source and freshness, and the full audit timeline. Editing remains conversational in MVP. The UI highlights `true`, `false`, `unknown`, rejected, failed, and executed paths without changing canonical graph semantics.
+
+Nodes are selectable but not draggable or connectable. Automatic layout positions are local presentation preferences and are not part of canonical Strategy JSON.
 
 ## 17. Failure Semantics
 
@@ -412,6 +415,16 @@ Users can inspect node configuration, current or historical evaluation results, 
 
 ## 19. MVP Boundary
 
-The MVP includes AI graph authoring, validation, explanation, Backtest, Paper Trading, Hyperliquid Live execution, interval and registered event triggers, combined Conditions, curated indicator and data nodes, one ETF Flow data product, read-only visualization, risk controls, strategy versioning, and complete execution audit traces.
+The MVP is an open-source local-first Electron application written in TypeScript. It includes AI graph authoring through locally configured compatible APIs, validation, explanation, Backtest, Paper Trading, Hyperliquid Live execution, interval and registered event triggers, combined Conditions, curated indicator and data nodes, one ETF Flow data product, read-only React Flow visualization, risk controls, strategy versioning, complete execution audit traces, and background operation through the system tray.
 
 The MVP excludes a drag-and-drop editor, arbitrary code nodes, arbitrary webhooks, third-party seller onboarding, HFT, social/copy trading, and additional DEX adapters.
+
+## 20. Desktop Runtime Boundary
+
+The Electron renderer uses React and Cloudflare Kumo for the application UI and `@xyflow/react` for graph visualization. It is sandboxed, has Node.js integration disabled, and accesses privileged capabilities only through a narrow typed preload API.
+
+The Electron main process owns window and tray lifecycle, local configuration, filesystem access, and runtime supervision. Strategy evaluation, Backtest, risk checks, the audit outbox, and DEX adapters run outside the renderer in supervised utility processes. Closing the window keeps active bots running in the tray; quitting Catbots stops them after confirmation.
+
+The Settings Form atomically writes `local.env.yaml` in the selected Catbots data directory. It may contain LLM API credentials and a Hyperliquid Agent/API Wallet key, but the schema rejects a master-wallet private key. Secrets are never sent to the renderer after initial entry and are redacted from logs, diagnostics, exports, and Agent prompts.
+
+Detailed UI, desktop security, persistence, and recovery behavior is specified in `2026-09-03-catbots-desktop-ui-design.md`.

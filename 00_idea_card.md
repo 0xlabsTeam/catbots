@@ -6,8 +6,8 @@
 > 🔗 HANDOFF TO STEP 01:
 > Problem: เทรดเดอร์ที่ไม่เขียนโค้ดเปลี่ยนแนวคิดการเทรดให้เป็นบอต Perp DEX ที่ตรวจสอบ Backtest และรันจริงได้ยาก
 > Target: เทรดเดอร์ Perp DEX ทั่วไปที่ไม่เขียนโค้ด
-> Direction: AI สร้าง Canonical Node Graph แบบ Trigger → Condition Graph → Action และแสดงเป็น read-only visualization
-> MVP constraint: สร้าง แก้ ตรวจสอบ Backtest Paper Trade และ Live Trade ผ่าน Hyperliquid โดยทุก execution flow มี audit log ครบถ้วน
+> Direction: Open-source local-first Electron app ที่ AI สร้าง Canonical Node Graph แบบ Trigger → Condition Graph → Action และแสดงเป็น read-only visualization
+> MVP constraint: ติดตั้งและรันในเครื่อง สร้าง แก้ ตรวจสอบ Backtest Paper Trade และ Live Trade ผ่าน Hyperliquid โดยทุก execution flow มี audit log ครบถ้วน
 
 ---
 
@@ -24,7 +24,7 @@
 
 **AI-first Trigger–Condition–Action Perp Bot**
 
-ผู้ใช้เลือกตลาดและคุยกับ AI Agent เพื่อสร้างหรือแก้ Strategy ภายในรูป Canonical JSON Node Graph ผู้ใช้ไม่ต้องรู้จัก JSON แต่ตรวจสอบตรรกะผ่าน read-only Node Visualization ได้ Agent เรียก Validation และ Backtest Tools เพื่อปรับกลยุทธ์ก่อนผู้ใช้นำ Strategy version ที่อนุมัติแล้วไปสร้าง Paper หรือ Live Deployment
+ผู้ใช้ติดตั้ง open-source Electron desktop app สร้าง Local Profile เลือกตลาด และคุยกับ AI Agent ผ่าน LLM provider ที่ตั้งค่าเองเพื่อสร้างหรือแก้ Strategy ภายในรูป Canonical JSON Node Graph ผู้ใช้ไม่ต้องรู้จัก JSON แต่ตรวจสอบตรรกะผ่าน read-only React Flow Visualization ได้ Agent เรียก Validation และ Backtest Tools เพื่อปรับกลยุทธ์ก่อนผู้ใช้นำ Strategy version ที่อนุมัติแล้วไปสร้าง Paper หรือ Live Deployment
 
 ### สิ่งที่ product นี้ IS
 
@@ -35,6 +35,7 @@
 - Data injection architecture ที่รองรับ indicators, market data และ Marketplace Data เช่น ETF Flow
 - Read-only Node Visualization พร้อม decision trace
 - System-level risk controls และ append-only audit log สำหรับทุก execution flow
+- Local-first storage และ background runtime ผ่าน system tray
 
 ### สิ่งที่ product นี้ IS NOT (MVP)
 
@@ -43,17 +44,18 @@
 - ไม่รองรับ third-party data seller onboarding หรือ arbitrary user webhooks
 - ไม่รองรับหลาย Perp DEX, HFT, social trading หรือ copy trading ในรุ่นแรก
 - ไม่ให้ Strategy เพิ่มวงเงิน leverage หรือ risk limits ของ Deployment เอง
+- ไม่มี cloud account, cloud sync หรือ hosted 24/7 runtime ในรุ่นแรก
 
 ## Business Model เบื้องต้น
 
-- **รูปแบบ:** Freemium แล้วขยายเป็น Subscription
-- **Pricing hypothesis:** สร้าง Bot และ Backtest แบบจำกัดได้ฟรี; Paper/Live Bots, Backtest quota และ premium data products อยู่ในแพ็กเกจรายเดือน
+- **รูปแบบ:** Open-source core
+- **Pricing hypothesis:** MVP ไม่มีระบบชำระเงิน; รายได้ในอนาคตอาจมาจาก premium data products, hosted runtime หรือ commercial support โดยไม่ล็อก local core
 
 ## Top 3 Assumptions ที่ต้อง Validate ใน Step 01
 
 1. ผู้ใช้ที่ไม่เขียนโค้ดสามารถสร้างและเชื่อถือ Bot ผ่านบทสนทนา Node Visualization และ decision trace ได้
 2. TCA Graph ที่มี combined conditions, state และหลาย flow ยืดหยุ่นพอสำหรับกลยุทธ์ของกลุ่มเป้าหมายโดยไม่ต้องใช้ custom code
-3. ผู้ใช้ยินดีจ่ายสำหรับ Live Bots, Backtest capacity และข้อมูลพรีเมียม เช่น ETF Flow เมื่อระบบแสดงที่มาของข้อมูลและ audit trail ได้
+3. ผู้ใช้ยินดีจ่ายสำหรับข้อมูลพรีเมียม เช่น ETF Flow, hosted runtime หรือ commercial support แม้ local core ใช้งานได้แบบ open source
 
 ## Directions ที่ไม่ได้เลือก (และทำไม)
 
