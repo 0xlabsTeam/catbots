@@ -40,6 +40,13 @@ describe('package signal controller', () => {
     await listeners.get('SIGTERM')?.();
     expect(calls).toEqual(['terminate', 'restore', 'exit:143']);
   });
+
+  it('exits nonzero and removes listeners when signal restoration fails', async () => {
+    const listeners = new Map<string, () => Promise<void>>(); const exits: number[] = [];
+    createSignalController({ on: (s, h) => listeners.set(s, h), off: (s) => listeners.delete(s), terminate: () => undefined, restoreHost: async () => { throw new Error('restore'); }, exit: (code) => exits.push(code) });
+    await listeners.get('SIGINT')?.();
+    expect(exits).toEqual([1]); expect(listeners.size).toBe(0);
+  });
 });
 
 describe('package lifecycle', () => {

@@ -43,10 +43,15 @@ export function createSignalController({ on, off, exit, terminate, restoreHost }
   };
   const handle = (signal) => async () => {
     terminate(signal);
-    await restore();
-    off('SIGINT', handlers.SIGINT);
-    off('SIGTERM', handlers.SIGTERM);
-    exit(signal === 'SIGINT' ? 130 : 143);
+    try {
+      await restore();
+      exit(signal === 'SIGINT' ? 130 : 143);
+    } catch {
+      exit(1);
+    } finally {
+      off('SIGINT', handlers.SIGINT);
+      off('SIGTERM', handlers.SIGTERM);
+    }
   };
   const handlers = { SIGINT: handle('SIGINT'), SIGTERM: handle('SIGTERM') };
   on('SIGINT', handlers.SIGINT);
