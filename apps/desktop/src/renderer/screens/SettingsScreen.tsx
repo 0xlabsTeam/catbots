@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { Banner, Button, Dialog, Input, Select, Switch, Tooltip } from '@cloudflare/kumo';
 import { Progress } from '@cloudflare/kumo/primitives/progress';
 import { CheckCircleIcon, DesktopTowerIcon, InfoIcon, LockKeyIcon } from '@phosphor-icons/react';
-import type { CatbotsDesktopApi, LocalConfig, RedactedLocalConfig } from '@catbots/contracts';
-import { ConnectionTestStatus, type ConnectionTestState } from '../components/ConnectionTestStatus';
+import { CompatibleProviderUrlSchema, type CatbotsDesktopApi, type LocalConfig, type RedactedLocalConfig } from '@catbots/contracts';
+import { ConnectionTestStatus, mapExternalConnectionErrorCode, type ConnectionTestState } from '../components/ConnectionTestStatus';
 import { SecretField } from '../components/SecretField';
 
 type Provider = LocalConfig['llm']['provider'];
@@ -18,11 +18,7 @@ function formFromConfig(config?: RedactedLocalConfig): FormState {
 }
 
 function isPermittedProviderUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    return url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(hostname));
-  } catch { return false; }
+  return CompatibleProviderUrlSchema.safeParse(value).success;
 }
 
 function validate(state: FormState): FormErrors {
@@ -46,18 +42,19 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const [form, setForm] = useState<FormState>(() => formFromConfig(config));
   const [errors, setErrors] = useState<FormErrors>({});
   const [connection, setConnection] = useState<ConnectionTestState>({ state: 'idle' });
-  const [formRevision, setFormRevision] = useState(0);
-  const [testedFormRevision, setTestedFormRevision] = useState<number | null>(null);
+  const [providerRevision, setProviderRevision] = useState(0);
+  const [testedProviderRevision, setTestedProviderRevision] = useState<number | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const mountedRef = useRef(true);
   const formRevisionRef = useRef(0);
+  const providerRevisionRef = useRef(0);
   const testRequestTokenRef = useRef(0);
   const isTestingRef = useRef(false);
   const saveRequestTokenRef = useRef(0);
   const isSavingRef = useRef(false);
   const safeRepairPaths = useMemo(() => getSafeRepairPaths(repairIssues), [repairIssues]);
-  const hasPassedCurrentTest = testedFormRevision === formRevision;
+  const hasPassedCurrentTest = testedProviderRevision === providerRevision;
   const submitLabel = onboarding ? 'Create local profile' : 'Save settings';
 
   useEffect(() => {
@@ -69,14 +66,17 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     if (isSavingRef.current) return;
     setForm((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
-    const nextRevision = formRevisionRef.current + 1;
-    formRevisionRef.current = nextRevision;
-    testRequestTokenRef.current += 1;
-    isTestingRef.current = false;
-    setFormRevision(nextRevision);
-    setTestedFormRevision(null);
-    setIsTesting(false);
-    setConnection({ state: 'idle' });
+    formRevisionRef.current += 1;
+    if (key === 'provider' || key === 'baseUrl' || key === 'apiKey' || key === 'model') {
+      const nextProviderRevision = providerRevisionRef.current + 1;
+      providerRevisionRef.current = nextProviderRevision;
+      testRequestTokenRef.current += 1;
+      isTestingRef.current = false;
+      setProviderRevision(nextProviderRevision);
+      setTestedProviderRevision(null);
+      setIsTesting(false);
+      setConnection({ state: 'idle' });
+    }
   };
   const validateForm = (): boolean => { const nextErrors = validate(form); setErrors(nextErrors); return Object.keys(nextErrors).length === 0; };
   const testConnection = async (): Promise<boolean> => {
@@ -84,20 +84,20 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     if (!validateForm()) return false;
     const token = testRequestTokenRef.current + 1;
     testRequestTokenRef.current = token;
-    const submittedRevision = formRevisionRef.current;
+    const submittedProviderRevision = providerRevisionRef.current;
     const submittedConfig = toLocalConfig(form);
     isTestingRef.current = true;
-    setTestedFormRevision(null);
+    setTestedProviderRevision(null);
     setIsTesting(true);
     setConnection({ state: 'testing' });
     try {
       const result = await api.testLlmConnection(submittedConfig);
-      if (!mountedRef.current || token !== testRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return false;
-      if (result.ok) { setTestedFormRevision(submittedRevision); setConnection({ state: 'success', model: submittedConfig.llm.model }); return true; }
-      setTestedFormRevision(null); setConnection({ state: 'error', code: result.code }); return false;
+      if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
+      if (result.ok) { setTestedProviderRevision(submittedProviderRevision); setConnection({ state: 'success', model: submittedConfig.llm.model }); return true; }
+      setTestedProviderRevision(null); setConnection({ state: 'error', code: mapExternalConnectionErrorCode(result.code) }); return false;
     } catch {
-      if (!mountedRef.current || token !== testRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return false;
-      setTestedFormRevision(null); setConnection({ state: 'error', code: 'UNKNOWN' }); return false;
+      if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
+      setTestedProviderRevision(null); setConnection({ state: 'error', code: 'connection-failed' }); return false;
     } finally {
       if (mountedRef.current && token === testRequestTokenRef.current) setIsTesting(false);
       if (token === testRequestTokenRef.current) isTestingRef.current = false;
@@ -106,7 +106,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const save = async (): Promise<void> => {
     if (isSavingRef.current) return;
     if (!validateForm()) return;
-    if (testedFormRevision !== formRevision) { setConnection({ state: 'error', code: 'TEST_REQUIRED' }); return; }
+    if (testedProviderRevision !== providerRevision) { setConnection({ state: 'error', code: 'test-required' }); return; }
     const token = saveRequestTokenRef.current + 1;
     saveRequestTokenRef.current = token;
     const submittedRevision = formRevisionRef.current;
@@ -117,12 +117,12 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       const savedConfig = await api.save(submittedConfig);
       if (!mountedRef.current || token !== saveRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return;
       setForm((previous) => ({ ...previous, apiKey: '' }));
-      setTestedFormRevision(null);
+      setTestedProviderRevision(null);
       setConnection({ state: 'saved' });
       onSaved?.(savedConfig);
     } catch {
       if (mountedRef.current && token === saveRequestTokenRef.current && submittedRevision === formRevisionRef.current) {
-        setConnection({ state: 'error', code: 'SAVE_FAILED' });
+        setConnection({ state: 'error', code: 'save-failed' });
       }
     } finally {
       if (token === saveRequestTokenRef.current) isSavingRef.current = false;

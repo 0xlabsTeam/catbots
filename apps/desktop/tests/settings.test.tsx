@@ -81,6 +81,26 @@ describe('SettingsScreen', () => {
     expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
   });
 
+  it('preserves provider approval for profile and telemetry edits but invalidates it for provider edits', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    const save = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+
+    await user.type(screen.getByLabelText('Profile name'), ' updated');
+    expect(save.disabled).toBe(false);
+    await user.click(screen.getByRole('switch', { name: /Anonymous telemetry/ }));
+    expect(save.disabled).toBe(false);
+
+    await user.type(screen.getByLabelText('Model'), '-provider-change');
+    expect(save.disabled).toBe(true);
+  });
+
   it('renders only safe bootstrap repair paths', () => {
     const api = makeApi();
     render(<SettingsScreen
@@ -228,6 +248,34 @@ describe('SettingsScreen', () => {
     expect(await screen.findByText('We could not verify this provider. Review the values and try again.')).toBeTruthy();
     expect(document.body.textContent).not.toContain('dependency-message-sentinel');
     expect(document.body.textContent).not.toContain('renderer-only-secret');
+  });
+
+  it.each(['SAVE_FAILED', 'TEST_REQUIRED'])('maps hostile external %s codes to generic safe failure copy', async (code) => {
+    const user = userEvent.setup();
+    const api = {
+      ...makeApi(),
+      testLlmConnection: vi.fn().mockResolvedValue({
+        ok: false,
+        code,
+        message: 'dependency-message-sentinel renderer-only-secret',
+      }),
+    };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByText('We could not verify this provider. Review the values and try again.')).toBeTruthy();
+    expect(screen.queryByText('Settings could not be saved. Review the local values and try again.')).toBeNull();
+    expect(screen.queryByText('Test this provider again before saving changed values.')).toBeNull();
+    expect(document.body.textContent).not.toContain('dependency-message-sentinel');
+    expect(document.body.textContent).not.toContain('renderer-only-secret');
+  });
+
+  it('explains that a saved key is never displayed again', () => {
+    render(<SettingsScreen api={makeApi()} config={redactedConfig} />);
+
+    expect(screen.getByText('Plaintext stays only in this form’s memory. After save, it is stored locally and never displayed again.')).toBeTruthy();
   });
 
   it('always renders a fixed repair banner but exposes only safe field paths', () => {

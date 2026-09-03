@@ -1,12 +1,19 @@
 import { Banner } from '@cloudflare/kumo';
 import { CheckCircleIcon, WarningCircleIcon } from '@phosphor-icons/react';
 
+export type ConnectionTestErrorCode = 'connection-unavailable' | 'test-required' | 'save-failed' | 'connection-failed';
+
 export type ConnectionTestState =
   | { state: 'idle' }
   | { state: 'testing' }
   | { state: 'success'; model: string }
-  | { state: 'error'; code: string }
+  | { state: 'error'; code: ConnectionTestErrorCode }
   | { state: 'saved' };
+
+/** Converts dependency-owned result codes into the closed renderer status vocabulary. */
+export function mapExternalConnectionErrorCode(code: string): ConnectionTestErrorCode {
+  return code === 'LLM_CONNECTION_TEST_UNAVAILABLE' ? 'connection-unavailable' : 'connection-failed';
+}
 
 export function ConnectionTestStatus({ value }: { value: ConnectionTestState }) {
   if (value.state === 'idle') return null;
@@ -22,9 +29,9 @@ export function ConnectionTestStatus({ value }: { value: ConnectionTestState }) 
   return <Banner className="connection-status" variant="error" role="alert" icon={<WarningCircleIcon aria-hidden="true" weight="fill" />} title="Connection test failed" description={errorDescription(value.code)} />;
 }
 
-function errorDescription(code: string): string {
-  if (code === 'LLM_CONNECTION_TEST_UNAVAILABLE') return 'Connection testing is unavailable in this Catbots version.';
-  if (code === 'TEST_REQUIRED') return 'Test this provider again before saving changed values.';
-  if (code === 'SAVE_FAILED') return 'Settings could not be saved. Review the local values and try again.';
+function errorDescription(code: ConnectionTestErrorCode): string {
+  if (code === 'connection-unavailable') return 'Connection testing is unavailable in this Catbots version.';
+  if (code === 'test-required') return 'Test this provider again before saving changed values.';
+  if (code === 'save-failed') return 'Settings could not be saved. Review the local values and try again.';
   return 'We could not verify this provider. Review the values and try again.';
 }

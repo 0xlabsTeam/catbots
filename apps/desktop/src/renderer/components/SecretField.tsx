@@ -24,7 +24,7 @@ export function SecretField({ value, onValueChange, error, storedMask, disabled 
         aria-invalid={error === undefined ? undefined : true}
         aria-describedby={error === undefined ? undefined : 'api-key-error'}
         disabled={disabled}
-        description="Stored only while this form is open and cleared after a successful save."
+        description="Plaintext stays only in this form’s memory. After save, it is stored locally and never displayed again."
       />
       {error === undefined ? null : <p id="api-key-error" role="alert">{error}</p>}
       {storedMask !== undefined ? <p className="stored-secret">Stored key: {storedMask}</p> : null}
