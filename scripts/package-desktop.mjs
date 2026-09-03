@@ -17,6 +17,23 @@ export function createRunner(spawnCommand = spawn) {
   };
 }
 
+export async function runPackaging({ rebuildElectron, forge, restoreHost }) {
+  let primary;
+  try {
+    await rebuildElectron();
+    await forge();
+  } catch (error) {
+    primary = error;
+  }
+  try {
+    await restoreHost();
+  } catch (restoreError) {
+    if (primary !== undefined) throw new Error('Catbots packaging and host ABI restoration failed');
+    throw restoreError;
+  }
+  if (primary !== undefined) throw primary;
+}
+
 const run = createRunner();
 
 const nativePath = resolve(root, 'node_modules/better-sqlite3');
@@ -26,11 +43,12 @@ async function restoreHost() {
 
 async function main() {
 try {
-  await run(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3']);
-  await run(resolve(root, 'node_modules/.bin/electron-forge'), [process.argv[2] ?? 'package']);
-} finally {
-  await restoreHost();
-}
+  await runPackaging({
+    rebuildElectron: () => run(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3']),
+    forge: () => run(resolve(root, 'node_modules/.bin/electron-forge'), [process.argv[2] ?? 'package']),
+    restoreHost,
+  });
+} finally {}
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
