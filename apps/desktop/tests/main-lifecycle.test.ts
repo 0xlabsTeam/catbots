@@ -8,9 +8,12 @@ const electron = vi.hoisted(() => {
     getPath: vi.fn(() => '/test-user-data'),
     getAppPath: vi.fn(() => '/test-app'),
     getVersion: vi.fn(),
-    on: vi.fn((eventName: string, listener: () => void) => {
+    on: vi.fn((eventName: string, listener: (event?: { preventDefault(): void }) => void) => {
       if (eventName === 'window-all-closed') {
-        windowAllClosedListener = listener;
+        windowAllClosedListener = listener as () => void;
+      }
+      if (eventName === 'before-quit') {
+        beforeQuitListener = listener;
       }
 
       return app;
@@ -28,6 +31,8 @@ const electron = vi.hoisted(() => {
   const removeHandler = vi.fn();
   const handle = vi.fn();
   const showMessageBox = vi.fn();
+  const setPermissionRequestHandler = vi.fn();
+  const setPermissionCheckHandler = vi.fn();
 
   return {
     app,
@@ -51,8 +56,11 @@ const electron = vi.hoisted(() => {
       removeHandler.mockClear();
       showMessageBox.mockReset();
       showMessageBox.mockResolvedValue({ response: 1 });
+      setPermissionCheckHandler.mockClear();
+      setPermissionRequestHandler.mockClear();
     },
     ipcMain: { handle, removeHandler },
+    session: { defaultSession: { setPermissionCheckHandler, setPermissionRequestHandler } },
   };
 });
 
@@ -74,18 +82,37 @@ const applicationDatabase = vi.hoisted(() => {
 });
 
 const mainWindow = vi.hoisted(() => {
+  let firstRenderGone: (() => void) | undefined;
+  let replacementRenderGone: (() => void) | undefined;
   const loadURL = vi.fn();
-  const first = { destroy: vi.fn(), focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() };
-  const replacement = { destroy: vi.fn(), focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL: vi.fn(), show: vi.fn() };
+  const first = {
+    destroy: vi.fn(),
+    focus: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    loadURL,
+    show: vi.fn(),
+    webContents: { on: vi.fn((eventName: string, listener: () => void) => { if (eventName === 'render-process-gone') firstRenderGone = listener; }) },
+  };
+  const replacement = {
+    destroy: vi.fn(),
+    focus: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    loadURL: vi.fn(),
+    show: vi.fn(),
+    webContents: { on: vi.fn((eventName: string, listener: () => void) => { if (eventName === 'render-process-gone') replacementRenderGone = listener; }) },
+  };
   const create = vi.fn(() => first);
 
   return {
     create,
+    emitFirstRenderGone: () => firstRenderGone?.(),
     first,
     loadURL,
     replacement,
     reset: () => {
       create.mockReset();
+      firstRenderGone = undefined;
+      replacementRenderGone = undefined;
       create.mockReturnValue(first);
       loadURL.mockReset();
       first.destroy.mockReset();
@@ -93,12 +120,14 @@ const mainWindow = vi.hoisted(() => {
       first.isDestroyed.mockReset();
       first.isDestroyed.mockReturnValue(false);
       first.show.mockReset();
+      first.webContents.on.mockClear();
       replacement.focus.mockReset();
       replacement.destroy.mockReset();
       replacement.isDestroyed.mockReset();
       replacement.isDestroyed.mockReturnValue(false);
       replacement.loadURL.mockReset();
       replacement.show.mockReset();
+      replacement.webContents.on.mockClear();
     },
   };
 });
@@ -129,10 +158,16 @@ const runtime = vi.hoisted(() => {
 });
 
 const tray = vi.hoisted(() => {
-  const create = vi.fn();
+  const dispose = vi.fn();
+  const create = vi.fn((_options: unknown) => ({ dispose }));
   return {
     create,
-    reset: () => create.mockReset(),
+    dispose,
+    reset: () => {
+      dispose.mockReset();
+      create.mockReset();
+      create.mockReturnValue({ dispose });
+    },
   };
 });
 
@@ -170,6 +205,43 @@ describe('main window lifecycle', () => {
     listener?.();
 
     expect(electron.app.quit).not.toHaveBeenCalled();
+  });
+
+  it('installs the deny-all M0 permission policy before opening a renderer', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(electron.session.defaultSession.setPermissionRequestHandler).toHaveBeenCalledOnce();
+    expect(electron.session.defaultSession.setPermissionCheckHandler).toHaveBeenCalledOnce();
+    expect(electron.session.defaultSession.setPermissionRequestHandler.mock.invocationCallOrder[0])
+      .toBeLessThan(mainWindow.first.show.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps intercepting native Quit after a cancellation and then performs ordered cleanup', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox
+      .mockResolvedValueOnce({ response: 1 })
+      .mockResolvedValueOnce({ response: 0 });
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    expect(electron.app.on).toHaveBeenCalledWith('before-quit', expect.any(Function));
+    const beforeQuit = electron.getBeforeQuitListener();
+    const firstEvent = { preventDefault: vi.fn() };
+    beforeQuit?.(firstEvent);
+    await vi.waitFor(() => expect(electron.dialog.showMessageBox).toHaveBeenCalledTimes(1));
+    expect(firstEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(runtime.stop).not.toHaveBeenCalled();
+
+    const secondEvent = { preventDefault: vi.fn() };
+    beforeQuit?.(secondEvent);
+    await vi.waitFor(() => expect(electron.app.quit).toHaveBeenCalledOnce());
+    expect(secondEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(runtime.stop).toHaveBeenCalledOnce();
+    expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(applicationDatabase.close.mock.invocationCallOrder[0]);
+    expect(applicationDatabase.close.mock.invocationCallOrder[0]).toBeLessThan(electron.app.quit.mock.invocationCallOrder[0]);
   });
 
   it('injects the Main-owned compatible-provider connection tester', async () => {
@@ -265,9 +337,12 @@ describe('main window lifecycle', () => {
     await options.quit();
 
     expect(runtime.stop).toHaveBeenCalledOnce();
+    expect(tray.dispose).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(electron.removeHandler).toHaveBeenCalledTimes(9);
     expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(electron.removeHandler.mock.invocationCallOrder[0]);
+    expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(tray.dispose.mock.invocationCallOrder[0]);
+    expect(tray.dispose.mock.invocationCallOrder[0]).toBeLessThan(electron.removeHandler.mock.invocationCallOrder[0]);
     expect(electron.removeHandler.mock.invocationCallOrder[0]).toBeLessThan(applicationDatabase.close.mock.invocationCallOrder[0]);
     expect(applicationDatabase.close.mock.invocationCallOrder[0]).toBeLessThan(electron.app.quit.mock.invocationCallOrder[0]);
   });
@@ -287,6 +362,25 @@ describe('main window lifecycle', () => {
     expect(mainWindow.replacement.loadURL).toHaveBeenCalledWith('catbots://app/index.html');
     expect(mainWindow.replacement.show).toHaveBeenCalledOnce();
     expect(mainWindow.replacement.focus).toHaveBeenCalledOnce();
+  });
+
+  it('destroys and clears a crashed renderer while retaining runtime and tray for Open recovery', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    mainWindow.create.mockReturnValueOnce(mainWindow.first).mockReturnValueOnce(mainWindow.replacement);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+    mainWindow.emitFirstRenderGone();
+
+    expect(mainWindow.first.destroy).toHaveBeenCalledOnce();
+    expect(runtime.stop).not.toHaveBeenCalled();
+    expect(tray.create).toHaveBeenCalledOnce();
+    expect(electron.app.quit).not.toHaveBeenCalled();
+
+    const options = tray.create.mock.calls[0]?.[0] as { showWindow(): Promise<void> };
+    await options.showWindow();
+    expect(mainWindow.create).toHaveBeenCalledTimes(2);
+    expect(mainWindow.replacement.loadURL).toHaveBeenCalledWith('catbots://app/index.html');
   });
 
   it('continues to final app quit when IPC disposal and database cleanup throw', async () => {

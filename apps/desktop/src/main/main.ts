@@ -1,4 +1,4 @@
-import { app, dialog, utilityProcess, type BrowserWindow, type Tray } from 'electron';
+import { app, dialog, session, utilityProcess, type BrowserWindow } from 'electron';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BotRepository } from './bots/bot-repository';
@@ -6,11 +6,12 @@ import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
 import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
 import { registerIpcHandlers } from './ipc/register-ipc';
+import { installM0PermissionPolicy } from './install-permission-policy';
 import { testLlmConnection } from './llm/test-llm-connection';
 import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
 import { ApplicationDatabase } from './storage/database';
-import { createTray } from './tray/create-tray';
+import { createTray, type TrayController } from './tray/create-tray';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -20,7 +21,7 @@ const database = new ApplicationDatabase();
 const runtime = new RuntimeSupervisor(() => utilityProcess.fork(join(__dirname, 'runtime-worker.js')));
 let disposeIpcHandlers: (() => void) | undefined;
 let mainWindow: BrowserWindow | undefined;
-let tray: Tray | undefined;
+let tray: TrayController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let quitting = false;
 let e2eQuitResponse: number | undefined;
@@ -29,6 +30,7 @@ app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
+    installM0PermissionPolicy(session.defaultSession);
     const e2eRequested = process.env.NODE_ENV === 'test' && process.env.CATBOTS_E2E_DATA_DIR !== undefined;
     const unsignedBuild = e2eRequested && isUnsignedDevelopmentBuild({
       executablePath: process.execPath,
@@ -73,6 +75,7 @@ void app.whenReady()
       showWindow: openMainWindow,
       quit: requestQuit,
       getRuntimeStatus: () => runtime.getStatus(),
+      subscribeRuntimeStatus: (listener) => runtime.subscribeStatus(listener),
     });
     if (e2eAllowed) {
       Object.assign(globalThis, {
@@ -94,7 +97,7 @@ void app.whenReady()
     app.quit();
   });
 
-app.once('before-quit', (event) => {
+app.on('before-quit', (event) => {
   if (quitting) return;
   event.preventDefault();
   void requestQuit();
@@ -107,6 +110,7 @@ async function showMainWindow(): Promise<void> {
   if (mainWindow === undefined || mainWindow.isDestroyed()) {
     const candidate = createMainWindow();
     mainWindow = candidate;
+    candidate.webContents.on('render-process-gone', () => handleRendererGone(candidate));
     try {
       await candidate.loadURL(`${appOrigin}/index.html`);
     } catch {
@@ -177,6 +181,7 @@ function shutdown(): Promise<void> {
     } catch {
       console.error('Catbots runtime shutdown failed');
     }
+    disposeTray();
     disposeRegisteredIpcHandlers();
     try {
       database.close();
@@ -187,6 +192,16 @@ function shutdown(): Promise<void> {
   return shutdownPromise;
 }
 
+function disposeTray(): void {
+  const controller = tray;
+  tray = undefined;
+  try {
+    controller?.dispose();
+  } catch {
+    console.error('Catbots tray shutdown failed');
+  }
+}
+
 function disposeRegisteredIpcHandlers(): void {
   const dispose = disposeIpcHandlers;
   disposeIpcHandlers = undefined;
@@ -194,5 +209,14 @@ function disposeRegisteredIpcHandlers(): void {
     dispose?.();
   } catch {
     console.error('Catbots IPC shutdown failed');
+  }
+}
+
+function handleRendererGone(affectedWindow: BrowserWindow): void {
+  if (mainWindow === affectedWindow) mainWindow = undefined;
+  try {
+    if (!affectedWindow.isDestroyed()) affectedWindow.destroy();
+  } catch {
+    // Runtime and tray ownership remain in Main even if renderer cleanup races native teardown.
   }
 }

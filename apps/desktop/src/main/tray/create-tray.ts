@@ -1,22 +1,54 @@
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
-import type { RuntimeStatus } from '@catbots/contracts';
+import { RuntimeStatusSchema, type RuntimeStatus } from '@catbots/contracts';
 
 export type CreateTrayOptions = {
   iconPath: string;
   showWindow: () => void | Promise<void>;
   quit: () => void | Promise<void>;
   getRuntimeStatus: () => RuntimeStatus;
+  subscribeRuntimeStatus: (listener: (status: RuntimeStatus) => void) => () => void;
 };
 
-export function createTray(options: CreateTrayOptions): Tray {
+export type TrayController = {
+  tray: Tray;
+  dispose(): void;
+};
+
+export function createTray(options: CreateTrayOptions): TrayController {
   const icon = nativeImage.createFromPath(options.iconPath);
   icon.setTemplateImage(true);
 
   const tray = new Tray(icon);
-  const status = readStatus(options.getRuntimeStatus);
-  tray.setToolTip(formatStatus(status));
-  tray.setContextMenu(Menu.buildFromTemplate(buildMenu(options, status)));
-  return tray;
+  let disposed = false;
+  const renderStatus = (candidate: unknown) => {
+    if (disposed) return;
+    const status = sanitizeStatus(candidate);
+    tray.setToolTip(formatStatus(status));
+    tray.setContextMenu(Menu.buildFromTemplate(buildMenu(options, status)));
+  };
+  renderStatus(readStatus(options.getRuntimeStatus));
+
+  let unsubscribe: () => void = () => undefined;
+  try {
+    const candidate = options.subscribeRuntimeStatus(renderStatus);
+    if (typeof candidate !== 'function') throw new Error('Invalid runtime status subscription');
+    unsubscribe = candidate;
+  } catch {
+    renderStatus({ state: 'error', activeBots: 0 });
+  }
+
+  return {
+    tray,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      try {
+        unsubscribe();
+      } finally {
+        tray.destroy();
+      }
+    },
+  };
 }
 
 function buildMenu(options: CreateTrayOptions, status: RuntimeStatus): MenuItemConstructorOptions[] {
@@ -35,6 +67,11 @@ function readStatus(getRuntimeStatus: () => RuntimeStatus): RuntimeStatus {
   } catch {
     return { state: 'error', activeBots: 0 };
   }
+}
+
+function sanitizeStatus(candidate: unknown): RuntimeStatus {
+  const result = RuntimeStatusSchema.safeParse(candidate);
+  return result.success ? result.data : { state: 'error', activeBots: 0 };
 }
 
 function formatStatus(status: RuntimeStatus): string {

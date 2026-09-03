@@ -6,6 +6,7 @@ import { createTray } from '../src/main/tray/create-tray';
 
 const trayBridge = vi.hoisted(() => {
   const tray = {
+    destroy: vi.fn(),
     setContextMenu: vi.fn(),
     setToolTip: vi.fn(),
   };
@@ -19,7 +20,9 @@ const trayBridge = vi.hoisted(() => {
     Menu: { buildFromTemplate },
     Tray,
     nativeImage: { createFromPath },
+    tray,
     reset: () => {
+      tray.destroy.mockClear();
       tray.setContextMenu.mockClear();
       tray.setToolTip.mockClear();
       buildFromTemplate.mockClear();
@@ -195,6 +198,7 @@ describe('createTray', () => {
       showWindow,
       quit,
       getRuntimeStatus: () => ({ state: 'ready', activeBots: 0 }),
+      subscribeRuntimeStatus: () => () => undefined,
     });
 
     const template = trayBridge.Menu.buildFromTemplate.mock.calls[0]?.[0] as Array<{
@@ -211,5 +215,40 @@ describe('createTray', () => {
     expect(quit).toHaveBeenCalledOnce();
     expect(trayBridge.Tray).toHaveBeenCalledOnce();
     expect(trayBridge.nativeImage.createFromPath).toHaveBeenCalledWith('/app/trayTemplate.png');
+  });
+
+  it('validates live runtime updates, rebuilds status UI, and disposes its subscription', () => {
+    trayBridge.reset();
+    let publish: ((status: unknown) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const controller = createTray({
+      iconPath: '/app/trayTemplate.png',
+      showWindow: vi.fn(),
+      quit: vi.fn(),
+      getRuntimeStatus: () => ({ state: 'starting', activeBots: 0 }),
+      subscribeRuntimeStatus: (listener) => {
+        publish = listener as (status: unknown) => void;
+        return unsubscribe;
+      },
+    });
+
+    publish?.({ state: 'ready', activeBots: 0 });
+    publish?.({ state: 'ready', activeBots: -1 });
+    publish?.({ state: 'stopped', activeBots: 0 });
+
+    expect(trayBridge.tray.setToolTip.mock.calls.map(([label]) => label)).toEqual([
+      'Runtime: Starting · 0 active bots',
+      'Runtime: Ready · 0 active bots',
+      'Runtime: Error · 0 active bots',
+      'Runtime: Stopped · 0 active bots',
+    ]);
+    expect(trayBridge.tray.setContextMenu).toHaveBeenCalledTimes(4);
+
+    controller.dispose();
+    controller.dispose();
+    publish?.({ state: 'ready', activeBots: 0 });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(trayBridge.tray.destroy).toHaveBeenCalledOnce();
+    expect(trayBridge.tray.setToolTip).toHaveBeenCalledTimes(4);
   });
 });
