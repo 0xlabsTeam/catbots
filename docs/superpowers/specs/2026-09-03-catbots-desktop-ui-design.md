@@ -134,7 +134,7 @@ Rules:
 - preserve a single rollback copy after a successful write;
 - never render complete secrets after initial entry;
 - keep secrets only in the transient password input until submission; never persist them in renderer stores, snapshots, analytics, logs, crash reports, or LLM prompts;
-- accept a Hyperliquid Agent/API Wallet key only, never a master-wallet private key;
+- expose only a Hyperliquid Agent/API Wallet credential field and no master-wallet-key field; Live preflight later verifies that the derived signer is an approved Agent wallet;
 - fail startup validation with a guided Settings repair screen when YAML is malformed.
 
 Plain YAML secret storage is an explicit MVP trade-off. A later migration to OS-backed secret storage must preserve the same Settings interface and config references.
@@ -422,7 +422,7 @@ The data location is separate from Electron cache/session storage and may be cha
 
 ### Security tests
 
-- no master-wallet key accepted by schema or Settings;
+- no master-wallet-key field exists in schema or Settings, and Live preflight verifies the configured signer is an approved Agent wallet;
 - no secret appears in renderer snapshots, logs, exports, diagnostics, or Agent prompts;
 - navigation, new-window, permission, and external-link allowlists;
 - restrictive Content Security Policy and sandbox configuration;

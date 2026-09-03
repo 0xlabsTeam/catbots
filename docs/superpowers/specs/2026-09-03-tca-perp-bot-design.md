@@ -425,6 +425,6 @@ The Electron renderer uses React and Cloudflare Kumo for the application UI and 
 
 The Electron main process owns window and tray lifecycle, local configuration, filesystem access, and runtime supervision. Strategy evaluation, Backtest, risk checks, the audit outbox, and DEX adapters run outside the renderer in supervised utility processes. Closing the window keeps active bots running in the tray; quitting Catbots stops them after confirmation.
 
-The Settings Form atomically writes `local.env.yaml` in the selected Catbots data directory. It may contain LLM API credentials and a Hyperliquid Agent/API Wallet key, but the schema rejects a master-wallet private key. Secrets are never sent to the renderer after initial entry and are redacted from logs, diagnostics, exports, and Agent prompts.
+The Settings Form atomically writes `local.env.yaml` in the selected Catbots data directory. It may contain LLM API credentials and a Hyperliquid Agent/API Wallet key. The strict schema and Settings UI expose no master-wallet-key field; Live preflight verifies that the configured signer is an approved Agent wallet before execution. Secrets are never sent to the renderer after initial entry and are redacted from logs, diagnostics, exports, and Agent prompts.
 
 Detailed UI, desktop security, persistence, and recovery behavior is specified in `2026-09-03-catbots-desktop-ui-design.md`.
