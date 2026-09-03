@@ -3,6 +3,7 @@ import { mkdtemp, realpath, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
+import { cleanupApplication } from './cleanup';
 
 type LifecycleTestSeam = {
   openMainWindow(): Promise<void>;
@@ -54,21 +55,14 @@ async function waitForExitWithin(process: ChildProcess, milliseconds: number): P
 }
 
 async function closeApplication(app: ElectronApplication | undefined, process: ChildProcess | undefined, dataDirectory: string | undefined): Promise<void> {
-  if (app !== undefined) {
-    let closeError: unknown;
-    try {
-      await app.close();
-    } catch (error) {
-      closeError = error;
-    }
-    if (process !== undefined && !await waitForExitWithin(process, 5_000)) {
-      process.kill('SIGKILL');
-      await waitForExit(process);
-      throw new Error('Electron did not exit after Playwright close; forced termination was required');
-    }
-    if (closeError !== undefined) throw closeError;
-  }
-  if (dataDirectory !== undefined) await rm(dataDirectory, { force: true, recursive: true });
+  await cleanupApplication({
+    app,
+    dataDirectory,
+    process,
+    removeDirectory: async (directory: string) => rm(directory, { force: true, recursive: true }),
+    waitForExit,
+    waitForExitWithin,
+  });
 }
 
 test('fresh install reaches local-profile onboarding', async () => {
