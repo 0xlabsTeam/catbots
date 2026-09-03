@@ -49,7 +49,7 @@ const config: ForgeConfig = {
         },
         {
           entry: 'src/main/runtime/runtime-worker.ts',
-          config: 'vite.main.config.ts',
+          config: 'vite.runtime-worker.config.ts',
         },
       ],
       renderer: [
