@@ -23,7 +23,7 @@ describe('package orchestrator runner', () => {
     expect(calls[0]?.cwd).not.toMatch(/catbots-m0$/);
   });
 
-  it('spawns host restoration in an isolated process group without terminal stdio', async () => {
+  it('spawns POSIX host restoration in an isolated process group without terminal stdio', async () => {
     const options: Array<{ detached?: boolean; stdio: string; windowsHide?: boolean }> = [];
     const run = createRunner((_command: string, _args: string[], spawnOptions: { detached?: boolean; stdio: string; windowsHide?: boolean }) => {
       options.push(spawnOptions);
@@ -33,7 +33,18 @@ describe('package orchestrator runner', () => {
     });
     await run('npm', ['run', 'install'], '/workspace', undefined, restoreProcessOptions('darwin'));
     expect(options[0]).toMatchObject({ detached: true, stdio: 'ignore' });
-    expect(restoreProcessOptions('win32')).toEqual({ stdio: 'ignore', windowsHide: true });
+  });
+
+  it('spawns Windows host restoration detached from the parent console', async () => {
+    const options: Array<{ detached?: boolean; stdio: string; windowsHide?: boolean }> = [];
+    const run = createRunner((_command: string, _args: string[], spawnOptions: { detached?: boolean; stdio: string; windowsHide?: boolean }) => {
+      options.push(spawnOptions);
+      const child = fakeChild();
+      queueMicrotask(() => child.emit('exit', 0, null));
+      return child;
+    });
+    await run('npm.cmd', ['run', 'install'], 'C:\\workspace', undefined, restoreProcessOptions('win32'));
+    expect(options[0]).toMatchObject({ detached: true, stdio: 'ignore', windowsHide: true });
   });
 });
 
@@ -192,7 +203,7 @@ describe('package lifecycle', () => {
     expect(listeners.size).toBe(0);
   });
 
-  it('does not terminate an isolated restoration child when a terminal SIGTERM arrives', async () => {
+  it('awaits an isolated restoration child without forwarding parent SIGTERM', async () => {
     const listeners = new Map<string, () => Promise<void>>();
     const calls: string[] = [];
     const child = fakeChild();

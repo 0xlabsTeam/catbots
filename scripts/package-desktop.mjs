@@ -119,7 +119,7 @@ const run = createRunner();
 
 export function restoreProcessOptions(platform = process.platform) {
   return platform === 'win32'
-    ? { stdio: 'ignore', windowsHide: true }
+    ? { detached: true, stdio: 'ignore', windowsHide: true }
     : { detached: true, stdio: 'ignore' };
 }
 
