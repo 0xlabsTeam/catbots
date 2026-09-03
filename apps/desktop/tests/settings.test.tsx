@@ -250,6 +250,25 @@ describe('SettingsScreen', () => {
     expect(document.body.textContent).not.toContain('renderer-only-secret');
   });
 
+  it('maps a Main scope revalidation failure to fixed replacement-key guidance', async () => {
+    const user = userEvent.setup();
+    const api = {
+      ...makeApi(),
+      testLlmConnection: vi.fn().mockResolvedValue({
+        ok: false,
+        code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED',
+        message: 'dependency-message-sentinel stored-secret-sentinel',
+      }),
+    };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByText('Enter a new API key for this provider location, then test again.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('dependency-message-sentinel');
+    expect(document.body.textContent).not.toContain('stored-secret-sentinel');
+  });
+
   it.each(['SAVE_FAILED', 'TEST_REQUIRED'])('maps hostile external %s codes to generic safe failure copy', async (code) => {
     const user = userEvent.setup();
     const api = {
@@ -302,6 +321,125 @@ describe('SettingsScreen', () => {
     expect(api.patchSettings).toHaveBeenCalledWith(expectedPatch);
     expect(JSON.stringify(vi.mocked(api.testLlmConnection).mock.calls)).not.toContain('••••••••');
     expect(JSON.stringify(vi.mocked(api.patchSettings).mock.calls)).not.toContain('••••••••');
+  });
+
+  it('blocks testing and saving when the base credential scope changes without a new key', async () => {
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    fireEvent.change(screen.getByLabelText('Base URL'), {
+      target: { value: 'https://api.example.com/v1/tenant' },
+    });
+
+    expect(screen.getByText('The stored key cannot be reused for a different provider location. Enter a new API key to test and save.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(document.querySelector('form')!);
+    expect(api.testLlmConnection).not.toHaveBeenCalled();
+    expect(api.patchSettings).not.toHaveBeenCalled();
+  });
+
+  it('blocks testing and saving when the provider credential scope changes without a new key', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    const provider = screen.getByRole('combobox', { name: 'Provider' });
+    provider.focus();
+    await user.keyboard('{Enter}');
+    await user.click(await screen.findByRole('option', { name: 'Anthropic-compatible' }));
+    expect(provider.textContent).toContain('anthropic-compatible');
+
+    expect(screen.getByText('The stored key cannot be reused for a different provider location. Enter a new API key to test and save.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(document.querySelector('form')!);
+    expect(api.testLlmConnection).not.toHaveBeenCalled();
+    expect(api.patchSettings).not.toHaveBeenCalled();
+  });
+
+  it('keeps test approval for a canonical-equivalent base URL and reuses the stored key', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    fireEvent.change(screen.getByLabelText('Base URL'), {
+      target: { value: 'HTTPS://API.EXAMPLE.COM:443/v1/' },
+    });
+
+    expect(screen.queryByText('The stored key cannot be reused for a different provider location. Enter a new API key to test and save.')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(api.patchSettings).toHaveBeenCalledWith({
+      profile: redactedConfig.profile,
+      llm: {
+        provider: 'openai-compatible',
+        baseUrl: 'HTTPS://API.EXAMPLE.COM:443/v1/',
+        model: 'provider/model',
+      },
+    });
+  });
+
+  it('binds test approval to whether the credential is stored or newly supplied', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    const save = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+
+    await user.type(screen.getByLabelText('API key'), 'newly-supplied-secret');
+    expect(save.disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    expect(save.disabled).toBe(false);
+
+    await user.clear(screen.getByLabelText('API key'));
+    expect(save.disabled).toBe(true);
+  });
+
+  it('tests and saves a changed credential scope only after receiving a new key', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    fireEvent.change(screen.getByLabelText('Base URL'), {
+      target: { value: 'https://replacement.example/v2' },
+    });
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByLabelText('API key'), 'replacement-scope-secret');
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    const expectedPatch = {
+      profile: redactedConfig.profile,
+      llm: {
+        provider: 'openai-compatible' as const,
+        baseUrl: 'https://replacement.example/v2',
+        apiKey: 'replacement-scope-secret',
+        model: 'provider/model',
+      },
+    };
+    expect(api.testLlmConnection).toHaveBeenCalledWith(expectedPatch);
+    expect(api.patchSettings).toHaveBeenCalledWith(expectedPatch);
+  });
+
+  it('never enables a connection test for the redacted display mask', () => {
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: '••••••••' } });
+
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(document.querySelector('form')!);
+    expect(api.testLlmConnection).not.toHaveBeenCalled();
+    expect(api.patchSettings).not.toHaveBeenCalled();
   });
 
   it('always renders a fixed repair banner but exposes only safe field paths', () => {

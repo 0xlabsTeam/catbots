@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REDACTED_SECRET, type LocalConfig } from '@catbots/contracts';
-import { ConfigParseError, ConfigRepository } from '../src/main/config/config-repository';
+import {
+  ConfigParseError,
+  ConfigRepository,
+  LlmCredentialReplacementRequiredError,
+} from '../src/main/config/config-repository';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
@@ -108,7 +112,7 @@ describe('ConfigRepository', () => {
     await expect(repository.getRedacted()).resolves.toEqual(result);
   });
 
-  it('patches editable settings while preserving the stored LLM key and Hyperliquid subtree', async () => {
+  it('patches editable non-secret settings while preserving the stored LLM key and Hyperliquid subtree', async () => {
     const dataDirectory = await createTemporaryDirectory();
     const repository = new ConfigRepository(dataDirectory);
     await repository.save(validConfig);
@@ -116,8 +120,8 @@ describe('ConfigRepository', () => {
     const result = await repository.patchSettings({
       profile: { name: 'Renamed', telemetry: true },
       llm: {
-        provider: 'anthropic-compatible',
-        baseUrl: 'https://anthropic.example/v1',
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.example.com/v1',
         model: 'replacement-model',
       },
     });
@@ -125,8 +129,8 @@ describe('ConfigRepository', () => {
     expect(result).toEqual({
       profile: { name: 'Renamed', telemetry: true },
       llm: {
-        provider: 'anthropic-compatible',
-        baseUrl: 'https://anthropic.example/v1',
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.example.com/v1',
         apiKey: REDACTED_SECRET,
         model: 'replacement-model',
       },
@@ -140,8 +144,8 @@ describe('ConfigRepository', () => {
     await expect(repository.load()).resolves.toEqual({
       profile: { name: 'Renamed', telemetry: true },
       llm: {
-        provider: 'anthropic-compatible',
-        baseUrl: 'https://anthropic.example/v1',
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.example.com/v1',
         apiKey: llmSecret,
         model: 'replacement-model',
       },
@@ -156,11 +160,78 @@ describe('ConfigRepository', () => {
 
     await repository.patchSettings({
       profile: validConfig.profile,
-      llm: { ...validConfig.llm, apiKey: 'replacement-llm-key' },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://replacement.example/v2',
+        apiKey: 'replacement-llm-key',
+        model: 'replacement-model',
+      },
     });
 
-    expect((await repository.load())?.llm.apiKey).toBe('replacement-llm-key');
-    expect((await repository.load())?.exchanges.hyperliquid?.agentPrivateKey).toBe(agentSecret);
+    expect(await repository.load()).toEqual({
+      profile: validConfig.profile,
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://replacement.example/v2',
+        apiKey: 'replacement-llm-key',
+        model: 'replacement-model',
+      },
+      exchanges: validConfig.exchanges,
+    });
+  });
+
+  it.each([
+    ['provider', { provider: 'anthropic-compatible' as const, baseUrl: validConfig.llm.baseUrl }],
+    ['base origin', { provider: validConfig.llm.provider, baseUrl: 'https://other.example/v1' }],
+    ['base path', { provider: validConfig.llm.provider, baseUrl: 'https://api.example.com/v1/tenant' }],
+  ])('requires a replacement key when the credential %s changes without touching the file', async (_label, scope) => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const target = join(dataDirectory, 'local.env.yaml');
+    const before = await readFile(target, 'utf8');
+    const patch = {
+      profile: { name: 'Must not persist', telemetry: true },
+      llm: { ...scope, model: 'replacement-model' },
+    };
+
+    const resolutionError = await repository.resolveSettingsPatch(patch).catch((reason: unknown) => reason);
+    const saveError = await repository.patchSettings(patch).catch((reason: unknown) => reason);
+
+    for (const error of [resolutionError, saveError]) {
+      expect(error).toBeInstanceOf(LlmCredentialReplacementRequiredError);
+      expect(error).toMatchObject({ code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED' });
+      expect(String(error)).not.toContain(scope.baseUrl);
+      expect(String(error)).not.toContain(llmSecret);
+    }
+    await expect(readFile(target, 'utf8')).resolves.toBe(before);
+    await expect(repository.load()).resolves.toEqual(validConfig);
+  });
+
+  it('reuses the stored key for an equivalent canonical base URL', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const patch = {
+      profile: { name: 'Canonical spelling', telemetry: true },
+      llm: {
+        provider: validConfig.llm.provider,
+        baseUrl: 'HTTPS://API.EXAMPLE.COM:443/v1/',
+        model: 'replacement-model',
+      },
+    } as const;
+
+    await expect(repository.resolveSettingsPatch(patch)).resolves.toMatchObject({
+      llm: { apiKey: llmSecret },
+      exchanges: validConfig.exchanges,
+    });
+    await expect(repository.patchSettings(patch)).resolves.toMatchObject({
+      llm: { apiKey: REDACTED_SECRET },
+      exchanges: {
+        hyperliquid: { agentPrivateKey: REDACTED_SECRET },
+      },
+    });
+    expect((await repository.load())?.llm.apiKey).toBe(llmSecret);
   });
 
   it('requires a real API key when no valid stored configuration exists', async () => {
@@ -177,10 +248,10 @@ describe('ConfigRepository', () => {
     } as const;
 
     await expect(repository.resolveSettingsPatch(patch)).rejects.toMatchObject({
-      issues: [{ path: 'llm.apiKey', message: 'Invalid configuration value' }],
+      code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED',
     });
     await expect(repository.patchSettings(patch)).rejects.toMatchObject({
-      issues: [{ path: 'llm.apiKey', message: 'Invalid configuration value' }],
+      code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED',
     });
     await expect(repository.load()).resolves.toBeNull();
   });

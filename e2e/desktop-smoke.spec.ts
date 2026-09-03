@@ -241,6 +241,13 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     await expect(restored.getByLabel('Profile name')).toHaveValue('E2E Local Profile');
     await expect(restored.getByLabel('API key')).toHaveValue('');
     await expect(restored.getByText('Stored key: ••••••••')).toBeVisible();
+    await restored.getByLabel('Base URL').fill(`${provider.baseUrl}/tenant`);
+    await expect(restored.getByText('The stored key cannot be reused for a different provider location. Enter a new API key to test and save.')).toBeVisible();
+    await expect(restored.getByRole('button', { name: 'Test connection' })).toBeDisabled();
+    await expect(restored.getByRole('button', { name: 'Save settings' })).toBeDisabled();
+    expect(provider.requests).toHaveLength(1);
+    await restored.getByLabel('Base URL').fill(`${provider.baseUrl}/`);
+    await expect(restored.getByRole('button', { name: 'Test connection' })).toBeEnabled();
     await restored.getByLabel('Profile name').fill('E2E Renamed Profile');
     await restored.getByRole('button', { name: 'Test connection' }).click();
     await expect(restored.getByText('Connection successful')).toBeVisible();

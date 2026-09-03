@@ -1,7 +1,7 @@
 import { Banner } from '@cloudflare/kumo';
 import { CheckCircleIcon, WarningCircleIcon } from '@phosphor-icons/react';
 
-export type ConnectionTestErrorCode = 'connection-unavailable' | 'test-required' | 'save-failed' | 'connection-failed';
+export type ConnectionTestErrorCode = 'connection-unavailable' | 'credential-required' | 'test-required' | 'save-failed' | 'connection-failed';
 
 export type ConnectionTestState =
   | { state: 'idle' }
@@ -12,7 +12,9 @@ export type ConnectionTestState =
 
 /** Converts dependency-owned result codes into the closed renderer status vocabulary. */
 export function mapExternalConnectionErrorCode(code: string): ConnectionTestErrorCode {
-  return code === 'LLM_CONNECTION_TEST_UNAVAILABLE' ? 'connection-unavailable' : 'connection-failed';
+  if (code === 'LLM_CONNECTION_TEST_UNAVAILABLE') return 'connection-unavailable';
+  if (code === 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED') return 'credential-required';
+  return 'connection-failed';
 }
 
 export function ConnectionTestStatus({ value }: { value: ConnectionTestState }) {
@@ -31,6 +33,7 @@ export function ConnectionTestStatus({ value }: { value: ConnectionTestState }) 
 
 function errorDescription(code: ConnectionTestErrorCode): string {
   if (code === 'connection-unavailable') return 'Connection testing is unavailable in this Catbots version.';
+  if (code === 'credential-required') return 'Enter a new API key for this provider location, then test again.';
   if (code === 'test-required') return 'Test this provider again before saving changed values.';
   if (code === 'save-failed') return 'Settings could not be saved. Review the local values and try again.';
   return 'We could not verify this provider. Review the values and try again.';

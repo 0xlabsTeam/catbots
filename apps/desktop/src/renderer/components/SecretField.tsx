@@ -5,11 +5,12 @@ type SecretFieldProps = {
   onValueChange(value: string): void;
   error?: string;
   storedMask?: string;
+  requiresReplacement?: boolean;
   disabled?: boolean;
 };
 
 /** Keeps a credential exclusively in the caller's component-local password state. */
-export function SecretField({ value, onValueChange, error, storedMask, disabled }: SecretFieldProps) {
+export function SecretField({ value, onValueChange, error, storedMask, requiresReplacement = false, disabled }: SecretFieldProps) {
   return (
     <div className="secret-field">
       <Input
@@ -26,7 +27,9 @@ export function SecretField({ value, onValueChange, error, storedMask, disabled 
         disabled={disabled}
         description={storedMask === undefined
           ? 'Plaintext stays only in this form’s memory. After save, it is stored locally and never displayed again.'
-          : 'Leave blank to use the stored key. A replacement stays only in this form’s memory until save.'}
+          : requiresReplacement
+            ? 'The stored key cannot be reused for a different provider location. Enter a new API key to test and save.'
+            : 'Leave blank to use the stored key. A replacement stays only in this form’s memory until save.'}
       />
       {error === undefined ? null : <p id="api-key-error" role="alert">{error}</p>}
       {storedMask !== undefined ? <p className="stored-secret">Stored key: {storedMask}</p> : null}

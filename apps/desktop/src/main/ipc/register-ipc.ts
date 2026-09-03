@@ -10,7 +10,11 @@ import {
   type RuntimeStatus,
 } from '@catbots/contracts';
 import { BotRepository } from '../bots/bot-repository';
-import { ConfigParseError, ConfigRepository } from '../config/config-repository';
+import {
+  ConfigParseError,
+  ConfigRepository,
+  LlmCredentialReplacementRequiredError,
+} from '../config/config-repository';
 import { assertTrustedAppSenderUrl } from '../ipc-security';
 
 export class IpcRequestError extends Error {
@@ -105,6 +109,9 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       try {
         return await dependencies.configRepository.patchSettings(patch);
       } catch (error) {
+        if (error instanceof LlmCredentialReplacementRequiredError) {
+          throw new IpcRequestError('LLM_CREDENTIAL_REPLACEMENT_REQUIRED');
+        }
         if (error instanceof ConfigParseError) throw new IpcRequestError('INVALID_REQUEST');
         throw new IpcRequestError('CONFIG_SAVE_FAILED');
       }
@@ -124,6 +131,13 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
         const config = await dependencies.configRepository.resolveSettingsPatch(patch);
         return await dependencies.testLlmConnection(config.llm);
       } catch (error) {
+        if (error instanceof LlmCredentialReplacementRequiredError) {
+          return {
+            ok: false,
+            code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED',
+            message: 'Enter a new API key for this provider location.',
+          };
+        }
         if (error instanceof ConfigParseError) {
           return {
             ok: false,

@@ -1,7 +1,11 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalConfigSchema, REDACTED_SECRET, type RuntimeStatus } from '@catbots/contracts';
 import { buildWindowOptions } from '../src/main/create-window';
 import { denyUnexpectedNavigation } from '../src/main/create-window';
+import { ConfigRepository } from '../src/main/config/config-repository';
 import { assertTrustedAppSenderUrl } from '../src/main/ipc-security';
 import { createIpcHandlers, registerIpcHandlers } from '../src/main/ipc/register-ipc';
 import { getSafeRelativePath } from '../src/main/register-app-protocol';
@@ -205,8 +209,100 @@ describe('validated IPC handlers', () => {
     expect(dependencies.configRepository.resolveSettingsPatch).toHaveBeenCalledWith(settingsPatch);
     expect(dependencies.testLlmConnection).toHaveBeenCalledWith(validConfig.llm);
 
+    await expect(handlers.testLlmConnection(localEvent, {
+      ...settingsPatch,
+      llm: { ...settingsPatch.llm, apiKey: REDACTED_SECRET },
+    })).rejects.toThrow('INVALID_REQUEST');
     await expect(handlers.testLlmConnection(localEvent, { llm: {} })).rejects.toThrow('INVALID_REQUEST');
     expect(dependencies.testLlmConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['provider', { provider: 'anthropic-compatible' as const, baseUrl: validConfig.llm.baseUrl }],
+    ['base URL', { provider: validConfig.llm.provider, baseUrl: 'https://other.example/v1' }],
+  ])('rejects a changed credential %s before testing or writing with fixed safe results', async (_label, scope) => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), 'catbots-ipc-scope-'));
+    try {
+      const repository = new ConfigRepository(dataDirectory);
+      const stored = {
+        ...validConfig,
+        exchanges: {
+          hyperliquid: {
+            network: 'testnet' as const,
+            accountAddress: '0x0123456789abcdef0123456789abcdef01234567',
+            agentPrivateKey: 'agent-secret-that-must-not-leak',
+          },
+        },
+      };
+      await repository.save(stored);
+      const before = await readFile(join(dataDirectory, 'local.env.yaml'), 'utf8');
+      const dependencies = { ...createDependencies(), configRepository: repository };
+      const handlers = createIpcHandlers(dependencies);
+      const patch = {
+        profile: { name: 'Must not persist', telemetry: true },
+        llm: { ...scope, model: 'replacement-model' },
+      };
+
+      await expect(handlers.testLlmConnection(localEvent, patch)).resolves.toEqual({
+        ok: false,
+        code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED',
+        message: 'Enter a new API key for this provider location.',
+      });
+      const saveError = await handlers.patchLocalSettings(localEvent, patch).catch((reason: unknown) => reason);
+
+      expect(dependencies.testLlmConnection).not.toHaveBeenCalled();
+      expect(saveError).toMatchObject({ code: 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED' });
+      expect(String(saveError)).not.toContain(scope.baseUrl);
+      await expect(readFile(join(dataDirectory, 'local.env.yaml'), 'utf8')).resolves.toBe(before);
+      await expect(repository.load()).resolves.toEqual(stored);
+    } finally {
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
+  });
+
+  it('tests and saves a changed credential scope when the patch supplies a new key', async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), 'catbots-ipc-replacement-'));
+    try {
+      const repository = new ConfigRepository(dataDirectory);
+      const stored = {
+        ...validConfig,
+        exchanges: {
+          hyperliquid: {
+            network: 'testnet' as const,
+            accountAddress: '0x0123456789abcdef0123456789abcdef01234567',
+            agentPrivateKey: 'agent-secret-that-must-not-leak',
+          },
+        },
+      };
+      await repository.save(stored);
+      const dependencies = { ...createDependencies(), configRepository: repository };
+      const handlers = createIpcHandlers(dependencies);
+      const patch = {
+        profile: { name: 'Replacement scope', telemetry: true },
+        llm: {
+          provider: 'anthropic-compatible' as const,
+          baseUrl: 'https://replacement.example/v2',
+          apiKey: 'replacement-llm-secret',
+          model: 'replacement-model',
+        },
+      };
+
+      await expect(handlers.testLlmConnection(localEvent, patch)).resolves.toEqual({
+        ok: true,
+        model: 'provider/model',
+      });
+      expect(dependencies.testLlmConnection).toHaveBeenCalledWith(patch.llm);
+      await expect(handlers.patchLocalSettings(localEvent, patch)).resolves.toMatchObject({
+        llm: { ...patch.llm, apiKey: REDACTED_SECRET },
+        exchanges: { hyperliquid: { agentPrivateKey: REDACTED_SECRET } },
+      });
+      await expect(repository.load()).resolves.toEqual({
+        ...patch,
+        exchanges: stored.exchanges,
+      });
+    } finally {
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
   });
 
   it('exposes safe typed app and runtime handler behavior', async () => {

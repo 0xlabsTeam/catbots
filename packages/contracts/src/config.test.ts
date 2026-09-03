@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalConfigSchema, LocalSettingsPatchSchema, REDACTED_SECRET } from './config';
+import {
+  CompatibleProviderUrlSchema,
+  hasSameLlmCredentialScope,
+  LocalConfigSchema,
+  LocalSettingsPatchSchema,
+  normalizeLlmProviderBaseUrl,
+  REDACTED_SECRET,
+} from './config';
 
 const valid = {
   profile: { name: 'My Trading', telemetry: false },
@@ -77,5 +84,34 @@ describe('LocalConfigSchema', () => {
       ...valid,
       llm: { ...valid.llm, apiKey: REDACTED_SECRET },
     }).success).toBe(false);
+  });
+});
+
+describe('LLM credential scope', () => {
+  it('returns a validation result instead of throwing for an incomplete URL', () => {
+    expect(() => CompatibleProviderUrlSchema.safeParse('')).not.toThrow();
+    expect(CompatibleProviderUrlSchema.safeParse('').success).toBe(false);
+  });
+
+  it('canonicalizes scheme, host, default port, and one missing trailing path slash', () => {
+    expect(normalizeLlmProviderBaseUrl('HTTPS://API.EXAMPLE.COM:443/v1')).toBe('https://api.example.com/v1/');
+    expect(normalizeLlmProviderBaseUrl('http://LOCALHOST:80')).toBe('http://localhost/');
+  });
+
+  it('treats only the same provider and canonical base path as the same credential scope', () => {
+    const stored = { provider: 'openai-compatible' as const, baseUrl: 'HTTPS://API.EXAMPLE.COM:443/v1' };
+
+    expect(hasSameLlmCredentialScope(stored, {
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.example.com/v1/',
+    })).toBe(true);
+    expect(hasSameLlmCredentialScope(stored, {
+      provider: 'anthropic-compatible',
+      baseUrl: 'https://api.example.com/v1/',
+    })).toBe(false);
+    expect(hasSameLlmCredentialScope(stored, {
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.example.com/v1/tenant',
+    })).toBe(false);
   });
 });

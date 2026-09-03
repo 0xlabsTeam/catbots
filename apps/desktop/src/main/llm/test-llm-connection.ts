@@ -1,5 +1,6 @@
 import {
   CompatibleProviderUrlSchema,
+  normalizeLlmProviderBaseUrl,
   type ConnectionTestResult,
   type LocalConfig,
 } from '@catbots/contracts';
@@ -130,10 +131,7 @@ async function requestProvider(
 }
 
 function providerEndpoint(provider: LocalConfig['llm']): URL {
-  const base = new URL(provider.baseUrl);
-  base.search = '';
-  base.hash = '';
-  if (!base.pathname.endsWith('/')) base.pathname += '/';
+  const base = new URL(normalizeLlmProviderBaseUrl(provider.baseUrl));
   return new URL(provider.provider === 'openai-compatible' ? 'chat/completions' : 'messages', base);
 }
 

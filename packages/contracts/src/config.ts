@@ -13,6 +13,7 @@ const LocalProfileSchema = z.object({
 }).strict();
 
 export const CompatibleProviderUrlSchema = z.string().url().superRefine((value, ctx) => {
+  if (!URL.canParse(value)) return;
   const url = new URL(value);
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
   const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(hostname);
@@ -36,6 +37,25 @@ export const LlmProviderSchema = z.discriminatedUnion('provider', [
     model: z.string().min(1),
   }).strict(),
 ]);
+
+export type LlmCredentialScope = Pick<z.infer<typeof LlmProviderSchema>, 'provider' | 'baseUrl'>;
+
+/** Canonicalizes the effective provider base used to derive protocol request endpoints. */
+export function normalizeLlmProviderBaseUrl(value: string): string {
+  const normalized = new URL(CompatibleProviderUrlSchema.parse(value));
+  normalized.search = '';
+  normalized.hash = '';
+  if (!normalized.pathname.endsWith('/')) normalized.pathname += '/';
+  return normalized.toString();
+}
+
+export function hasSameLlmCredentialScope(
+  left: LlmCredentialScope,
+  right: LlmCredentialScope,
+): boolean {
+  return left.provider === right.provider
+    && normalizeLlmProviderBaseUrl(left.baseUrl) === normalizeLlmProviderBaseUrl(right.baseUrl);
+}
 
 export const LocalConfigSchema = z.object({
   profile: LocalProfileSchema,

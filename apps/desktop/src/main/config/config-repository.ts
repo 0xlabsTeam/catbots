@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
+  hasSameLlmCredentialScope,
   LocalConfigSchema,
   LocalSettingsPatchSchema,
   type LocalConfig,
@@ -33,6 +34,15 @@ export class ConfigParseError extends Error {
       message: this.message,
       issues: this.issues,
     };
+  }
+}
+
+export class LlmCredentialReplacementRequiredError extends Error {
+  readonly code = 'LLM_CREDENTIAL_REPLACEMENT_REQUIRED' as const;
+
+  constructor() {
+    super('A new API key is required for this provider location');
+    this.name = 'LlmCredentialReplacementRequiredError';
   }
 }
 
@@ -281,14 +291,22 @@ function validateSettingsPatch(input: unknown): LocalSettingsPatch {
 }
 
 function mergeSettingsPatch(existing: LocalConfig | null, patch: LocalSettingsPatch): LocalConfig {
+  const apiKey = patch.llm.apiKey ?? reusableApiKey(existing, patch);
   return validateConfig({
     profile: patch.profile,
     llm: {
       ...patch.llm,
-      apiKey: patch.llm.apiKey ?? existing?.llm.apiKey,
+      apiKey,
     },
     exchanges: existing?.exchanges ?? {},
   });
+}
+
+function reusableApiKey(existing: LocalConfig | null, patch: LocalSettingsPatch): string {
+  if (existing === null || !hasSameLlmCredentialScope(existing.llm, patch.llm)) {
+    throw new LlmCredentialReplacementRequiredError();
+  }
+  return existing.llm.apiKey;
 }
 
 function toConfigParseError(error: unknown): ConfigParseError {

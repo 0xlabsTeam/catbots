@@ -4,6 +4,8 @@ import { Progress } from '@cloudflare/kumo/primitives/progress';
 import { CheckCircleIcon, DesktopTowerIcon, InfoIcon, LockKeyIcon } from '@phosphor-icons/react';
 import {
   CompatibleProviderUrlSchema,
+  hasSameLlmCredentialScope,
+  normalizeLlmProviderBaseUrl,
   REDACTED_SECRET,
   type CatbotsDesktopApi,
   type LocalConfig,
@@ -26,6 +28,24 @@ function formFromConfig(config?: RedactedLocalConfig): FormState {
 
 function isPermittedProviderUrl(value: string): boolean {
   return CompatibleProviderUrlSchema.safeParse(value).success;
+}
+
+function hasChangedStoredCredentialScope(state: FormState, config?: RedactedLocalConfig): boolean {
+  if (config === undefined) return false;
+  const baseUrl = state.baseUrl.trim();
+  if (!isPermittedProviderUrl(baseUrl)) return false;
+  return !hasSameLlmCredentialScope(config.llm, { provider: state.provider, baseUrl });
+}
+
+function connectionApprovalBinding(state: FormState, replacementKeyRevision: number): string | null {
+  const baseUrl = state.baseUrl.trim();
+  if (!isPermittedProviderUrl(baseUrl)) return null;
+  return JSON.stringify({
+    provider: state.provider,
+    baseUrl: normalizeLlmProviderBaseUrl(baseUrl),
+    model: state.model.trim(),
+    credential: state.apiKey.length === 0 ? 'existing' : `replacement:${replacementKeyRevision}`,
+  });
 }
 
 function validate(state: FormState, requiresApiKey: boolean): FormErrors {
@@ -58,20 +78,27 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const [form, setForm] = useState<FormState>(() => formFromConfig(config));
   const [errors, setErrors] = useState<FormErrors>({});
   const [connection, setConnection] = useState<ConnectionTestState>({ state: 'idle' });
-  const [providerRevision, setProviderRevision] = useState(0);
-  const [testedProviderRevision, setTestedProviderRevision] = useState<number | null>(null);
+  const [replacementKeyRevision, setReplacementKeyRevision] = useState(0);
+  const [testedConnectionBinding, setTestedConnectionBinding] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const mountedRef = useRef(true);
   const formRevisionRef = useRef(0);
   const providerRevisionRef = useRef(0);
+  const replacementKeyRevisionRef = useRef(0);
   const testRequestTokenRef = useRef(0);
   const isTestingRef = useRef(false);
   const saveRequestTokenRef = useRef(0);
   const isSavingRef = useRef(false);
   const safeRepairPaths = useMemo(() => getSafeRepairPaths(repairIssues), [repairIssues]);
-  const requiresApiKey = config === undefined;
-  const hasPassedCurrentTest = testedProviderRevision === providerRevision;
+  const credentialScopeChanged = hasChangedStoredCredentialScope(form, config);
+  const requiresApiKey = config === undefined || credentialScopeChanged;
+  const isRequiredApiKeyMissing = requiresApiKey && form.apiKey.length === 0;
+  const currentConnectionBinding = connectionApprovalBinding(form, replacementKeyRevision);
+  const hasPassedCurrentTest = testedConnectionBinding !== null
+    && testedConnectionBinding === currentConnectionBinding
+    && !isRequiredApiKeyMissing
+    && form.apiKey !== REDACTED_SECRET;
   const submitLabel = onboarding ? 'Create local profile' : 'Save settings';
 
   useEffect(() => {
@@ -87,10 +114,13 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     if (key === 'provider' || key === 'baseUrl' || key === 'apiKey' || key === 'model') {
       const nextProviderRevision = providerRevisionRef.current + 1;
       providerRevisionRef.current = nextProviderRevision;
+      if (key === 'apiKey') {
+        const nextReplacementKeyRevision = replacementKeyRevisionRef.current + 1;
+        replacementKeyRevisionRef.current = nextReplacementKeyRevision;
+        setReplacementKeyRevision(nextReplacementKeyRevision);
+      }
       testRequestTokenRef.current += 1;
       isTestingRef.current = false;
-      setProviderRevision(nextProviderRevision);
-      setTestedProviderRevision(null);
       setIsTesting(false);
       setConnection({ state: 'idle' });
     }
@@ -102,19 +132,21 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     const token = testRequestTokenRef.current + 1;
     testRequestTokenRef.current = token;
     const submittedProviderRevision = providerRevisionRef.current;
+    const submittedConnectionBinding = connectionApprovalBinding(form, replacementKeyRevisionRef.current);
+    if (submittedConnectionBinding === null) return false;
     const submittedPatch = toSettingsPatch(form);
     isTestingRef.current = true;
-    setTestedProviderRevision(null);
+    setTestedConnectionBinding(null);
     setIsTesting(true);
     setConnection({ state: 'testing' });
     try {
       const result = await api.testLlmConnection(submittedPatch);
       if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
-      if (result.ok) { setTestedProviderRevision(submittedProviderRevision); setConnection({ state: 'success', model: submittedPatch.llm.model }); return true; }
-      setTestedProviderRevision(null); setConnection({ state: 'error', code: mapExternalConnectionErrorCode(result.code) }); return false;
+      if (result.ok) { setTestedConnectionBinding(submittedConnectionBinding); setConnection({ state: 'success', model: submittedPatch.llm.model }); return true; }
+      setTestedConnectionBinding(null); setConnection({ state: 'error', code: mapExternalConnectionErrorCode(result.code) }); return false;
     } catch {
       if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
-      setTestedProviderRevision(null); setConnection({ state: 'error', code: 'connection-failed' }); return false;
+      setTestedConnectionBinding(null); setConnection({ state: 'error', code: 'connection-failed' }); return false;
     } finally {
       if (mountedRef.current && token === testRequestTokenRef.current) setIsTesting(false);
       if (token === testRequestTokenRef.current) isTestingRef.current = false;
@@ -123,7 +155,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const save = async (): Promise<void> => {
     if (isSavingRef.current) return;
     if (!validateForm()) return;
-    if (testedProviderRevision !== providerRevision) { setConnection({ state: 'error', code: 'test-required' }); return; }
+    if (testedConnectionBinding === null || testedConnectionBinding !== currentConnectionBinding) { setConnection({ state: 'error', code: 'test-required' }); return; }
     const token = saveRequestTokenRef.current + 1;
     saveRequestTokenRef.current = token;
     const submittedRevision = formRevisionRef.current;
@@ -134,7 +166,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       const savedConfig = await api.patchSettings(submittedPatch);
       if (!mountedRef.current || token !== saveRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return;
       setForm((previous) => ({ ...previous, apiKey: '' }));
-      setTestedProviderRevision(null);
+      setTestedConnectionBinding(null);
       setConnection({ state: 'saved' });
       onSaved?.(savedConfig);
     } catch {
@@ -175,11 +207,11 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
           <Select<Provider> label="Provider" value={form.provider} onValueChange={(value) => updateForm('provider', value as Provider)} error={errors.provider} disabled={isSaving}><Select.Option value="openai-compatible">OpenAI-compatible</Select.Option><Select.Option value="anthropic-compatible">Anthropic-compatible</Select.Option></Select>
           <Input id="base-url" label="Base URL" value={form.baseUrl} onChange={(event) => updateForm('baseUrl', event.currentTarget.value)} variant={errors.baseUrl === undefined ? 'default' : 'error'} aria-invalid={errors.baseUrl === undefined ? undefined : true} aria-describedby={errors.baseUrl === undefined ? undefined : 'base-url-error'} placeholder="https://api.example.com/v1" autoComplete="url" spellCheck={false} description="Use HTTPS. HTTP is allowed only for localhost, 127.0.0.1, or ::1 on this computer." disabled={isSaving} />
           {errors.baseUrl === undefined ? null : <p id="base-url-error" role="alert">{errors.baseUrl}</p>}
-          <SecretField value={form.apiKey} onValueChange={(value) => updateForm('apiKey', value)} error={errors.apiKey} storedMask={config?.llm.apiKey} disabled={isSaving} />
+          <SecretField value={form.apiKey} onValueChange={(value) => updateForm('apiKey', value)} error={errors.apiKey} storedMask={config?.llm.apiKey} requiresReplacement={credentialScopeChanged} disabled={isSaving} />
           <Input id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
           <ConnectionTestStatus value={connection} />
-          <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button className="primary-action" type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
+          <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button className="primary-action" type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
           <p className="form-footnote"><InfoIcon aria-hidden="true" /> Catbots has no in-app YAML editor. This form is the only way to save local configuration.</p>
         </form>
         <Dialog.Root><Dialog.Trigger render={(props) => <Button {...props} className="privacy-dialog-trigger" variant="ghost" size="sm">How is my key handled?</Button>} /><Dialog><Dialog.Title>Local-only credentials</Dialog.Title><Dialog.Description>Your key is held only by this password field until a successful local save. The stored value is never rendered again.</Dialog.Description><Dialog.Close render={(props) => <Button {...props} variant="secondary">Close</Button>} /></Dialog></Dialog.Root>
