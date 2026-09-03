@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const CompatibleProviderUrlSchema = z.string().url().superRefine((value, ctx) => {
   const url = new URL(value);
-  const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(hostname);
 
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
     ctx.addIssue({ code: 'custom', message: 'Use HTTPS or loopback HTTP' });
