@@ -128,6 +128,28 @@ describe('BotsHomeScreen', () => {
     expect(screen.getAllByText('BTC Flow')).toHaveLength(1);
   });
 
+  it('retains a confirmed draft when a pending list request fails, then reconciles it without duplicates on retry', async () => {
+    const user = userEvent.setup();
+    const initialList = deferred<BotSummary[]>();
+    const list = vi.fn().mockReturnValueOnce(initialList.promise).mockResolvedValueOnce([draftBot]);
+    render(<BotsHomeScreen api={makeApi({ list })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Create new bot' }));
+    await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
+    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
+    await user.click(screen.getByRole('button', { name: 'Create draft' }));
+    await screen.findByText('BTC Flow');
+    await act(async () => initialList.reject(new Error('dependency detail /Users/secret/catbots.db')));
+
+    expect(screen.getByText('BTC Flow')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('We could not load local bots. Try again.');
+    expect(document.body.textContent).not.toContain('dependency detail /Users/secret/catbots.db');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('BTC Flow')).toBeTruthy();
+    expect(screen.getAllByText('BTC Flow')).toHaveLength(1);
+  });
+
   it('prevents duplicate draft requests, uses fixed failure copy, and keeps field values after failure', async () => {
     const user = userEvent.setup();
     const pending = deferred<BotSummary>();

@@ -43,7 +43,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
       setBots(mergeBots(localBots, locallyCreatedBotsRef.current));
     } catch {
       if (!mountedRef.current || requestToken !== listRequestTokenRef.current) return;
-      setBots([]);
+      setBots([...locallyCreatedBotsRef.current.values()]);
       setHasListError(true);
     }
   }, [api]);
@@ -75,7 +75,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
         </div>
       ) : null}
       {bots !== null && !hasListError && bots.length === 0 ? <EmptyBots onCreate={() => setIsCreateOpen(true)} /> : null}
-      {bots !== null && !hasListError && bots.length > 0 ? <BotsTable bots={bots} /> : null}
+      {bots !== null && bots.length > 0 ? <BotsTable bots={bots} /> : null}
 
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
     </section>
