@@ -26,11 +26,16 @@ const electron = vi.hoisted(() => {
     whenReady: vi.fn(() => new Promise<void>(() => undefined)),
   };
   const removeHandler = vi.fn();
+  const handle = vi.fn();
+  const showMessageBox = vi.fn();
 
   return {
     app,
     getBeforeQuitListener: () => beforeQuitListener,
     getWindowAllClosedListener: () => windowAllClosedListener,
+    dialog: { showMessageBox },
+    getRendererQuitHandler: () => handle.mock.calls.find(([channel]) => channel === 'app:quit-application')?.[1],
+    handle,
     removeHandler,
     reset: () => {
       beforeQuitListener = undefined;
@@ -42,9 +47,12 @@ const electron = vi.hoisted(() => {
       app.once.mockClear();
       app.quit.mockClear();
       app.whenReady.mockClear();
+      handle.mockClear();
       removeHandler.mockClear();
+      showMessageBox.mockReset();
+      showMessageBox.mockResolvedValue({ response: 1 });
     },
-    ipcMain: { handle: vi.fn(), removeHandler },
+    ipcMain: { handle, removeHandler },
   };
 });
 
@@ -67,8 +75,8 @@ const applicationDatabase = vi.hoisted(() => {
 
 const mainWindow = vi.hoisted(() => {
   const loadURL = vi.fn();
-  const first = { focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() };
-  const replacement = { focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL: vi.fn(), show: vi.fn() };
+  const first = { destroy: vi.fn(), focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() };
+  const replacement = { destroy: vi.fn(), focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL: vi.fn(), show: vi.fn() };
   const create = vi.fn(() => first);
 
   return {
@@ -80,11 +88,13 @@ const mainWindow = vi.hoisted(() => {
       create.mockReset();
       create.mockReturnValue(first);
       loadURL.mockReset();
+      first.destroy.mockReset();
       first.focus.mockReset();
       first.isDestroyed.mockReset();
       first.isDestroyed.mockReturnValue(false);
       first.show.mockReset();
       replacement.focus.mockReset();
+      replacement.destroy.mockReset();
       replacement.isDestroyed.mockReset();
       replacement.isDestroyed.mockReturnValue(false);
       replacement.loadURL.mockReset();
@@ -156,23 +166,79 @@ describe('main window lifecycle', () => {
     expect(electron.app.quit).not.toHaveBeenCalled();
   });
 
-  it('opens the application database at startup and closes it before quit', async () => {
+  it('keeps native resources alive when the initial renderer load fails and Open retries it', async () => {
+    const secret = 'renderer load failure containing a secret';
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mainWindow.create.mockReturnValueOnce(mainWindow.first).mockReturnValueOnce(mainWindow.replacement);
+    mainWindow.loadURL.mockRejectedValueOnce(new Error(secret));
     electron.app.whenReady.mockResolvedValueOnce(undefined);
 
     await import('../src/main/main');
     await vi.waitFor(() => {
-      expect(applicationDatabase.start).toHaveBeenCalledWith('/test-user-data');
+      expect(report).toHaveBeenCalledWith('Catbots renderer unavailable');
     });
 
-    const listener = electron.getBeforeQuitListener();
-    expect(listener).toBeTypeOf('function');
-    listener?.({ preventDefault: vi.fn() });
-    await vi.waitFor(() => {
-      expect(electron.app.quit).toHaveBeenCalledOnce();
-    });
+    expect(electron.app.quit).not.toHaveBeenCalled();
+    expect(runtime.start).toHaveBeenCalledOnce();
+    expect(tray.create).toHaveBeenCalledOnce();
+    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
 
+    const options = tray.create.mock.calls[0]?.[0] as { showWindow(): Promise<void> };
+    await options.showWindow();
+
+    expect(mainWindow.replacement.loadURL).toHaveBeenCalledWith('catbots://app/index.html');
+    expect(mainWindow.replacement.show).toHaveBeenCalledOnce();
+  });
+
+  it('requires a native cancellation-safe confirmation for renderer and tray Quit requests', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    const rendererQuit = electron.getRendererQuitHandler() as (event: Electron.IpcMainInvokeEvent) => Promise<void>;
+    const trayOptions = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
+
+    await rendererQuit({ senderFrame: { url: 'catbots://app/index.html' } } as Electron.IpcMainInvokeEvent);
+    await trayOptions.quit();
+
+    expect(electron.dialog.showMessageBox).toHaveBeenCalledTimes(2);
+    expect(runtime.stop).not.toHaveBeenCalled();
+    expect(electron.app.quit).not.toHaveBeenCalled();
+  });
+
+  it('uses the same native confirmation before a renderer Quit can stop the app', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 });
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    const rendererQuit = electron.getRendererQuitHandler() as (event: Electron.IpcMainInvokeEvent) => Promise<void>;
+    await rendererQuit({ senderFrame: { url: 'catbots://app/index.html' } } as Electron.IpcMainInvokeEvent);
+
+    expect(electron.dialog.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
+      buttons: ['Quit Catbots', 'Cancel'],
+      cancelId: 1,
+      message: 'Quit Catbots?',
+    }));
+    expect(runtime.stop).toHaveBeenCalledOnce();
+    expect(electron.app.quit).toHaveBeenCalledOnce();
+  });
+
+  it('stops runtime, IPC, and database in order before a confirmed native Quit', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 });
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    const options = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
+    await options.quit();
+
+    expect(runtime.stop).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(electron.removeHandler).toHaveBeenCalledTimes(9);
+    expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(electron.removeHandler.mock.invocationCallOrder[0]);
+    expect(electron.removeHandler.mock.invocationCallOrder[0]).toBeLessThan(applicationDatabase.close.mock.invocationCallOrder[0]);
+    expect(applicationDatabase.close.mock.invocationCallOrder[0]).toBeLessThan(electron.app.quit.mock.invocationCallOrder[0]);
   });
 
   it('recreates a destroyed window from the tray Open action', async () => {
@@ -192,18 +258,26 @@ describe('main window lifecycle', () => {
     expect(mainWindow.replacement.focus).toHaveBeenCalledOnce();
   });
 
-  it('stops the runtime before quitting from the renderer-independent tray action', async () => {
+  it('continues to final app quit when IPC disposal and database cleanup throw', async () => {
+    const secret = 'cleanup secret';
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 });
+    electron.removeHandler.mockImplementationOnce(() => { throw new Error(secret); });
+    applicationDatabase.close.mockImplementationOnce(() => { throw new Error(secret); });
 
     await import('../src/main/main');
     await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
     const options = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
     await options.quit();
 
-    expect(runtime.start).toHaveBeenCalledOnce();
     expect(runtime.stop).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
-    expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(electron.app.quit.mock.invocationCallOrder[0]);
+    expect(electron.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electron.app.quit).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith('Catbots IPC shutdown failed');
+    expect(report).toHaveBeenCalledWith('Catbots database shutdown failed');
+    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
   });
 
   it('closes resources, reports safely, and quits when startup fails', async () => {
@@ -225,18 +299,4 @@ describe('main window lifecycle', () => {
     expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
   });
 
-  it('disposes owned IPC handlers when startup fails after registration', async () => {
-    const secret = 'late startup failure containing a secret';
-    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    mainWindow.loadURL.mockRejectedValueOnce(new Error(secret));
-    electron.app.whenReady.mockResolvedValueOnce(undefined);
-
-    await import('../src/main/main');
-    await vi.waitFor(() => {
-      expect(electron.app.quit).toHaveBeenCalledOnce();
-    });
-
-    expect(electron.removeHandler).toHaveBeenCalledTimes(9);
-    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
-  });
 });

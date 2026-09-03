@@ -27,6 +27,33 @@
 
 ## Manual tray verification
 
-The positive close → tray → Open → Quit GUI loop could not run in this host because its desktop sandbox denies the existing Electron `userData` directory at SQLite startup (`SQLITE_CANTOPEN`). The app reliably exercised the safe startup-failure path and emitted only the intended generic `Catbots fatal startup error`; no error detail or secret was logged. A direct elevated local SQLite probe opened the same database successfully, isolating this as a host-sandbox restriction rather than a Task 8 runtime/tray failure.
+The positive close → tray → Open → Quit GUI loop could not run in this host. The correct, non-committed helper entry was created at `/private/tmp/catbots-runtime-probe.qVPSS8/probe-main.cjs` and invoked as an Electron app (rather than passing JavaScript as an app-path argument):
 
-The automated Main lifecycle test covers the intended loop: close retains the process, tray Open recreates a destroyed window, and tray Quit awaits runtime stop before calling `app.quit()`.
+```sh
+../../node_modules/.bin/electron --no-sandbox /private/tmp/catbots-runtime-probe.qVPSS8/probe-main.cjs /private/tmp/catbots-runtime-probe.qVPSS8/probe.sqlite
+```
+
+Its actual output was:
+
+```text
+/Users/artizno/0xlabs/catbots/.worktrees/catbots-m0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron exited with signal SIGABRT
+```
+
+Therefore it did not run far enough to establish an Electron/SQLite result, and no positive SQLite probe is claimed. A permitted `pnpm dev` run did emit the runtime-worker, preload, and Main bundles, then took the safe startup-failure path and printed only `Catbots fatal startup error`. The native tray was consequently unavailable for a host GUI loop. No production data-directory injection was added; the helper is temporary and outside the repository.
+
+The automated Main lifecycle tests cover the intended loop: renderer failure retains native runtime/tray resources and tray Open recreates the window; both renderer and tray Quit require a native Main-owned confirmation; confirmed Quit stops runtime, disposes IPC, closes the database, and then calls `app.quit()`.
+
+## Fix round 1
+
+- Renderer `loadURL` failure is now isolated from fatal native startup: it emits only `Catbots renderer unavailable`, destroys the failed window, retains tray/runtime, and lets Open create a new window.
+- Both quit entrypoints call a renderer-independent native confirmation with fixed copy. Cancel leaves the app running; confirmation leads through the ordered shutdown path.
+- A worker timeout now considers only `kill() === true` successful. `false` and thrown kills reject with `RUNTIME_STOP_FAILED`, report an error status, keep the worker guarded against stale events, and accept a later real exit as the evidence needed to reach `stopped`.
+- Shutdown catches and reports fixed runtime/IPC/database cleanup failures while continuing the remaining stages and guaranteeing the final `app.quit()` call.
+
+Corrected validation:
+
+- Focused lifecycle/runtime tests: 105 passing.
+- Full workspace tests: 3 contracts and 105 desktop tests passing.
+- Workspace typecheck: passed.
+- Dev worker build: `pnpm dev` emitted `apps/desktop/.vite/build/runtime-worker.js`; host startup then safely failed as described above.
+- Hygiene: `git diff --check` passed.

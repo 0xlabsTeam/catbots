@@ -97,7 +97,7 @@ describe('RuntimeSupervisor', () => {
     expect(supervisor.getStatus()).toEqual({ state: 'stopped', activeBots: 0 });
   });
 
-  it('escalates to kill after the bounded shutdown period before reporting stopped', async () => {
+  it('reports stopped when a successful bounded kill establishes termination', async () => {
     vi.useFakeTimers();
     const worker = createWorkerDouble();
     const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25 });
@@ -110,6 +110,39 @@ describe('RuntimeSupervisor', () => {
 
     expect(worker.kill).toHaveBeenCalledOnce();
     expect(supervisor.getStatus()).toEqual({ state: 'stopped', activeBots: 0 });
+  });
+
+  it('rejects shutdown when the bounded kill reports failure until a delayed exit establishes termination', async () => {
+    vi.useFakeTimers();
+    const worker = createWorkerDouble();
+    worker.kill = vi.fn().mockReturnValue(false);
+    const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25 });
+    supervisor.start();
+
+    const stopping = supervisor.stop();
+    const rejected = expect(stopping).rejects.toMatchObject({ code: 'RUNTIME_STOP_FAILED' });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejected;
+    expect(supervisor.getStatus()).toEqual({ state: 'error', activeBots: 0 });
+    worker.emit('exit', 0, null);
+    expect(supervisor.getStatus()).toEqual({ state: 'stopped', activeBots: 0 });
+  });
+
+  it('rejects shutdown when kill throws without treating late ready as a recovery', async () => {
+    vi.useFakeTimers();
+    const worker = createWorkerDouble();
+    worker.kill = vi.fn(() => { throw new Error('platform kill failure'); });
+    const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25 });
+    supervisor.start();
+
+    const stopping = supervisor.stop();
+    const rejected = expect(stopping).rejects.toMatchObject({ code: 'RUNTIME_STOP_FAILED' });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejected;
+    worker.emit('message', { type: 'ready' });
+    expect(supervisor.getStatus()).toEqual({ state: 'error', activeBots: 0 });
   });
 
   it('reports an unexpected worker exit as an error without permitting an illegal ready transition', () => {

@@ -247,7 +247,19 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
 }
 
 function removeOwnedHandlers(channels: readonly string[]): void {
-  for (const channel of [...channels].reverse()) ipcMain.removeHandler(channel);
+  let firstFailure: unknown;
+  let hasFailure = false;
+  for (const channel of [...channels].reverse()) {
+    try {
+      ipcMain.removeHandler(channel);
+    } catch (error) {
+      if (!hasFailure) {
+        firstFailure = error;
+        hasFailure = true;
+      }
+    }
+  }
+  if (hasFailure) throw firstFailure;
 }
 
 function forwardRuntimeStatus(candidate: unknown): void {

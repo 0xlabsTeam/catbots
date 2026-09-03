@@ -15,6 +15,15 @@ export type RuntimeSupervisorOptions = {
   shutdownTimeoutMs?: number;
 };
 
+export class RuntimeStopError extends Error {
+  readonly code = 'RUNTIME_STOP_FAILED';
+
+  constructor() {
+    super('RUNTIME_STOP_FAILED');
+    this.name = 'RuntimeStopError';
+  }
+}
+
 type ActiveWorker = {
   generation: number;
   port: RuntimeWorkerPort;
@@ -22,6 +31,7 @@ type ActiveWorker = {
   onExit: (...details: unknown[]) => void;
   onError: (...details: unknown[]) => void;
   shutdownTimer?: ReturnType<typeof setTimeout>;
+  stopRequested: boolean;
 };
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 250;
@@ -33,6 +43,7 @@ export class RuntimeSupervisor {
   private readonly listeners = new Set<(status: RuntimeStatus) => void>();
   private stopPromise: Promise<void> | undefined;
   private resolveStop: (() => void) | undefined;
+  private rejectStop: ((error: RuntimeStopError) => void) | undefined;
   private readonly shutdownTimeoutMs: number;
 
   constructor(
@@ -61,6 +72,7 @@ export class RuntimeSupervisor {
       onMessage: (message) => this.handleMessage(generation, port, message),
       onExit: () => this.handleExit(generation, port),
       onError: () => this.handleError(generation, port),
+      stopRequested: false,
     };
     this.activeWorker = active;
     port.on('message', active.onMessage);
@@ -87,19 +99,22 @@ export class RuntimeSupervisor {
     }
 
     this.setState('stopping');
-    this.stopPromise = new Promise<void>((resolve) => {
+    active.stopRequested = true;
+    const stopping = new Promise<void>((resolve, reject) => {
       this.resolveStop = resolve;
+      this.rejectStop = reject;
     });
+    this.stopPromise = stopping;
 
     try {
       active.port.postMessage({ type: 'shutdown' });
     } catch {
       this.escalateStop(active);
-      return this.stopPromise;
+      return stopping;
     }
 
     active.shutdownTimer = setTimeout(() => this.escalateStop(active), this.shutdownTimeoutMs);
-    return this.stopPromise;
+    return stopping;
   }
 
   private handleMessage(generation: number, port: RuntimeWorkerPort, message: unknown): void {
@@ -111,7 +126,7 @@ export class RuntimeSupervisor {
     const active = this.activeWorker;
     if (active === undefined || active.generation !== generation || active.port !== port) return;
 
-    if (this.status.state === 'stopping') {
+    if (active.stopRequested) {
       this.finishStop(active);
       return;
     }
@@ -128,9 +143,13 @@ export class RuntimeSupervisor {
   private escalateStop(active: ActiveWorker): void {
     if (!this.isCurrent(active.generation, active.port) || this.status.state !== 'stopping') return;
     try {
-      active.port.kill();
+      if (!active.port.kill()) {
+        this.failStop(active);
+        return;
+      }
     } catch {
-      // The lifecycle must still converge when a platform reports a failed kill.
+      this.failStop(active);
+      return;
     }
     this.finishStop(active);
   }
@@ -141,8 +160,23 @@ export class RuntimeSupervisor {
     this.setState('stopped');
     const resolve = this.resolveStop;
     this.resolveStop = undefined;
+    this.rejectStop = undefined;
     this.stopPromise = undefined;
     resolve?.();
+  }
+
+  private failStop(active: ActiveWorker): void {
+    if (!this.isCurrent(active.generation, active.port)) return;
+    if (active.shutdownTimer !== undefined) {
+      clearTimeout(active.shutdownTimer);
+      active.shutdownTimer = undefined;
+    }
+    this.setState('error');
+    const reject = this.rejectStop;
+    this.resolveStop = undefined;
+    this.rejectStop = undefined;
+    this.stopPromise = undefined;
+    reject?.(new RuntimeStopError());
   }
 
   private releaseWorker(active: ActiveWorker): void {

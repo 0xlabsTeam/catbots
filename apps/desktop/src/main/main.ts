@@ -1,4 +1,4 @@
-import { app, utilityProcess, type BrowserWindow, type Tray } from 'electron';
+import { app, dialog, utilityProcess, type BrowserWindow, type Tray } from 'electron';
 import { join } from 'node:path';
 import { BotRepository } from './bots/bot-repository';
 import { ConfigRepository } from './config/config-repository';
@@ -39,8 +39,8 @@ void app.whenReady()
     disposeIpcHandlers = registerIpcHandlers({
       app: {
         getVersion: () => app.getVersion(),
-        showMainWindow,
-        quitApplication,
+        showMainWindow: openMainWindow,
+        quitApplication: requestQuit,
       },
       configRepository,
       botRepository,
@@ -48,11 +48,11 @@ void app.whenReady()
     });
     tray = createTray({
       iconPath: join(app.getAppPath(), 'assets', 'trayTemplate.png'),
-      showWindow: showMainWindow,
-      quit: quitApplication,
+      showWindow: openMainWindow,
+      quit: requestQuit,
       getRuntimeStatus: () => runtime.getStatus(),
     });
-    await showMainWindow();
+    await openMainWindow();
   })
   .catch(async () => {
     await shutdown();
@@ -64,7 +64,7 @@ void app.whenReady()
 app.once('before-quit', (event) => {
   if (quitting) return;
   event.preventDefault();
-  void quitApplication();
+  void requestQuit();
 });
 
 // Subscribing preserves the process after the final window closes. Tray controls own explicit exit.
@@ -72,18 +72,64 @@ app.on('window-all-closed', () => undefined);
 
 async function showMainWindow(): Promise<void> {
   if (mainWindow === undefined || mainWindow.isDestroyed()) {
-    mainWindow = createMainWindow();
-    await mainWindow.loadURL(`${appOrigin}/index.html`);
+    const candidate = createMainWindow();
+    mainWindow = candidate;
+    try {
+      await candidate.loadURL(`${appOrigin}/index.html`);
+    } catch {
+      try {
+        if (!candidate.isDestroyed()) candidate.destroy();
+      } catch {
+        // The tray remains the recovery path even if a failed window is already unavailable.
+      }
+      if (mainWindow === candidate) mainWindow = undefined;
+      throw new Error('RENDERER_UNAVAILABLE');
+    }
   }
   mainWindow.show();
   mainWindow.focus();
 }
 
+async function openMainWindow(): Promise<void> {
+  try {
+    await showMainWindow();
+  } catch {
+    // A renderer can be recreated from the native tray; it is not a native startup failure.
+    console.error('Catbots renderer unavailable');
+  }
+}
+
+async function requestQuit(): Promise<void> {
+  if (quitting) return;
+
+  try {
+    const result = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'Quit Catbots?',
+      message: 'Quit Catbots?',
+      detail: 'Catbots will stop its local runtime before quitting.',
+      buttons: ['Quit Catbots', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (result.response !== 0) return;
+  } catch {
+    console.error('Catbots quit confirmation unavailable');
+    return;
+  }
+
+  await quitApplication();
+}
+
 async function quitApplication(): Promise<void> {
   if (quitting) return;
   quitting = true;
-  await shutdown();
-  app.quit();
+  try {
+    await shutdown();
+  } finally {
+    app.quit();
+  }
 }
 
 function shutdown(): Promise<void> {
@@ -93,10 +139,14 @@ function shutdown(): Promise<void> {
     try {
       await runtime.stop();
     } catch {
-      // The worker supervisor converges to stopped even if platform termination reports an error.
+      console.error('Catbots runtime shutdown failed');
     }
     disposeRegisteredIpcHandlers();
-    database.close();
+    try {
+      database.close();
+    } catch {
+      console.error('Catbots database shutdown failed');
+    }
   })();
   return shutdownPromise;
 }
@@ -107,6 +157,6 @@ function disposeRegisteredIpcHandlers(): void {
   try {
     dispose?.();
   } catch {
-    // Shutdown must continue even if Electron has already removed an IPC handler.
+    console.error('Catbots IPC shutdown failed');
   }
 }
