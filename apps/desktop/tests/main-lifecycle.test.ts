@@ -99,4 +99,22 @@ describe('main window lifecycle', () => {
 
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
   });
+
+  it('closes resources, reports safely, and quits when startup fails', async () => {
+    const secret = 'database failure containing a secret';
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    applicationDatabase.start.mockImplementationOnce(() => {
+      throw new Error(secret);
+    });
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => {
+      expect(electron.app.quit).toHaveBeenCalledOnce();
+    });
+
+    expect(applicationDatabase.close).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith('Catbots fatal startup error');
+    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
+  });
 });

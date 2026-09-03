@@ -2,6 +2,9 @@ import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { migrateDatabase } from './migrations';
 
+export type DatabaseOpener = (path: string) => Database.Database;
+export type DatabaseMigrator = (database: Database.Database) => void;
+
 export function openDatabase(path: string): Database.Database {
   const database = new Database(path);
 
@@ -18,11 +21,16 @@ export function openDatabase(path: string): Database.Database {
 export class ApplicationDatabase {
   private database: Database.Database | undefined;
 
+  constructor(
+    private readonly open: DatabaseOpener = openDatabase,
+    private readonly migrate: DatabaseMigrator = migrateDatabase,
+  ) {}
+
   start(dataDirectory: string): Database.Database {
-    const database = openDatabase(join(dataDirectory, 'catbots.db'));
+    const database = this.open(join(dataDirectory, 'catbots.db'));
 
     try {
-      migrateDatabase(database);
+      this.migrate(database);
       this.database = database;
       return database;
     } catch (error) {

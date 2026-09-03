@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationDatabase, openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
 
@@ -74,15 +74,19 @@ describe('ApplicationDatabase', () => {
     expect(db.open).toBe(false);
   });
 
-  it('closes the database when startup migration fails', async () => {
-    const dataDirectory = await createTemporaryDirectory();
-    const target = join(dataDirectory, 'catbots.db');
-    const conflicting = trackDatabase(openDatabase(target));
-    conflicting.exec('CREATE TABLE bots (id TEXT PRIMARY KEY)');
-    conflicting.close();
-    databases.splice(databases.indexOf(conflicting), 1);
+  it('closes the exact opened database when migration fails', async () => {
+    const database = { close: vi.fn() } as unknown as Database.Database;
+    const opener = vi.fn(() => database);
+    const migrator = vi.fn(() => {
+      throw new Error('migration failed');
+    });
 
-    expect(() => new ApplicationDatabase().start(dataDirectory)).toThrow(/bots/i);
-    expect(trackDatabase(openDatabase(target)).open).toBe(true);
+    const dataDirectory = await createTemporaryDirectory();
+
+    expect(() => new ApplicationDatabase(opener, migrator).start(dataDirectory))
+      .toThrow('migration failed');
+    expect(opener).toHaveBeenCalledOnce();
+    expect(migrator).toHaveBeenCalledWith(database);
+    expect(database.close).toHaveBeenCalledOnce();
   });
 });

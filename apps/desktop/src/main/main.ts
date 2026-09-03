@@ -13,22 +13,28 @@ const database = new ApplicationDatabase();
 
 app.enableSandbox();
 
-void app.whenReady().then(async () => {
-  database.start(app.getPath('userData'));
+void app.whenReady()
+  .then(async () => {
+    database.start(app.getPath('userData'));
 
-  registerAppProtocol({
-    rendererDirectory: join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`),
-    developmentServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
+    registerAppProtocol({
+      rendererDirectory: join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`),
+      developmentServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
+    });
+
+    ipcMain.handle('app:get-version', (event) => {
+      assertTrustedAppSenderUrl(event.senderFrame?.url);
+      return app.getVersion();
+    });
+
+    const mainWindow = createMainWindow();
+    await mainWindow.loadURL(`${appOrigin}/index.html`);
+  })
+  .catch(() => {
+    database.close();
+    console.error('Catbots fatal startup error');
+    app.quit();
   });
-
-  ipcMain.handle('app:get-version', (event) => {
-    assertTrustedAppSenderUrl(event.senderFrame?.url);
-    return app.getVersion();
-  });
-
-  const mainWindow = createMainWindow();
-  await mainWindow.loadURL(`${appOrigin}/index.html`);
-});
 
 app.once('before-quit', () => {
   database.close();
