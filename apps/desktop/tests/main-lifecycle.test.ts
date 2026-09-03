@@ -188,7 +188,6 @@ describe('main window lifecycle', () => {
         apiKey: 'main-process-only-secret',
         model: 'fixture-model',
       },
-      exchanges: {},
     };
 
     await expect(testConnection?.(

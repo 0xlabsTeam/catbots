@@ -53,7 +53,7 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
     app: { getVersion: vi.fn().mockResolvedValue('0.1.0'), showMainWindow: vi.fn(), quitApplication: vi.fn() },
     config: {
       getBootstrapState: vi.fn().mockResolvedValue(bootstrap),
-      save: vi.fn().mockResolvedValue(redactedConfig),
+      patchSettings: vi.fn().mockResolvedValue(redactedConfig),
       testLlmConnection: vi.fn().mockResolvedValue({ ok: true, model: 'provider/model' }),
     },
     bots: makeApi(),

@@ -1,6 +1,4 @@
-import type { LocalConfig, RedactedLocalConfig } from '@catbots/contracts';
-
-const REDACTED_SECRET = '••••••••' as const;
+import { REDACTED_SECRET, type LocalConfig, type RedactedLocalConfig } from '@catbots/contracts';
 
 export function redactLocalConfig(value: LocalConfig): RedactedLocalConfig {
   const hyperliquid = value.exchanges.hyperliquid;

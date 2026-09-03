@@ -64,7 +64,7 @@ void app.whenReady()
       configRepository,
       botRepository,
       runtime,
-      testLlmConnection: (config) => testLlmConnection(config.llm),
+      testLlmConnection,
     });
     tray = createTray({
       iconPath: app.isPackaged

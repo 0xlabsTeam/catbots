@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { Banner, Button, Dialog, Input, Select, Switch, Tooltip } from '@cloudflare/kumo';
 import { Progress } from '@cloudflare/kumo/primitives/progress';
 import { CheckCircleIcon, DesktopTowerIcon, InfoIcon, LockKeyIcon } from '@phosphor-icons/react';
-import { CompatibleProviderUrlSchema, type CatbotsDesktopApi, type LocalConfig, type RedactedLocalConfig } from '@catbots/contracts';
+import {
+  CompatibleProviderUrlSchema,
+  REDACTED_SECRET,
+  type CatbotsDesktopApi,
+  type LocalConfig,
+  type LocalSettingsPatch,
+  type RedactedLocalConfig,
+} from '@catbots/contracts';
 import { ConnectionTestStatus, mapExternalConnectionErrorCode, type ConnectionTestState } from '../components/ConnectionTestStatus';
 import { SecretField } from '../components/SecretField';
 
@@ -21,19 +28,28 @@ function isPermittedProviderUrl(value: string): boolean {
   return CompatibleProviderUrlSchema.safeParse(value).success;
 }
 
-function validate(state: FormState): FormErrors {
+function validate(state: FormState, requiresApiKey: boolean): FormErrors {
   const errors: FormErrors = {};
   if (state.profileName.trim().length === 0) errors.profileName = 'Enter a local profile name.';
   if (state.profileName.trim().length > 80) errors.profileName = 'Use 80 characters or fewer.';
   if (state.baseUrl.trim().length === 0) errors.baseUrl = 'Enter the provider URL.';
   else if (!isPermittedProviderUrl(state.baseUrl)) errors.baseUrl = 'Use HTTPS, or HTTP only for a provider on this computer.';
-  if (state.apiKey.length === 0) errors.apiKey = 'Enter the API key to test and save this provider.';
+  if (requiresApiKey && state.apiKey.length === 0) errors.apiKey = 'Enter the API key to test and save this provider.';
+  if (state.apiKey === REDACTED_SECRET) errors.apiKey = 'Enter a real API key, not the stored-key mask.';
   if (state.model.trim().length === 0) errors.model = 'Enter a model identifier.';
   return errors;
 }
 
-function toLocalConfig(state: FormState): LocalConfig {
-  return { profile: { name: state.profileName.trim(), telemetry: state.telemetry }, llm: { provider: state.provider, baseUrl: state.baseUrl.trim(), apiKey: state.apiKey, model: state.model.trim() }, exchanges: {} };
+function toSettingsPatch(state: FormState): LocalSettingsPatch {
+  return {
+    profile: { name: state.profileName.trim(), telemetry: state.telemetry },
+    llm: {
+      provider: state.provider,
+      baseUrl: state.baseUrl.trim(),
+      model: state.model.trim(),
+      ...(state.apiKey.length === 0 ? {} : { apiKey: state.apiKey }),
+    },
+  };
 }
 
 function getSafeRepairPaths(issues: SettingsScreenProps['repairIssues']): string[] { return [...new Set((issues ?? []).flatMap((issue) => SAFE_REPAIR_PATHS.has(issue.path) ? [issue.path] : []))]; }
@@ -54,6 +70,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const saveRequestTokenRef = useRef(0);
   const isSavingRef = useRef(false);
   const safeRepairPaths = useMemo(() => getSafeRepairPaths(repairIssues), [repairIssues]);
+  const requiresApiKey = config === undefined;
   const hasPassedCurrentTest = testedProviderRevision === providerRevision;
   const submitLabel = onboarding ? 'Create local profile' : 'Save settings';
 
@@ -78,22 +95,22 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       setConnection({ state: 'idle' });
     }
   };
-  const validateForm = (): boolean => { const nextErrors = validate(form); setErrors(nextErrors); return Object.keys(nextErrors).length === 0; };
+  const validateForm = (): boolean => { const nextErrors = validate(form, requiresApiKey); setErrors(nextErrors); return Object.keys(nextErrors).length === 0; };
   const testConnection = async (): Promise<boolean> => {
     if (isTestingRef.current || isSavingRef.current) return false;
     if (!validateForm()) return false;
     const token = testRequestTokenRef.current + 1;
     testRequestTokenRef.current = token;
     const submittedProviderRevision = providerRevisionRef.current;
-    const submittedConfig = toLocalConfig(form);
+    const submittedPatch = toSettingsPatch(form);
     isTestingRef.current = true;
     setTestedProviderRevision(null);
     setIsTesting(true);
     setConnection({ state: 'testing' });
     try {
-      const result = await api.testLlmConnection(submittedConfig);
+      const result = await api.testLlmConnection(submittedPatch);
       if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
-      if (result.ok) { setTestedProviderRevision(submittedProviderRevision); setConnection({ state: 'success', model: submittedConfig.llm.model }); return true; }
+      if (result.ok) { setTestedProviderRevision(submittedProviderRevision); setConnection({ state: 'success', model: submittedPatch.llm.model }); return true; }
       setTestedProviderRevision(null); setConnection({ state: 'error', code: mapExternalConnectionErrorCode(result.code) }); return false;
     } catch {
       if (!mountedRef.current || token !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return false;
@@ -110,11 +127,11 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     const token = saveRequestTokenRef.current + 1;
     saveRequestTokenRef.current = token;
     const submittedRevision = formRevisionRef.current;
-    const submittedConfig = toLocalConfig(form);
+    const submittedPatch = toSettingsPatch(form);
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      const savedConfig = await api.save(submittedConfig);
+      const savedConfig = await api.patchSettings(submittedPatch);
       if (!mountedRef.current || token !== saveRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return;
       setForm((previous) => ({ ...previous, apiKey: '' }));
       setTestedProviderRevision(null);

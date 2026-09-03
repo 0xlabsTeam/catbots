@@ -1,5 +1,5 @@
 import type { BotSummary } from './bots';
-import type { RedactedLocalConfig } from './config';
+import type { LocalSettingsPatch, RedactedLocalConfig } from './config';
 import { z } from 'zod';
 
 export const RuntimeStatusSchema = z.object({
@@ -26,8 +26,8 @@ export interface CatbotsDesktopApi {
   };
   config: {
     getBootstrapState(): Promise<BootstrapState>;
-    save(input: unknown): Promise<RedactedLocalConfig>;
-    testLlmConnection(input: unknown): Promise<ConnectionTestResult>;
+    patchSettings(input: LocalSettingsPatch): Promise<RedactedLocalConfig>;
+    testLlmConnection(input: LocalSettingsPatch): Promise<ConnectionTestResult>;
   };
   bots: {
     list(): Promise<BotSummary[]>;

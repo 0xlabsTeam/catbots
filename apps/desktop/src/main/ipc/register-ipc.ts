@@ -1,11 +1,12 @@
 import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron';
 import {
   CreateDraftBotInputSchema,
-  LocalConfigSchema,
+  LocalSettingsPatchSchema,
   RuntimeStatusSchema,
   type BootstrapState,
   type ConnectionTestResult,
   type LocalConfig,
+  type LocalSettingsPatch,
   type RuntimeStatus,
 } from '@catbots/contracts';
 import { BotRepository } from '../bots/bot-repository';
@@ -35,11 +36,10 @@ type ApplicationPort = {
 
 export type IpcHandlerDependencies = {
   app: ApplicationPort;
-  configRepository: Pick<ConfigRepository, 'getRedacted' | 'save'>;
+  configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
   botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
   runtime: RuntimePort;
-  // M0 deliberately provides no network implementation. A later milestone can inject one.
-  testLlmConnection?: (input: LocalConfig) => Promise<ConnectionTestResult>;
+  testLlmConnection?: (provider: LocalConfig['llm']) => Promise<ConnectionTestResult>;
 };
 
 export type IpcHandlers = ReturnType<typeof createIpcHandlers>;
@@ -99,11 +99,11 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       }
     },
 
-    saveLocalConfig: async (event: IpcMainInvokeEvent, input: unknown) => {
+    patchLocalSettings: async (event: IpcMainInvokeEvent, input: unknown) => {
       assertSender(event);
-      const config = parseRequest(LocalConfigSchema, input);
+      const patch = parseRequest(LocalSettingsPatchSchema, input);
       try {
-        return await dependencies.configRepository.save(config);
+        return await dependencies.configRepository.patchSettings(patch);
       } catch (error) {
         if (error instanceof ConfigParseError) throw new IpcRequestError('INVALID_REQUEST');
         throw new IpcRequestError('CONFIG_SAVE_FAILED');
@@ -112,7 +112,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
 
     testLlmConnection: async (event: IpcMainInvokeEvent, input: unknown): Promise<ConnectionTestResult> => {
       assertSender(event);
-      const config = parseRequest(LocalConfigSchema, input);
+      const patch = parseRequest<LocalSettingsPatch>(LocalSettingsPatchSchema, input);
       if (dependencies.testLlmConnection === undefined) {
         return {
           ok: false,
@@ -121,8 +121,16 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
         };
       }
       try {
-        return await dependencies.testLlmConnection(config);
-      } catch {
+        const config = await dependencies.configRepository.resolveSettingsPatch(patch);
+        return await dependencies.testLlmConnection(config.llm);
+      } catch (error) {
+        if (error instanceof ConfigParseError) {
+          return {
+            ok: false,
+            code: 'LLM_CONNECTION_CONFIGURATION_REQUIRED',
+            message: 'Enter an API key before testing this provider.',
+          };
+        }
         return {
           ok: false,
           code: 'LLM_CONNECTION_TEST_FAILED',
@@ -201,7 +209,7 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['app:show-main-window', handlers.showMainWindow],
     ['app:quit-application', handlers.quitApplication],
     ['config:get-bootstrap-state', handlers.getBootstrapState],
-    ['config:save', handlers.saveLocalConfig],
+    ['config:patch-settings', handlers.patchLocalSettings],
     ['config:test-llm', handlers.testLlmConnection],
     ['bots:list', handlers.listBots],
     ['bots:create-draft', handlers.createDraftBot],

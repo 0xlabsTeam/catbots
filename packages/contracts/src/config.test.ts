@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalConfigSchema } from './config';
+import { LocalConfigSchema, LocalSettingsPatchSchema, REDACTED_SECRET } from './config';
 
 const valid = {
   profile: { name: 'My Trading', telemetry: false },
@@ -48,5 +48,34 @@ describe('LocalConfigSchema', () => {
         }),
       ]);
     }
+  });
+
+  it('accepts a typed settings patch that omits the already-stored API key', () => {
+    expect(LocalSettingsPatchSchema.parse({
+      profile: { name: 'Renamed profile', telemetry: true },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://provider.example/v1',
+        model: 'new-model',
+      },
+    })).toEqual({
+      profile: { name: 'Renamed profile', telemetry: true },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://provider.example/v1',
+        model: 'new-model',
+      },
+    });
+  });
+
+  it('never accepts the renderer redaction mask as a stored secret', () => {
+    expect(LocalSettingsPatchSchema.safeParse({
+      profile: valid.profile,
+      llm: { ...valid.llm, apiKey: REDACTED_SECRET },
+    }).success).toBe(false);
+    expect(LocalConfigSchema.safeParse({
+      ...valid,
+      llm: { ...valid.llm, apiKey: REDACTED_SECRET },
+    }).success).toBe(false);
   });
 });

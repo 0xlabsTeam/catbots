@@ -24,7 +24,7 @@ export function ConnectionTestStatus({ value }: { value: ConnectionTestState }) 
     return <Banner className="connection-status connection-status-success" role="status" aria-live="polite" icon={<CheckCircleIcon aria-hidden="true" weight="fill" />} title="Connection successful" description={`Ready to use ${value.model}.`} />;
   }
   if (value.state === 'saved') {
-    return <Banner className="connection-status connection-status-success" role="status" aria-live="polite" icon={<CheckCircleIcon aria-hidden="true" weight="fill" />} title="Settings saved" description="The local configuration was updated. Enter a key again before another provider change." />;
+    return <Banner className="connection-status connection-status-success" role="status" aria-live="polite" icon={<CheckCircleIcon aria-hidden="true" weight="fill" />} title="Settings saved" description="The local configuration was updated. The stored key remains available for future connection tests." />;
   }
   return <Banner className="connection-status" variant="error" role="alert" icon={<WarningCircleIcon aria-hidden="true" weight="fill" />} title="Connection test failed" description={errorDescription(value.code)} />;
 }

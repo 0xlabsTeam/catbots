@@ -3,7 +3,7 @@ import { lstat, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { LocalConfig } from '@catbots/contracts';
+import { REDACTED_SECRET, type LocalConfig } from '@catbots/contracts';
 import { ConfigParseError, ConfigRepository } from '../src/main/config/config-repository';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -106,6 +106,95 @@ describe('ConfigRepository', () => {
     expect(await readdir(dataDirectory)).not.toContain('local.env.yaml.tmp');
     await expect(repository.load()).resolves.toEqual(validConfig);
     await expect(repository.getRedacted()).resolves.toEqual(result);
+  });
+
+  it('patches editable settings while preserving the stored LLM key and Hyperliquid subtree', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+
+    const result = await repository.patchSettings({
+      profile: { name: 'Renamed', telemetry: true },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://anthropic.example/v1',
+        model: 'replacement-model',
+      },
+    });
+
+    expect(result).toEqual({
+      profile: { name: 'Renamed', telemetry: true },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://anthropic.example/v1',
+        apiKey: REDACTED_SECRET,
+        model: 'replacement-model',
+      },
+      exchanges: {
+        hyperliquid: {
+          ...validConfig.exchanges.hyperliquid,
+          agentPrivateKey: REDACTED_SECRET,
+        },
+      },
+    });
+    await expect(repository.load()).resolves.toEqual({
+      profile: { name: 'Renamed', telemetry: true },
+      llm: {
+        provider: 'anthropic-compatible',
+        baseUrl: 'https://anthropic.example/v1',
+        apiKey: llmSecret,
+        model: 'replacement-model',
+      },
+      exchanges: validConfig.exchanges,
+    });
+  });
+
+  it('uses an optional replacement LLM key without replacing exchange credentials', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+
+    await repository.patchSettings({
+      profile: validConfig.profile,
+      llm: { ...validConfig.llm, apiKey: 'replacement-llm-key' },
+    });
+
+    expect((await repository.load())?.llm.apiKey).toBe('replacement-llm-key');
+    expect((await repository.load())?.exchanges.hyperliquid?.agentPrivateKey).toBe(agentSecret);
+  });
+
+  it('requires a real API key when no valid stored configuration exists', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+
+    const patch = {
+      profile: validConfig.profile,
+      llm: {
+        provider: validConfig.llm.provider,
+        baseUrl: validConfig.llm.baseUrl,
+        model: validConfig.llm.model,
+      },
+    } as const;
+
+    await expect(repository.resolveSettingsPatch(patch)).rejects.toMatchObject({
+      issues: [{ path: 'llm.apiKey', message: 'Invalid configuration value' }],
+    });
+    await expect(repository.patchSettings(patch)).rejects.toMatchObject({
+      issues: [{ path: 'llm.apiKey', message: 'Invalid configuration value' }],
+    });
+    await expect(repository.load()).resolves.toBeNull();
+  });
+
+  it('rejects the redacted display mask instead of persisting it as a replacement key', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+
+    await expect(repository.patchSettings({
+      profile: validConfig.profile,
+      llm: { ...validConfig.llm, apiKey: REDACTED_SECRET },
+    })).rejects.toBeInstanceOf(ConfigParseError);
+    expect((await repository.load())?.llm.apiKey).toBe(llmSecret);
   });
 
   it('preserves the previous valid configuration when replacement input is invalid', async () => {

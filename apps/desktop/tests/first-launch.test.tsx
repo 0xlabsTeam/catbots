@@ -19,7 +19,7 @@ const redactedConfig: RedactedLocalConfig = {
 function makeApi(): CatbotsDesktopApi['config'] {
   return {
     getBootstrapState: vi.fn().mockResolvedValue({ state: 'first-launch' }),
-    save: vi.fn().mockResolvedValue(redactedConfig),
+    patchSettings: vi.fn().mockResolvedValue(redactedConfig),
     testLlmConnection: vi.fn().mockResolvedValue({ ok: true, model: 'provider/model' }),
   };
 }
@@ -57,7 +57,7 @@ describe('FirstLaunchScreen', () => {
 
     expect(await screen.findByText('Settings saved')).toBeTruthy();
     expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
-    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({
+    expect(api.patchSettings).toHaveBeenCalledWith(expect.objectContaining({
       llm: expect.objectContaining({ apiKey: 'secret' }),
     }));
   });

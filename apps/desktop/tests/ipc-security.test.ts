@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LocalConfigSchema, type RuntimeStatus } from '@catbots/contracts';
+import { LocalConfigSchema, REDACTED_SECRET, type RuntimeStatus } from '@catbots/contracts';
 import { buildWindowOptions } from '../src/main/create-window';
 import { denyUnexpectedNavigation } from '../src/main/create-window';
 import { assertTrustedAppSenderUrl } from '../src/main/ipc-security';
@@ -97,6 +97,14 @@ const validConfig = LocalConfigSchema.parse({
   },
   exchanges: {},
 });
+const settingsPatch = {
+  profile: { name: 'My Trading', telemetry: false },
+  llm: {
+    provider: 'openai-compatible' as const,
+    baseUrl: 'https://api.example.com/v1',
+    model: 'provider/model',
+  },
+};
 
 function createDependencies() {
   return {
@@ -108,6 +116,8 @@ function createDependencies() {
     configRepository: {
       getRedacted: vi.fn(),
       save: vi.fn(),
+      patchSettings: vi.fn(),
+      resolveSettingsPatch: vi.fn().mockResolvedValue(validConfig),
     },
     botRepository: {
       list: vi.fn(() => []),
@@ -125,8 +135,26 @@ describe('validated IPC handlers', () => {
   it('rejects config writes from an unknown sender', async () => {
     const handlers = createIpcHandlers(createDependencies());
 
-    await expect(handlers.saveLocalConfig(fakeRemoteEvent, validConfig))
+    await expect(handlers.patchLocalSettings(fakeRemoteEvent, settingsPatch))
       .rejects.toThrow('IPC_SENDER_NOT_ALLOWED');
+  });
+
+  it('patches settings without accepting full exchange or redacted-secret payloads', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+
+    await handlers.patchLocalSettings(localEvent, settingsPatch);
+    expect(dependencies.configRepository.patchSettings).toHaveBeenCalledWith(settingsPatch);
+
+    await expect(handlers.patchLocalSettings(localEvent, {
+      ...settingsPatch,
+      exchanges: validConfig.exchanges,
+    })).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.patchLocalSettings(localEvent, {
+      ...settingsPatch,
+      llm: { ...settingsPatch.llm, apiKey: REDACTED_SECRET },
+    })).rejects.toThrow('INVALID_REQUEST');
+    expect(dependencies.configRepository.patchSettings).toHaveBeenCalledTimes(1);
   });
 
   it('requires the exact packaged entry document', async () => {
@@ -154,27 +182,28 @@ describe('validated IPC handlers', () => {
     const handlers = createIpcHandlers(dependencies);
     const secret = 'must-not-be-in-the-error';
 
-    const error = await handlers.saveLocalConfig(localEvent, {
-      ...validConfig,
+    const error = await handlers.patchLocalSettings(localEvent, {
+      ...settingsPatch,
       profile: { ...validConfig.profile, name: '' },
-      llm: { ...validConfig.llm, apiKey: secret },
+      llm: { ...settingsPatch.llm, apiKey: secret },
     }).catch((reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(Error);
     expect(String(error)).toContain('INVALID_REQUEST');
     expect(String(error)).not.toContain(secret);
-    expect(dependencies.configRepository.save).not.toHaveBeenCalled();
+    expect(dependencies.configRepository.patchSettings).not.toHaveBeenCalled();
   });
 
-  it('uses the injected M0 connection-test seam only after request validation', async () => {
+  it('resolves an omitted key inside Main before invoking the connection tester', async () => {
     const dependencies = createDependencies();
     const handlers = createIpcHandlers(dependencies);
 
-    await expect(handlers.testLlmConnection(localEvent, validConfig)).resolves.toEqual({
+    await expect(handlers.testLlmConnection(localEvent, settingsPatch)).resolves.toEqual({
       ok: true,
       model: 'provider/model',
     });
-    expect(dependencies.testLlmConnection).toHaveBeenCalledWith(validConfig);
+    expect(dependencies.configRepository.resolveSettingsPatch).toHaveBeenCalledWith(settingsPatch);
+    expect(dependencies.testLlmConnection).toHaveBeenCalledWith(validConfig.llm);
 
     await expect(handlers.testLlmConnection(localEvent, { llm: {} })).rejects.toThrow('INVALID_REQUEST');
     expect(dependencies.testLlmConnection).toHaveBeenCalledTimes(1);
@@ -228,13 +257,13 @@ describe('validated IPC handlers', () => {
     const { testLlmConnection: _testLlmConnection, ...withoutTester } = dependencies;
     const handlers = createIpcHandlers(withoutTester);
 
-    await expect(handlers.testLlmConnection(localEvent, validConfig)).resolves.toEqual({
+    await expect(handlers.testLlmConnection(localEvent, settingsPatch)).resolves.toEqual({
       ok: false,
       code: 'LLM_CONNECTION_TEST_UNAVAILABLE',
       message: 'LLM connection testing is unavailable in M0.',
     });
     expect(dependencies.configRepository.getRedacted).not.toHaveBeenCalled();
-    expect(dependencies.configRepository.save).not.toHaveBeenCalled();
+    expect(dependencies.configRepository.patchSettings).not.toHaveBeenCalled();
     expect(dependencies.botRepository.list).not.toHaveBeenCalled();
   });
 
@@ -246,7 +275,7 @@ describe('validated IPC handlers', () => {
       'app:show-main-window',
       'app:quit-application',
       'config:get-bootstrap-state',
-      'config:save',
+      'config:patch-settings',
       'config:test-llm',
       'bots:list',
       'bots:create-draft',
@@ -315,7 +344,7 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
     let configSaveAttempts = 0;
     electronBridge.handle.mockImplementation((channel: string) => {
-      if (channel === 'config:save' && configSaveAttempts++ === 0) {
+      if (channel === 'config:patch-settings' && configSaveAttempts++ === 0) {
         throw new Error('replacement registration failed');
       }
     });
@@ -370,7 +399,7 @@ describe('validated IPC handlers', () => {
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
     electronBridge.handle.mockImplementation((channel: string) => {
-      if (channel === 'config:save') throw new Error('external handler already registered');
+      if (channel === 'config:patch-settings') throw new Error('external handler already registered');
     });
 
     expect(() => registerIpcHandlers(createDependencies())).toThrow('external handler already registered');

@@ -15,7 +15,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
   },
   config: {
     getBootstrapState: () => ipcRenderer.invoke('config:get-bootstrap-state'),
-    save: (input: unknown) => ipcRenderer.invoke('config:save', input),
+    patchSettings: (input) => ipcRenderer.invoke('config:patch-settings', input),
     testLlmConnection: (input: unknown) => ipcRenderer.invoke('config:test-llm', input),
   },
   bots: {

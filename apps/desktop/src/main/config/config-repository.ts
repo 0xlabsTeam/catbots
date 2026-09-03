@@ -4,7 +4,13 @@ import { access, chmod, copyFile, mkdir, open, readFile, rename, unlink } from '
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
-import { LocalConfigSchema, type LocalConfig, type RedactedLocalConfig } from '@catbots/contracts';
+import {
+  LocalConfigSchema,
+  LocalSettingsPatchSchema,
+  type LocalConfig,
+  type LocalSettingsPatch,
+  type RedactedLocalConfig,
+} from '@catbots/contracts';
 import { redactLocalConfig } from './redact-config';
 
 type ConfigParseIssue = {
@@ -77,19 +83,45 @@ export class ConfigRepository {
 
   async save(input: LocalConfig): Promise<RedactedLocalConfig> {
     const value = validateConfig(input);
-    // Save requests are serialized per repository; the last queued save becomes current.
-    const saving = this.saveQueue.then(() => this.saveValue(value));
-    this.saveQueue = saving.then(
-      () => undefined,
-      () => undefined,
-    );
+    return this.enqueueSave(() => this.saveValue(value));
+  }
 
-    return saving;
+  async resolveSettingsPatch(input: LocalSettingsPatch): Promise<LocalConfig> {
+    const patch = validateSettingsPatch(input);
+    await this.saveQueue;
+    return mergeSettingsPatch(await this.loadExistingSettings(), patch);
+  }
+
+  async patchSettings(input: LocalSettingsPatch): Promise<RedactedLocalConfig> {
+    const patch = validateSettingsPatch(input);
+    return this.enqueueSave(async () => {
+      const value = mergeSettingsPatch(await this.loadExistingSettings(), patch);
+      return this.saveValue(value);
+    });
   }
 
   async getRedacted(): Promise<RedactedLocalConfig | null> {
     const value = await this.load();
     return value === null ? null : redactLocalConfig(value);
+  }
+
+  private enqueueSave<T>(operation: () => Promise<T>): Promise<T> {
+    // Settings writes are serialized per repository; the last queued write becomes current.
+    const saving = this.saveQueue.then(operation);
+    this.saveQueue = saving.then(
+      () => undefined,
+      () => undefined,
+    );
+    return saving;
+  }
+
+  private async loadExistingSettings(): Promise<LocalConfig | null> {
+    try {
+      return await this.load();
+    } catch (error) {
+      if (error instanceof ConfigParseError) return null;
+      throw error;
+    }
   }
 
   private async saveValue(value: LocalConfig): Promise<RedactedLocalConfig> {
@@ -232,12 +264,31 @@ function ignoreUnsupportedDirectorySyncError(error: unknown): void {
   throw error;
 }
 
-function validateConfig(input: LocalConfig): LocalConfig {
+function validateConfig(input: unknown): LocalConfig {
   try {
     return LocalConfigSchema.parse(input);
   } catch (error) {
     throw toConfigParseError(error);
   }
+}
+
+function validateSettingsPatch(input: unknown): LocalSettingsPatch {
+  try {
+    return LocalSettingsPatchSchema.parse(input);
+  } catch (error) {
+    throw toConfigParseError(error);
+  }
+}
+
+function mergeSettingsPatch(existing: LocalConfig | null, patch: LocalSettingsPatch): LocalConfig {
+  return validateConfig({
+    profile: patch.profile,
+    llm: {
+      ...patch.llm,
+      apiKey: patch.llm.apiKey ?? existing?.llm.apiKey,
+    },
+    exchanges: existing?.exchanges ?? {},
+  });
 }
 
 function toConfigParseError(error: unknown): ConfigParseError {

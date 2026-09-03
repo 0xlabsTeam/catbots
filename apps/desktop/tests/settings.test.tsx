@@ -19,7 +19,7 @@ const redactedConfig: RedactedLocalConfig = {
 function makeApi(): CatbotsDesktopApi['config'] {
   return {
     getBootstrapState: vi.fn().mockResolvedValue({ state: 'ready', config: redactedConfig }),
-    save: vi.fn().mockResolvedValue(redactedConfig),
+    patchSettings: vi.fn().mockResolvedValue(redactedConfig),
     testLlmConnection: vi.fn().mockResolvedValue({ ok: true, model: 'provider/model' }),
   };
 }
@@ -55,7 +55,7 @@ describe('SettingsScreen', () => {
 
     expect(await screen.findByText('Use HTTPS, or HTTP only for a provider on this computer.')).toBeTruthy();
     expect(api.testLlmConnection).not.toHaveBeenCalled();
-    expect(api.save).not.toHaveBeenCalled();
+    expect(api.patchSettings).not.toHaveBeenCalled();
   });
 
   it('invalidates a passed connection test when provider values change and accepts keyboard submit through the same path', async () => {
@@ -75,7 +75,7 @@ describe('SettingsScreen', () => {
     await user.type(screen.getByLabelText('Model'), '{Enter}');
 
     expect(await screen.findByText('Settings saved')).toBeTruthy();
-    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({
+    expect(api.patchSettings).toHaveBeenCalledWith(expect.objectContaining({
       llm: expect.objectContaining({ apiKey: 'replacement-secret', model: 'provider/model-new' }),
     }));
     expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
@@ -189,8 +189,8 @@ describe('SettingsScreen', () => {
   it('guards duplicate saves, blocks edits while saving, and retains the key after a failed save', async () => {
     const user = userEvent.setup();
     const pendingSave = deferred<RedactedLocalConfig>();
-    const save = vi.fn().mockReturnValue(pendingSave.promise);
-    const api = { ...makeApi(), save };
+    const patchSettings = vi.fn().mockReturnValue(pendingSave.promise);
+    const api = { ...makeApi(), patchSettings };
     render(<SettingsScreen api={api} config={redactedConfig} />);
 
     await user.type(screen.getByLabelText('API key'), 'save-retention-secret');
@@ -200,7 +200,7 @@ describe('SettingsScreen', () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
 
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(patchSettings).toHaveBeenCalledTimes(1);
     expect((screen.getByLabelText('API key') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'newer-secret' } });
@@ -215,7 +215,7 @@ describe('SettingsScreen', () => {
     const pendingSave = deferred<RedactedLocalConfig>();
     const onSaved = vi.fn();
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const api = { ...makeApi(), save: vi.fn().mockReturnValue(pendingSave.promise) };
+    const api = { ...makeApi(), patchSettings: vi.fn().mockReturnValue(pendingSave.promise) };
     const view = render(<SettingsScreen api={api} config={redactedConfig} onSaved={onSaved} />);
 
     await user.type(screen.getByLabelText('API key'), 'unmount-save-secret');
@@ -275,7 +275,33 @@ describe('SettingsScreen', () => {
   it('explains that a saved key is never displayed again', () => {
     render(<SettingsScreen api={makeApi()} config={redactedConfig} />);
 
-    expect(screen.getByText('Plaintext stays only in this form’s memory. After save, it is stored locally and never displayed again.')).toBeTruthy();
+    expect(screen.getByText('Leave blank to use the stored key. A replacement stays only in this form’s memory until save.')).toBeTruthy();
+    expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
+  });
+
+  it('tests and saves non-secret settings with the Main-held key without sending its mask', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('Profile name'), ' updated');
+    await user.type(screen.getByLabelText('Model'), '-new');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    const expectedPatch = {
+      profile: { name: 'My Trading updated', telemetry: false },
+      llm: {
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'provider/model-new',
+      },
+    };
+    expect(api.testLlmConnection).toHaveBeenCalledWith(expectedPatch);
+    expect(api.patchSettings).toHaveBeenCalledWith(expectedPatch);
+    expect(JSON.stringify(vi.mocked(api.testLlmConnection).mock.calls)).not.toContain('••••••••');
+    expect(JSON.stringify(vi.mocked(api.patchSettings).mock.calls)).not.toContain('••••••••');
   });
 
   it('always renders a fixed repair banner but exposes only safe field paths', () => {
