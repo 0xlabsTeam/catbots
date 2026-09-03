@@ -23,6 +23,7 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
     "@electron-forge/plugin-vite": "^7.10.2",
     "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.3.2",

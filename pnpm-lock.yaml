@@ -41,6 +41,9 @@ importers:
       '@electron-forge/maker-zip':
         specifier: ^7.10.2
         version: 7.11.2
+      '@electron-forge/plugin-auto-unpack-natives':
+        specifier: ^7.11.2
+        version: 7.11.2
       '@electron-forge/plugin-vite':
         specifier: ^7.10.2
         version: 7.11.2
@@ -241,6 +244,10 @@ packages:
 
   '@electron-forge/maker-zip@7.11.2':
     resolution: {integrity: sha512-FWnOm2MORX/nt8psnEtID3Vnt8Blby1NkzjU3KjXBPF9kave71C3lI8KbBbCeKKyTQ/S00i2FiglKdRWQ1WNTw==}
+    engines: {node: '>= 16.4.0'}
+
+  '@electron-forge/plugin-auto-unpack-natives@7.11.2':
+    resolution: {integrity: sha512-ktMQxO80vGjqVXVSFha+kWJscBmJaWud4Kqu7rKkbrCphr1zqaG+8EDNbkpGzV/+mhKOLuA5qII1hJ69gFNpdA==}
     engines: {node: '>= 16.4.0'}
 
   '@electron-forge/plugin-base@7.11.2':
@@ -3226,6 +3233,14 @@ snapshots:
       cross-zip: 4.0.1
       fs-extra: 10.1.0
       got: 11.8.6
+    transitivePeerDependencies:
+      - bluebird
+      - supports-color
+
+  '@electron-forge/plugin-auto-unpack-natives@7.11.2':
+    dependencies:
+      '@electron-forge/plugin-base': 7.11.2
+      '@electron-forge/shared-types': 7.11.2
     transitivePeerDependencies:
       - bluebird
       - supports-color
