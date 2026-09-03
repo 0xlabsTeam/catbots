@@ -1,5 +1,6 @@
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
-import { mkdtemp, realpath, rm, readdir } from 'node:fs/promises';
+import { access, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
@@ -10,24 +11,45 @@ type LifecycleTestSeam = {
   requestQuit(response: number): Promise<void>;
 };
 
+type RunningApplication = {
+  app: ElectronApplication;
+  logs: string[];
+  process: ChildProcess;
+};
+
+type FakeProvider = {
+  baseUrl: string;
+  requests: Array<{ authorization?: string; path?: string; xApiKey?: string }>;
+  server: Server;
+};
+
 async function findPackagedExecutable(directory: string): Promise<string> {
-  const packageDirectories = (await readdir(directory, { withFileTypes: true })).filter((entry) => entry.isDirectory());
-  const candidates = (await Promise.all(packageDirectories.map(async (entry) => (await readdir(join(directory, entry.name), { withFileTypes: true }))
-    .filter((child) => child.isDirectory() && child.name.endsWith('.app'))
-    .map((child) => join(directory, entry.name, child.name, 'Contents', 'MacOS', child.name.slice(0, -4)))))).flat();
-  if (candidates.length !== 1) throw new Error(`Expected one current-host packaged app, found ${candidates.length}`);
-  return candidates[0]!;
+  const executable = join(directory, `Catbots-darwin-${process.arch}`, 'Catbots.app', 'Contents', 'MacOS', 'Catbots');
+  try {
+    await access(executable);
+  } catch {
+    throw new Error(`Expected the Catbots macOS ${process.arch} packaged executable`);
+  }
+  return executable;
 }
 
-async function launchFreshApplication(): Promise<{ app: ElectronApplication; dataDirectory: string; process: ChildProcess }> {
+async function launchApplication(dataDirectory: string): Promise<RunningApplication> {
+  const app = await electron.launch({
+    executablePath: await findPackagedExecutable(resolve('apps/desktop/out')),
+    args: [],
+    env: { ...process.env, CATBOTS_E2E_DATA_DIR: dataDirectory, NODE_ENV: 'test' },
+  });
+  const child = app.process();
+  const logs: string[] = [];
+  child.stdout?.on('data', (chunk) => logs.push(String(chunk)));
+  child.stderr?.on('data', (chunk) => logs.push(String(chunk)));
+  return { app, logs, process: child };
+}
+
+async function launchFreshApplication(): Promise<RunningApplication & { dataDirectory: string }> {
   const dataDirectory = await mkdtemp(join(await realpath(tmpdir()), 'catbots-e2e-'));
   try {
-    const app = await electron.launch({
-      executablePath: await findPackagedExecutable(resolve('apps/desktop/out')),
-      args: [],
-      env: { ...process.env, CATBOTS_E2E_DATA_DIR: dataDirectory, NODE_ENV: 'test' },
-    });
-    return { app, dataDirectory, process: app.process() };
+    return { ...await launchApplication(dataDirectory), dataDirectory };
   } catch (error) {
     await rm(dataDirectory, { force: true, recursive: true });
     throw error;
@@ -64,6 +86,57 @@ async function closeApplication(app: ElectronApplication | undefined, process: C
   });
 }
 
+async function requestConfirmedQuit(running: RunningApplication): Promise<void> {
+  const exit = waitForExit(running.process);
+  const request = running.app.evaluate(async () => {
+    const seam = (globalThis as typeof globalThis & { __catbotsE2E?: LifecycleTestSeam }).__catbotsE2E;
+    if (seam === undefined) throw new Error('E2E lifecycle seam unavailable');
+    await seam.requestQuit(0);
+  });
+  const exited = await waitForExitWithin(running.process, 10_000);
+  await request.catch((error: unknown) => {
+    if (!exited) throw error;
+  });
+  await exit;
+  expect(exited).toBe(true);
+  expect(running.process.signalCode).toBeNull();
+  expect(running.process.exitCode).toBe(0);
+}
+
+async function waitForRuntimeReady(app: ElectronApplication): Promise<void> {
+  const page = await app.firstWindow();
+  await expect.poll(
+    () => page.evaluate(async () => (await window.catbots.runtime.getStatus()).state),
+    { timeout: 10_000 },
+  ).toBe('ready');
+}
+
+async function startOpenAiProvider(secret: string): Promise<FakeProvider> {
+  const requests: FakeProvider['requests'] = [];
+  const server = createServer((request, response) => {
+    requests.push({
+      authorization: request.headers.authorization,
+      path: request.url,
+      xApiKey: request.headers['x-api-key'] as string | undefined,
+    });
+    request.resume();
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'OK' } }] }));
+  });
+  await new Promise<void>((resolveListen, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolveListen);
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Fake provider did not bind a TCP port');
+  return { baseUrl: `http://127.0.0.1:${address.port}/v1`, requests, server };
+}
+
+async function closeServer(server: Server): Promise<void> {
+  server.closeAllConnections();
+  await new Promise<void>((resolveClose, reject) => server.close((error) => error === undefined ? resolveClose() : reject(error)));
+}
+
 test('fresh install reaches local-profile onboarding', async () => {
   let app: ElectronApplication | undefined;
   let process: ChildProcess | undefined;
@@ -74,6 +147,136 @@ test('fresh install reaches local-profile onboarding', async () => {
     await expect(window.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
   } finally {
     await closeApplication(app, process, dataDirectory);
+  }
+});
+
+test('packaged local workflow persists tested settings and a Draft Bot across restarts', async () => {
+  test.setTimeout(120_000);
+  const secret = 'e2e-provider-secret-sentinel';
+  const provider = await startOpenAiProvider(secret);
+  const dataDirectory = await mkdtemp(join(await realpath(tmpdir()), 'catbots-e2e-'));
+  const logBuffers: string[][] = [];
+  let running: RunningApplication | undefined;
+  try {
+    running = await launchApplication(dataDirectory);
+    logBuffers.push(running.logs);
+    const onboarding = await running.app.firstWindow();
+    await expect(onboarding.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
+    await waitForRuntimeReady(running.app);
+
+    const csp = await onboarding.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).not.toContain('localhost');
+    expect(csp).not.toContain('ws:');
+
+    const profileInput = onboarding.getByLabel('Profile name');
+    const submit = onboarding.getByRole('button', { name: 'Create local profile' });
+    const styles = await onboarding.evaluate(() => {
+      const primary = document.querySelector<HTMLButtonElement>('.primary-action');
+      const input = document.querySelector<HTMLInputElement>('#profile-name');
+      const card = document.querySelector<HTMLElement>('.settings-card');
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--color-primary-bg)';
+      probe.style.color = 'var(--color-primary-text)';
+      document.body.append(probe);
+      const expected = getComputedStyle(probe);
+      const actual = primary === null ? undefined : getComputedStyle(primary);
+      const result = {
+        cardBackground: card === null ? undefined : getComputedStyle(card).backgroundColor,
+        inputHeight: input === null ? 0 : input.getBoundingClientRect().height,
+        primaryBackground: actual?.backgroundColor,
+        primaryColor: actual?.color,
+        tokenBackground: expected.backgroundColor,
+        tokenColor: expected.color,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(styles.inputHeight).toBeGreaterThanOrEqual(40);
+    expect(styles.cardBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(styles.primaryBackground).toBe(styles.tokenBackground);
+    expect(styles.primaryColor).toBe(styles.tokenColor);
+
+    const keyHelpTrigger = onboarding.getByRole('button', { name: 'How is my key handled?' });
+    await keyHelpTrigger.click();
+    const keyHelp = onboarding.getByRole('dialog', { name: 'Local-only credentials' });
+    await expect(keyHelp).toBeVisible();
+    const dialogStyle = await keyHelp.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, padding: style.paddingTop, position: style.position };
+    });
+    expect(dialogStyle.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(Number.parseFloat(dialogStyle.padding)).toBeGreaterThan(0);
+    expect(dialogStyle.position).toBe('fixed');
+    const closeDialog = keyHelp.getByRole('button', { name: 'Close' });
+    await expect(closeDialog).toBeFocused();
+    await closeDialog.click();
+    await expect(keyHelpTrigger).toBeFocused();
+
+    await profileInput.fill('E2E Local Profile');
+    await onboarding.getByLabel('Base URL').fill(provider.baseUrl);
+    await onboarding.getByLabel('API key').fill(secret);
+    await onboarding.getByLabel('Model').fill('e2e-fixture-model');
+    await onboarding.getByRole('button', { name: 'Test connection' }).click();
+    await expect(onboarding.getByText('Connection successful')).toBeVisible();
+    await expect.poll(() => provider.requests.length).toBe(1);
+    expect(provider.requests[0]).toEqual({
+      authorization: `Bearer ${secret}`,
+      path: '/v1/chat/completions',
+      xApiKey: undefined,
+    });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(onboarding.getByRole('heading', { name: 'Bots', exact: true })).toBeVisible();
+    await requestConfirmedQuit(running);
+    running = undefined;
+
+    running = await launchApplication(dataDirectory);
+    logBuffers.push(running.logs);
+    const restored = await running.app.firstWindow();
+    await expect(restored.getByRole('heading', { name: 'Bots', exact: true })).toBeVisible();
+    await waitForRuntimeReady(running.app);
+    await restored.getByRole('button', { name: 'Settings' }).click();
+    await expect(restored.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(restored.getByLabel('Profile name')).toHaveValue('E2E Local Profile');
+    await expect(restored.getByLabel('API key')).toHaveValue('');
+    await expect(restored.getByText('Stored key: ••••••••')).toBeVisible();
+    await restored.getByLabel('Profile name').fill('E2E Renamed Profile');
+    await restored.getByRole('button', { name: 'Test connection' }).click();
+    await expect(restored.getByText('Connection successful')).toBeVisible();
+    await restored.getByRole('button', { name: 'Save settings' }).click();
+    await expect(restored.getByText('Settings saved')).toBeVisible();
+    await expect.poll(() => provider.requests.length).toBe(2);
+    expect(provider.requests[1]?.authorization).toBe(`Bearer ${secret}`);
+
+    await restored.getByRole('button', { name: 'Bots' }).click();
+    await restored.getByRole('button', { name: 'Create new bot' }).first().click();
+    await restored.getByLabel('Bot name').fill('E2E BTC Draft');
+    await restored.getByLabel('Market').fill('BTC-PERP');
+    await restored.getByRole('button', { name: 'Create draft' }).click();
+    await expect(restored.getByText('E2E BTC Draft')).toBeVisible();
+    await expect(restored.getByText('Draft', { exact: true })).toBeVisible();
+    await requestConfirmedQuit(running);
+    running = undefined;
+
+    running = await launchApplication(dataDirectory);
+    logBuffers.push(running.logs);
+    const persisted = await running.app.firstWindow();
+    await waitForRuntimeReady(running.app);
+    await expect(persisted.getByText('E2E BTC Draft')).toBeVisible();
+    await expect(persisted.getByText('BTC-PERP')).toBeVisible();
+    await persisted.getByRole('button', { name: 'Settings' }).click();
+    await expect(persisted.getByLabel('Profile name')).toHaveValue('E2E Renamed Profile');
+    await expect(persisted.getByLabel('API key')).toHaveValue('');
+    await expect(persisted.getByText('Stored key: ••••••••')).toBeVisible();
+    await requestConfirmedQuit(running);
+    running = undefined;
+
+    expect(logBuffers.flat().join('')).not.toContain(secret);
+  } finally {
+    await closeApplication(running?.app, running?.process, dataDirectory);
+    await closeServer(provider.server);
+    expect(logBuffers.flat().join('')).not.toContain(secret);
   }
 });
 
