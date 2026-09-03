@@ -38,17 +38,35 @@ function waitForExit(process: ChildProcess): Promise<void> {
   return new Promise((resolveExit) => process.once('exit', () => resolveExit()));
 }
 
+async function waitForExitWithin(process: ChildProcess, milliseconds: number): Promise<boolean> {
+  if (process.exitCode !== null || process.signalCode !== null) return true;
+  return new Promise((resolveExit) => {
+    const onExit = () => {
+      clearTimeout(timeout);
+      resolveExit(true);
+    };
+    const timeout = setTimeout(() => {
+      process.off('exit', onExit);
+      resolveExit(false);
+    }, milliseconds);
+    process.once('exit', onExit);
+  });
+}
+
 async function closeApplication(app: ElectronApplication | undefined, process: ChildProcess | undefined, dataDirectory: string | undefined): Promise<void> {
   if (app !== undefined) {
-    const exited = process === undefined ? Promise.resolve() : waitForExit(process);
+    let closeError: unknown;
     try {
       await app.close();
     } catch (error) {
-      process?.kill('SIGKILL');
-      await exited;
-      throw error;
+      closeError = error;
     }
-    await exited;
+    if (process !== undefined && !await waitForExitWithin(process, 5_000)) {
+      process.kill('SIGKILL');
+      await waitForExit(process);
+      throw new Error('Electron did not exit after Playwright close; forced termination was required');
+    }
+    if (closeError !== undefined) throw closeError;
   }
   if (dataDirectory !== undefined) await rm(dataDirectory, { force: true, recursive: true });
 }
