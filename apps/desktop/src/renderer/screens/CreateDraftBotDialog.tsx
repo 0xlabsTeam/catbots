@@ -106,7 +106,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
           {error ? <Banner variant="error" role="alert" title="Draft not created" description="We could not create this draft. Review the local values and try again." /> : null}
           <div className="draft-form-actions">
             <Button type="button" variant="secondary" onClick={close} disabled={isCreating}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
+            <Button className="primary-action" type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
           </div>
         </form>
       </Dialog>

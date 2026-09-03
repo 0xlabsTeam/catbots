@@ -64,7 +64,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
           <h1 id="bots-home-title">Bots</h1>
           <p>Draft and inspect your local bot workspaces. No trading activity is available in M0.</p>
         </div>
-        <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
+        <Button className="primary-action" type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
       </header>
 
       {bots === null ? <div className="bots-state" role="status" aria-live="polite">Loading local bots…</div> : null}
