@@ -17,7 +17,7 @@ function run(command, args, cwd = desktop) {
 
 const nativePath = resolve(root, 'node_modules/better-sqlite3');
 async function restoreHost() {
-  await run(process.execPath, ['run', 'install', '--prefix', nativePath], root);
+  await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'install', '--prefix', nativePath], root);
 }
 
 try {
