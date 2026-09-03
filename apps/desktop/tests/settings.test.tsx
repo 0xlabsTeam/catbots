@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { CatbotsDesktopApi, RedactedLocalConfig } from '@catbots/contracts';
+import type { CatbotsDesktopApi, ConnectionTestResult, RedactedLocalConfig } from '@catbots/contracts';
 import { SettingsScreen } from '../src/renderer/screens/SettingsScreen';
 
 const redactedConfig: RedactedLocalConfig = {
@@ -22,6 +22,16 @@ function makeApi(): CatbotsDesktopApi['config'] {
     save: vi.fn().mockResolvedValue(redactedConfig),
     testLlmConnection: vi.fn().mockResolvedValue({ ok: true, model: 'provider/model' }),
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('SettingsScreen', () => {
@@ -87,5 +97,176 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('profile.name')).toBeTruthy();
     expect(screen.queryByText('llm.api_key')).toBeNull();
     expect(screen.queryByText('secret should not render')).toBeNull();
+  });
+
+  it('keeps only the latest successful connection check after values change', async () => {
+    const user = userEvent.setup();
+    const first = deferred<ConnectionTestResult>();
+    const second = deferred<ConnectionTestResult>();
+    const testLlmConnection = vi.fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const api = { ...makeApi(), testLlmConnection };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    expect(testLlmConnection).toHaveBeenCalledTimes(1);
+
+    await user.type(screen.getByLabelText('Model'), '-second');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await act(async () => second.resolve({ ok: true, model: 'dependency-model-sentinel' }));
+    expect(await screen.findByText('Connection successful')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('dependency-model-sentinel');
+
+    await act(async () => first.resolve({ ok: true, model: 'stale-dependency-model-sentinel' }));
+    expect(document.body.textContent).not.toContain('stale-dependency-model-sentinel');
+    expect(testLlmConnection).toHaveBeenCalledTimes(2);
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('clears an existing approval while a replacement connection test is pending', async () => {
+    const user = userEvent.setup();
+    const replacement = deferred<ConnectionTestResult>();
+    const api = {
+      ...makeApi(),
+      testLlmConnection: vi.fn()
+        .mockResolvedValueOnce({ ok: true, model: 'ignored-first-model' })
+        .mockReturnValueOnce(replacement.promise),
+    };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => replacement.resolve({ ok: true, model: 'ignored-second-model' }));
+  });
+
+  it('does not render connection dependency messages or mutate after unmount', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<ConnectionTestResult>();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const api = { ...makeApi(), testLlmConnection: vi.fn().mockReturnValue(pending.promise) };
+    const view = render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    view.unmount();
+    await act(async () => pending.resolve({ ok: false, code: 'UPSTREAM_SECRET', message: 'dependency-message-sentinel renderer-only-secret' }));
+
+    expect(document.body.textContent).not.toContain('dependency-message-sentinel');
+    expect(document.body.textContent).not.toContain('renderer-only-secret');
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('guards duplicate saves, blocks edits while saving, and retains the key after a failed save', async () => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<RedactedLocalConfig>();
+    const save = vi.fn().mockReturnValue(pendingSave.promise);
+    const api = { ...makeApi(), save };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'save-retention-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    const form = document.querySelector('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect((screen.getByLabelText('API key') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Test connection' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'newer-secret' } });
+    await act(async () => pendingSave.reject(new Error('save dependency error')));
+
+    expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('save-retention-secret');
+    expect(screen.getByText('Settings could not be saved. Review the local values and try again.')).toBeTruthy();
+  });
+
+  it('does not call onSaved or update the screen after an in-flight save unmounts', async () => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<RedactedLocalConfig>();
+    const onSaved = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const api = { ...makeApi(), save: vi.fn().mockReturnValue(pendingSave.promise) };
+    const view = render(<SettingsScreen api={api} config={redactedConfig} onSaved={onSaved} />);
+
+    await user.type(screen.getByLabelText('API key'), 'unmount-save-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByText('Connection successful');
+    fireEvent.submit(document.querySelector('form')!);
+    view.unmount();
+    await act(async () => pendingSave.resolve(redactedConfig));
+
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('uses only fixed safe connection failure copy', async () => {
+    const user = userEvent.setup();
+    const api = {
+      ...makeApi(),
+      testLlmConnection: vi.fn().mockResolvedValue({
+        ok: false,
+        code: 'DEPENDENCY_ERROR',
+        message: 'dependency-message-sentinel renderer-only-secret',
+      }),
+    };
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByText('We could not verify this provider. Review the values and try again.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('dependency-message-sentinel');
+    expect(document.body.textContent).not.toContain('renderer-only-secret');
+  });
+
+  it('always renders a fixed repair banner but exposes only safe field paths', () => {
+    const api = makeApi();
+    const { rerender } = render(<SettingsScreen api={api} repairIssues={[{ path: 'config', message: 'syntax-secret-sentinel' }]} />);
+
+    expect(screen.getByText('Configuration repair')).toBeTruthy();
+    expect(screen.getByText('Re-enter the local profile and provider values to repair this configuration.')).toBeTruthy();
+    expect(screen.queryByText('config')).toBeNull();
+    expect(screen.queryByText('syntax-secret-sentinel')).toBeNull();
+
+    rerender(<SettingsScreen api={api} repairIssues={[{ path: 'syntax', message: 'another-secret-sentinel' }]} />);
+    expect(screen.getByText('Configuration repair')).toBeTruthy();
+    expect(screen.queryByText('syntax')).toBeNull();
+    expect(screen.queryByText('another-secret-sentinel')).toBeNull();
+  });
+
+  it('associates field errors and accepts loopback HTTP providers', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    const { unmount } = render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.clear(screen.getByLabelText('Base URL'));
+    await user.type(screen.getByLabelText('Base URL'), 'http://example.com/v1');
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.type(screen.getByLabelText('Model'), '{Enter}');
+    const invalidUrl = screen.getByLabelText('Base URL');
+    const describedBy = invalidUrl.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(invalidUrl.getAttribute('aria-invalid')).toBe('true');
+    expect(describedBy.some((id) => document.getElementById(id)?.textContent?.includes('Use HTTPS, or HTTP only for a provider on this computer.'))).toBe(true);
+    unmount();
+
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+    await user.clear(screen.getByLabelText('Base URL'));
+    await user.type(screen.getByLabelText('Base URL'), 'http://localhost:11434/v1');
+    await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    expect(api.testLlmConnection).toHaveBeenLastCalledWith(expect.objectContaining({
+      llm: expect.objectContaining({ baseUrl: 'http://localhost:11434/v1' }),
+    }));
   });
 });

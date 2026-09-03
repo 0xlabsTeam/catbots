@@ -20,10 +20,13 @@ export function SecretField({ value, onValueChange, error, storedMask, disabled 
         spellCheck={false}
         value={value}
         onChange={(event) => onValueChange(event.currentTarget.value)}
-        error={error}
+        variant={error === undefined ? 'default' : 'error'}
+        aria-invalid={error === undefined ? undefined : true}
+        aria-describedby={error === undefined ? undefined : 'api-key-error'}
         disabled={disabled}
         description="Stored only while this form is open and cleared after a successful save."
       />
+      {error === undefined ? null : <p id="api-key-error" role="alert">{error}</p>}
       {storedMask !== undefined ? <p className="stored-secret">Stored key: {storedMask}</p> : null}
     </div>
   );
