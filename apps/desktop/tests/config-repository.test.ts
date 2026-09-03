@@ -1,9 +1,21 @@
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LocalConfig } from '@catbots/contracts';
 import { ConfigParseError, ConfigRepository } from '../src/main/config/config-repository';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    copyFile: vi.fn(actual.copyFile),
+    open: vi.fn(actual.open),
+    readFile: vi.fn(actual.readFile),
+    rename: vi.fn(actual.rename),
+  };
+});
 
 const llmSecret = 'llm-secret-that-must-not-leak';
 const agentSecret = 'agent-secret-that-must-not-leak';
@@ -35,7 +47,46 @@ async function createTemporaryDirectory(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
+  vi.clearAllMocks();
 });
+
+function stageFailure(stage: string): Error {
+  return new Error(`${stage} failed`);
+}
+
+async function expectFailureToPreserveTarget(
+  repository: ConfigRepository,
+  dataDirectory: string,
+): Promise<void> {
+  const target = join(dataDirectory, 'local.env.yaml');
+  const before = await readFile(target, 'utf8');
+  const error = await repository.save({ ...validConfig, profile: { ...validConfig.profile, name: 'Replacement' } })
+    .catch((reason: unknown) => reason);
+
+  expect(error).toBeInstanceOf(Error);
+  await expect(readFile(target, 'utf8')).resolves.toBe(before);
+  expect((await readdir(dataDirectory)).filter((entry) => entry.startsWith('.local.env.yaml.'))).toEqual([]);
+  expect(String(error)).not.toContain(llmSecret);
+  expect(String(error)).not.toContain(agentSecret);
+  expect(JSON.stringify(error)).not.toContain(llmSecret);
+  expect(JSON.stringify(error)).not.toContain(agentSecret);
+}
+
+function failNextTemporaryFileOperation(operation: 'writeFile' | 'sync'): void {
+  const openMock = vi.mocked(fs.open);
+  const original = openMock.getMockImplementation();
+  if (original === undefined) throw new Error('Expected filesystem open mock implementation');
+
+  openMock.mockImplementationOnce(async (...args) => {
+    const handle = await original(...args);
+    if (operation === 'writeFile') {
+      vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(stageFailure('temporary write'));
+    } else {
+      vi.spyOn(handle, 'sync').mockRejectedValueOnce(stageFailure('temporary sync'));
+    }
+    return handle;
+  });
+}
 
 describe('ConfigRepository', () => {
   it('writes valid YAML atomically with private permissions and returns a redacted view', async () => {
@@ -62,11 +113,16 @@ describe('ConfigRepository', () => {
     const repository = new ConfigRepository(dataDirectory);
     await repository.save(validConfig);
 
-    await expect(repository.save({
+    const error = await repository.save({
       ...validConfig,
       profile: { ...validConfig.profile, name: '' },
-    })).rejects.toThrow();
+    }).catch((reason: unknown) => reason);
 
+    expect(error).toBeInstanceOf(ConfigParseError);
+    expect(String(error)).not.toContain(llmSecret);
+    expect(String(error)).not.toContain(agentSecret);
+    expect(JSON.stringify(error)).not.toContain(llmSecret);
+    expect(JSON.stringify(error)).not.toContain(agentSecret);
     expect((await repository.load())?.profile.name).toBe('My Trading');
     expect(await readdir(dataDirectory)).not.toContain('local.env.yaml.tmp');
   });
@@ -136,5 +192,170 @@ describe('ConfigRepository', () => {
     ]);
     expect(JSON.stringify(error)).not.toContain(llmSecret);
     expect(String(error)).not.toContain(llmSecret);
+  });
+
+  it('rejects camelCase aliases mixed into otherwise valid YAML without exposing secrets', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    await writeFile(join(dataDirectory, 'local.env.yaml'), [
+      'profile:',
+      '  name: My Trading',
+      '  telemetry: false',
+      'llm:',
+      '  provider: openai-compatible',
+      '  base_url: https://api.example.com/v1',
+      `  api_key: ${llmSecret}`,
+      '  model: provider/model',
+      '  baseUrl: https://attacker.example/v1',
+      'exchanges:',
+      '  hyperliquid:',
+      '    network: testnet',
+      '    account_address: "0x0123456789abcdef0123456789abcdef01234567"',
+      `    agent_private_key: ${agentSecret}`,
+      `    agentPrivateKey: ${agentSecret}`,
+      '',
+    ].join('\n'), 'utf8');
+    const repository = new ConfigRepository(dataDirectory);
+
+    const error = await repository.load().catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ConfigParseError);
+    expect(JSON.stringify(error)).not.toContain(llmSecret);
+    expect(JSON.stringify(error)).not.toContain(agentSecret);
+    expect(String(error)).not.toContain(llmSecret);
+    expect(String(error)).not.toContain(agentSecret);
+  });
+
+  it('does not follow a stale fixed-name temporary-file symlink', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const outsidePath = join(dataDirectory, 'outside.yaml');
+    await writeFile(outsidePath, 'outside sentinel', 'utf8');
+    await symlink(outsidePath, join(dataDirectory, 'local.env.yaml.tmp'));
+
+    await repository.save({ ...validConfig, profile: { ...validConfig.profile, name: 'Replacement' } });
+
+    await expect(readFile(outsidePath, 'utf8')).resolves.toBe('outside sentinel');
+    expect((await lstat(join(dataDirectory, 'local.env.yaml'))).isSymbolicLink()).toBe(false);
+    expect((await repository.load())?.profile.name).toBe('Replacement');
+  });
+
+  it('serializes concurrent saves so the last queued configuration becomes current', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+
+    await Promise.all([
+      repository.save({ ...validConfig, profile: { ...validConfig.profile, name: 'First' } }),
+      repository.save({ ...validConfig, profile: { ...validConfig.profile, name: 'Second' } }),
+    ]);
+
+    expect((await repository.load())?.profile.name).toBe('Second');
+    await expect(readFile(join(dataDirectory, 'local.env.yaml.previous'), 'utf8')).resolves.toContain('name: First');
+  });
+
+  it('cleans its exclusive temporary file after a write failure without changing the target', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    failNextTemporaryFileOperation('writeFile');
+
+    await expectFailureToPreserveTarget(repository, dataDirectory);
+  });
+
+  it('cleans its exclusive temporary file after an fsync failure without changing the target', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    failNextTemporaryFileOperation('sync');
+
+    await expectFailureToPreserveTarget(repository, dataDirectory);
+  });
+
+  it('sanitizes temporary-file validation failures and keeps the target unchanged', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const readFileMock = vi.mocked(fs.readFile);
+    const original = readFileMock.getMockImplementation();
+    if (original === undefined) throw new Error('Expected filesystem readFile mock implementation');
+    readFileMock.mockImplementation(async (path, ...args) => {
+      if (String(path).includes('.local.env.yaml.')) return `llm: [${llmSecret}\n` as never;
+      return original(path, ...args);
+    });
+
+    try {
+      await expectFailureToPreserveTarget(repository, dataDirectory);
+    } finally {
+      readFileMock.mockImplementation(original);
+    }
+  });
+
+  it('cleans temporary artifacts when reading the temporary file fails without changing the target', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const readFileMock = vi.mocked(fs.readFile);
+    const original = readFileMock.getMockImplementation();
+    if (original === undefined) throw new Error('Expected filesystem readFile mock implementation');
+    readFileMock.mockImplementation(async (path, ...args) => {
+      if (String(path).includes('.local.env.yaml.')) throw stageFailure('temporary read');
+      return original(path, ...args);
+    });
+
+    try {
+      await expectFailureToPreserveTarget(repository, dataDirectory);
+    } finally {
+      readFileMock.mockImplementation(original);
+    }
+  });
+
+  it('cleans temporary artifacts when rollback copying fails without changing the target', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    vi.mocked(fs.copyFile).mockRejectedValueOnce(stageFailure('rollback copy'));
+
+    await expectFailureToPreserveTarget(repository, dataDirectory);
+  });
+
+  it('cleans temporary artifacts when target replacement fails without changing the target', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const renameMock = vi.mocked(fs.rename);
+    const original = renameMock.getMockImplementation();
+    if (original === undefined) throw new Error('Expected filesystem rename mock implementation');
+    renameMock.mockImplementation(async (oldPath, newPath) => {
+      if (newPath === join(dataDirectory, 'local.env.yaml')) throw stageFailure('target rename');
+      return original(oldPath, newPath);
+    });
+
+    try {
+      await expectFailureToPreserveTarget(repository, dataDirectory);
+    } finally {
+      renameMock.mockImplementation(original);
+    }
+  });
+
+  it('keeps the target unchanged when parent-directory fsync fails before replacement', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+    const openMock = vi.mocked(fs.open);
+    const original = openMock.getMockImplementation();
+    if (original === undefined) throw new Error('Expected filesystem open mock implementation');
+    openMock.mockImplementation(async (...args) => {
+      const handle = await original(...args);
+      if (args[0] === dataDirectory && args[1] === 'r') {
+        vi.spyOn(handle, 'sync').mockRejectedValueOnce(stageFailure('parent directory sync'));
+      }
+      return handle;
+    });
+
+    try {
+      await expectFailureToPreserveTarget(repository, dataDirectory);
+    } finally {
+      openMock.mockImplementation(original);
+    }
   });
 });
