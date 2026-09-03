@@ -1,5 +1,7 @@
 {
   "name": "@catbots/desktop",
+  "productName": "Catbots",
+  "description": "Catbots M0 macOS desktop application",
   "version": "0.1.0",
   "private": true,
   "engines": { "node": ">=22 <23" },

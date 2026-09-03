@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { assertReleaseEnvironment } from './check-release-node.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const desktop = resolve(root, 'apps/desktop');
-const [major] = process.versions.node.split('.').map(Number);
-if (major !== 22) throw new Error(`Catbots packaging requires Node.js 22.x; found ${process.versions.node}.`);
+assertReleaseEnvironment(process.versions.node, process.platform);
 
 export function createRunner(spawnCommand = spawn) {
   return function run(command, args, cwd = desktop, onSpawn, processOptions = {}) {

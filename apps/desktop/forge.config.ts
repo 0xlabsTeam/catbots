@@ -22,6 +22,11 @@ async function stageSqliteRuntimeDependencies(
 
 const config: ForgeConfig = {
   packagerConfig: {
+    name: 'Catbots',
+    executableName: 'Catbots',
+    appBundleId: 'com.catbots.desktop',
+    appCategoryType: 'public.app-category.finance',
+    icon: 'assets/icon.icns',
     asar: true,
     extraResource: ['assets/trayTemplate.png'],
     // Keep only Vite output in the app bundle. This also excludes local configuration and planning artifacts.

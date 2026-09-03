@@ -2,7 +2,7 @@
 
 ## Setup and checks
 
-Release packaging requires Node.js 22.x; the scripts fail fast on other majors.
+The M0 release is macOS-only and requires Node.js 22.x. Release scripts fail fast on other operating systems or Node majors; Windows and Linux packaging is outside this milestone.
 
 ```sh
 pnpm install

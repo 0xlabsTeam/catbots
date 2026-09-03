@@ -5,5 +5,7 @@ node_modules/
 out/
 local.env.yaml
 local.env.yaml.previous
+.local.env.yaml.*.tmp
+local.env.yaml.*.tmp
 test-results/
 playwright-report/

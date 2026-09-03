@@ -1,5 +1,6 @@
 {
   "name": "catbots",
+  "description": "Catbots M0 macOS desktop foundation",
   "private": true,
   "engines": {
     "node": ">=22 <23"
