@@ -12,6 +12,7 @@ export interface RuntimeWorkerPort {
 }
 
 export type RuntimeSupervisorOptions = {
+  forceExitTimeoutMs?: number;
   shutdownTimeoutMs?: number;
 };
 
@@ -31,10 +32,12 @@ type ActiveWorker = {
   onExit: (...details: unknown[]) => void;
   onError: (...details: unknown[]) => void;
   shutdownTimer?: ReturnType<typeof setTimeout>;
+  forceExitTimer?: ReturnType<typeof setTimeout>;
   stopRequested: boolean;
 };
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 250;
+const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 250;
 
 export class RuntimeSupervisor {
   private activeWorker: ActiveWorker | undefined;
@@ -45,12 +48,14 @@ export class RuntimeSupervisor {
   private resolveStop: (() => void) | undefined;
   private rejectStop: ((error: RuntimeStopError) => void) | undefined;
   private readonly shutdownTimeoutMs: number;
+  private readonly forceExitTimeoutMs: number;
 
   constructor(
     private readonly createWorker: () => RuntimeWorkerPort,
     options: RuntimeSupervisorOptions = {},
   ) {
     this.shutdownTimeoutMs = Math.max(0, options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS);
+    this.forceExitTimeoutMs = Math.max(0, options.forceExitTimeoutMs ?? DEFAULT_FORCE_EXIT_TIMEOUT_MS);
   }
 
   start(): void {
@@ -142,6 +147,7 @@ export class RuntimeSupervisor {
 
   private escalateStop(active: ActiveWorker): void {
     if (!this.isCurrent(active.generation, active.port) || this.status.state !== 'stopping') return;
+    active.shutdownTimer = undefined;
     try {
       if (!active.port.kill()) {
         this.failStop(active);
@@ -151,7 +157,7 @@ export class RuntimeSupervisor {
       this.failStop(active);
       return;
     }
-    this.finishStop(active);
+    active.forceExitTimer = setTimeout(() => this.failStop(active), this.forceExitTimeoutMs);
   }
 
   private finishStop(active: ActiveWorker): void {
@@ -171,6 +177,10 @@ export class RuntimeSupervisor {
       clearTimeout(active.shutdownTimer);
       active.shutdownTimer = undefined;
     }
+    if (active.forceExitTimer !== undefined) {
+      clearTimeout(active.forceExitTimer);
+      active.forceExitTimer = undefined;
+    }
     this.setState('error');
     const reject = this.rejectStop;
     this.resolveStop = undefined;
@@ -181,6 +191,7 @@ export class RuntimeSupervisor {
 
   private releaseWorker(active: ActiveWorker): void {
     if (active.shutdownTimer !== undefined) clearTimeout(active.shutdownTimer);
+    if (active.forceExitTimer !== undefined) clearTimeout(active.forceExitTimer);
     active.port.removeListener?.('message', active.onMessage);
     active.port.removeListener?.('exit', active.onExit);
     active.port.removeListener?.('error', active.onError);

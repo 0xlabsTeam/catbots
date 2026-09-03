@@ -2,9 +2,14 @@
 // no strategy evaluation, backtests, exchange access, or network activity.
 process.parentPort?.postMessage({ type: 'ready' });
 
-process.parentPort?.on('message', (message: unknown) => {
-  if (isShutdownMessage(message)) process.exit(0);
+process.parentPort?.on('message', (event: unknown) => {
+  if (isRuntimeShutdownEvent(event)) process.exit(0);
 });
+
+export function isRuntimeShutdownEvent(event: unknown): boolean {
+  if (typeof event !== 'object' || event === null || !('data' in event)) return false;
+  return isShutdownMessage((event as { data?: unknown }).data);
+}
 
 function isShutdownMessage(message: unknown): message is { type: 'shutdown' } {
   return typeof message === 'object'

@@ -97,19 +97,42 @@ describe('RuntimeSupervisor', () => {
     expect(supervisor.getStatus()).toEqual({ state: 'stopped', activeBots: 0 });
   });
 
-  it('reports stopped when a successful bounded kill establishes termination', async () => {
+  it('keeps stop pending after a successful kill until the worker actually exits', async () => {
     vi.useFakeTimers();
     const worker = createWorkerDouble();
-    const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25 });
+    const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25, forceExitTimeoutMs: 25 });
     supervisor.start();
 
     const stopping = supervisor.stop();
+    let settled = false;
+    void stopping.finally(() => { settled = true; });
     expect(worker.kill).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(25);
-    await stopping;
 
     expect(worker.kill).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+    expect(supervisor.getStatus()).toEqual({ state: 'stopping', activeBots: 0 });
+    worker.emit('exit', 0, null);
+    await stopping;
     expect(supervisor.getStatus()).toEqual({ state: 'stopped', activeBots: 0 });
+  });
+
+  it('rejects stop within a terminal bound when kill succeeds but no exit arrives', async () => {
+    vi.useFakeTimers();
+    const worker = createWorkerDouble();
+    const supervisor = new RuntimeSupervisor(() => worker, { shutdownTimeoutMs: 25, forceExitTimeoutMs: 40 });
+    supervisor.start();
+
+    const stopping = supervisor.stop();
+    const rejected = expect(stopping).rejects.toMatchObject({ code: 'RUNTIME_STOP_FAILED' });
+    await vi.advanceTimersByTimeAsync(25);
+    expect(supervisor.getStatus()).toEqual({ state: 'stopping', activeBots: 0 });
+    await vi.advanceTimersByTimeAsync(39);
+    expect(supervisor.getStatus()).toEqual({ state: 'stopping', activeBots: 0 });
+    await vi.advanceTimersByTimeAsync(1);
+
+    await rejected;
+    expect(supervisor.getStatus()).toEqual({ state: 'error', activeBots: 0 });
   });
 
   it('rejects shutdown when the bounded kill reports failure until a delayed exit establishes termination', async () => {
