@@ -26,6 +26,8 @@
 
 ## Fix round 1 investigation
 
+Node-version hypothesis confirmed: with a clean output directory and `PATH=/opt/homebrew/opt/node@22/bin:$PATH`, `node -v` reported `v22.23.2`; the identical package command exited 0 and generated `apps/desktop/out/@catbots-desktop-darwin-arm64/@catbots-desktop.app`, including `app.asar`. Node 26.7.0 reaches `Finalizing package` but produces no output. Forge 7/Electron packaging is therefore treated as Node-22-only for this repository. `engines` and a portable major-version guard now fail fast; no Homebrew path is committed.
+
 Reproduction began from a removed `apps/desktop/out` and ran `pnpm --filter @catbots/desktop package`. Without escalation, Electron Packager failed while resolving GitHub; with escalation it reached `Finalizing package`, returned success, ran `postpackage`, and still left no `apps/desktop/out` directory. Forge's debug output proves the resolved output path is `/Users/artizno/0xlabs/catbots/.worktrees/catbots-m0/apps/desktop/out` and its resolved target is `darwin/arm64`.
 
 The prior custom Vite ignore was not equivalent to the installed plugin default: `VitePlugin.resolveForgeConfig` has `if (!file) return false`, while the custom function returned `true` for `''`, excluding the package root. That root condition is corrected. This did **not** produce an artifact, establishing a distinct remaining component-boundary failure after Packager begins finalization. A temporary callback diagnostic did not receive any ignore-path calls before Forge returned, further indicating that failure is downstream or outside the ignore predicate.
