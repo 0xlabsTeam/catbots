@@ -7,7 +7,7 @@ import { ConnectionTestStatus, mapExternalConnectionErrorCode, type ConnectionTe
 import { SecretField } from '../components/SecretField';
 
 type Provider = LocalConfig['llm']['provider'];
-type SettingsScreenProps = { api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; onSaved?(config: RedactedLocalConfig): void };
+type SettingsScreenProps = { api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; embedded?: boolean; onSaved?(config: RedactedLocalConfig): void };
 type FormState = { profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string; model: string };
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
@@ -38,7 +38,7 @@ function toLocalConfig(state: FormState): LocalConfig {
 
 function getSafeRepairPaths(issues: SettingsScreenProps['repairIssues']): string[] { return [...new Set((issues ?? []).flatMap((issue) => SAFE_REPAIR_PATHS.has(issue.path) ? [issue.path] : []))]; }
 
-export function SettingsScreen({ api, config, repairIssues, onboarding = false, onSaved }: SettingsScreenProps) {
+export function SettingsScreen({ api, config, repairIssues, onboarding = false, embedded = false, onSaved }: SettingsScreenProps) {
   const [form, setForm] = useState<FormState>(() => formFromConfig(config));
   const [errors, setErrors] = useState<FormErrors>({});
   const [connection, setConnection] = useState<ConnectionTestState>({ state: 'idle' });
@@ -136,8 +136,10 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     void save();
   };
 
+  const Root = embedded ? 'div' : 'main';
+
   return (
-    <main className={onboarding ? 'setup-shell' : 'settings-shell'}>
+    <Root className={onboarding ? 'setup-shell' : 'settings-shell'}>
       <section className="setup-intro" aria-labelledby="settings-heading">
         <div className="local-mark" aria-hidden="true"><DesktopTowerIcon weight="duotone" /></div>
         <p className="eyebrow">LOCAL DESKTOP</p>
@@ -165,6 +167,6 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
         </form>
         <Dialog.Root><Dialog.Trigger render={(props) => <Button {...props} className="privacy-dialog-trigger" variant="ghost" size="sm">How is my key handled?</Button>} /><Dialog><Dialog.Title>Local-only credentials</Dialog.Title><Dialog.Description>Your key is held only by this password field until a successful local save. The stored value is never rendered again.</Dialog.Description><Dialog.Close render={(props) => <Button {...props} variant="secondary">Close</Button>} /></Dialog></Dialog.Root>
       </section>
-    </main>
+    </Root>
   );
 }

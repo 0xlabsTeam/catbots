@@ -19,7 +19,7 @@ export default function App() {
   return (
     <AppShell destination={destination} onNavigate={setDestination}>
       {destination === 'bots' ? <BotsHomeScreen api={window.catbots.bots} /> : null}
-      {destination === 'settings' ? <SettingsScreen api={window.catbots.config} config={bootstrap.config} onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
+      {destination === 'settings' ? <SettingsScreen api={window.catbots.config} config={bootstrap.config} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'data' ? <PlaceholderScreen title="Data" description="Installed indicators and local data products will appear here in a later milestone." /> : null}
       {destination === 'activity' ? <PlaceholderScreen title="Activity" description="Local alerts and execution traces will appear here in a later milestone." /> : null}
     </AppShell>

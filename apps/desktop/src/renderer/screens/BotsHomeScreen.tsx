@@ -7,10 +7,16 @@ import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
 type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots'] };
 
-function updatedLabel(value: string): string {
+export function formatUpdatedAt(value: string, locale = 'en-US', timeZone = 'UTC'): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) return 'Updated locally';
-  return `Updated ${new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(timestamp)}`;
+  return `Updated ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone, timeZoneName: 'short' }).format(timestamp)}`;
+}
+
+function mergeBots(listedBots: readonly BotSummary[], locallyCreatedBots: ReadonlyMap<string, BotSummary>): BotSummary[] {
+  const merged = new Map(listedBots.map((bot) => [bot.id, bot]));
+  for (const [id, bot] of locallyCreatedBots) merged.set(id, bot);
+  return [...merged.values()];
 }
 
 export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
@@ -19,6 +25,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const mountedRef = useRef(true);
   const listRequestTokenRef = useRef(0);
+  const locallyCreatedBotsRef = useRef(new Map<string, BotSummary>());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -33,7 +40,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
     try {
       const localBots = await api.list();
       if (!mountedRef.current || requestToken !== listRequestTokenRef.current) return;
-      setBots(localBots);
+      setBots(mergeBots(localBots, locallyCreatedBotsRef.current));
     } catch {
       if (!mountedRef.current || requestToken !== listRequestTokenRef.current) return;
       setBots([]);
@@ -44,9 +51,9 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
   useEffect(() => { void loadBots(); }, [loadBots]);
 
   const addCreatedBot = (created: BotSummary) => {
-    listRequestTokenRef.current += 1;
+    locallyCreatedBotsRef.current.set(created.id, created);
     setHasListError(false);
-    setBots((previous) => previous === null ? [created] : [...previous, created]);
+    setBots((previous) => previous === null ? [...locallyCreatedBotsRef.current.values()] : mergeBots(previous, locallyCreatedBotsRef.current));
   };
 
   return (
@@ -108,7 +115,7 @@ function BotsTable({ bots }: { bots: readonly BotSummary[] }) {
               <Table.Cell><strong>{bot.name}</strong></Table.Cell>
               <Table.Cell>{bot.market}</Table.Cell>
               <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
-              <Table.Cell><time dateTime={bot.updatedAt}>{updatedLabel(bot.updatedAt)}</time></Table.Cell>
+              <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>
               <Table.Cell className="unavailable-metric" aria-label="PnL unavailable">PnL unavailable</Table.Cell>
               <Table.Cell className="unavailable-metric" aria-label="Drawdown unavailable">Drawdown unavailable</Table.Cell>
             </Table.Row>
