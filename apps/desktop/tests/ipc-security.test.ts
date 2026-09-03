@@ -327,6 +327,47 @@ describe('validated IPC handlers', () => {
     removeThird();
   });
 
+  it('removes owned handlers even when the runtime unsubscriber throws, then permits replacement', () => {
+    const firstDependencies = createDependencies();
+    const secondDependencies = createDependencies();
+    firstDependencies.runtime.subscribeStatus.mockReturnValueOnce(() => {
+      throw new Error('runtime unsubscribe failed');
+    });
+    const removeFirst = registerIpcHandlers(firstDependencies);
+
+    expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+
+    const removeSecond = registerIpcHandlers(secondDependencies);
+    removeSecond();
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+  });
+
+  it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
+    const firstDependencies = createDependencies();
+    firstDependencies.runtime.subscribeStatus.mockReturnValueOnce(() => {
+      throw new Error('runtime unsubscribe failed');
+    });
+    registerIpcHandlers(firstDependencies);
+
+    const removeReplacement = registerIpcHandlers(createDependencies());
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    removeReplacement();
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+  });
+
+  it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
+    const invalidDependencies = createDependencies();
+    invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
+
+    expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+
+    const remove = registerIpcHandlers(createDependencies());
+    remove();
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+  });
+
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
     electronBridge.handle.mockImplementation((channel: string) => {
       if (channel === 'config:save') throw new Error('external handler already registered');

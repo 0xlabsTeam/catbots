@@ -170,7 +170,11 @@ export function registerIpcHandlers(dependencies: IpcHandlerDependencies): () =>
   const previousRegistration = activeRegistration;
   if (previousRegistration !== undefined) {
     activeRegistration = undefined;
-    previousRegistration.dispose();
+    try {
+      previousRegistration.dispose();
+    } catch {
+      // Its handlers were removed in dispose's finally block; replacement remains safe.
+    }
   }
 
   let registration: RegisteredIpcHandlers;
@@ -216,22 +220,33 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
       ipcMain.handle(channel, handler);
       registeredChannels.push(channel);
     }
-    unsubscribeRuntime = dependencies.runtime.subscribeStatus((candidate: RuntimeStatus) => {
+    const unsubscribe = dependencies.runtime.subscribeStatus((candidate: RuntimeStatus) => {
       forwardRuntimeStatus(candidate);
     });
-    if (typeof unsubscribeRuntime !== 'function') throw new Error('Invalid runtime subscription');
+    if (typeof unsubscribe !== 'function') throw new Error('Invalid runtime subscription');
+    unsubscribeRuntime = unsubscribe;
   } catch (error) {
-    unsubscribeRuntime?.();
-    removeOwnedHandlers(registeredChannels);
+    try {
+      unsubscribeRuntime?.();
+    } finally {
+      removeOwnedHandlers(registeredChannels);
+    }
     throw error;
   }
 
+  let disposed = false;
   return {
     dependencies,
     dispose: () => {
-      unsubscribeRuntime?.();
+      if (disposed) return;
+      disposed = true;
+      const unsubscribe = unsubscribeRuntime;
       unsubscribeRuntime = undefined;
-      removeOwnedHandlers(registeredChannels);
+      try {
+        unsubscribe?.();
+      } finally {
+        removeOwnedHandlers(registeredChannels);
+      }
     },
   };
 }
