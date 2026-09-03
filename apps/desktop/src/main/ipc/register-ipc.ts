@@ -1,8 +1,8 @@
 import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron';
-import { z } from 'zod';
 import {
   CreateDraftBotInputSchema,
   LocalConfigSchema,
+  RuntimeStatusSchema,
   type BootstrapState,
   type ConnectionTestResult,
   type LocalConfig,
@@ -43,11 +43,6 @@ export type IpcHandlerDependencies = {
 };
 
 export type IpcHandlers = ReturnType<typeof createIpcHandlers>;
-
-const RuntimeStatusSchema = z.object({
-  state: z.enum(['starting', 'ready', 'stopping', 'stopped', 'error']),
-  activeBots: z.number().int().nonnegative(),
-}).strict();
 
 type RegisteredIpcHandlers = {
   dependencies: IpcHandlerDependencies;

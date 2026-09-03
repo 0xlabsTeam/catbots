@@ -1,10 +1,13 @@
 import type { BotSummary } from './bots';
 import type { RedactedLocalConfig } from './config';
+import { z } from 'zod';
 
-export type RuntimeStatus = {
-  state: 'starting' | 'ready' | 'stopping' | 'stopped' | 'error';
-  activeBots: number;
-};
+export const RuntimeStatusSchema = z.object({
+  state: z.enum(['starting', 'ready', 'stopping', 'stopped', 'error']),
+  activeBots: z.number().int().nonnegative(),
+}).strict();
+
+export type RuntimeStatus = z.infer<typeof RuntimeStatusSchema>;
 
 export type BootstrapState =
   | { state: 'first-launch' }

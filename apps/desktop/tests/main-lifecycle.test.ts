@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const electron = vi.hoisted(() => {
-  let beforeQuitListener: (() => void) | undefined;
+  let beforeQuitListener: ((event?: { preventDefault(): void }) => void) | undefined;
   let windowAllClosedListener: (() => void) | undefined;
   const app = {
     enableSandbox: vi.fn(),
     getPath: vi.fn(() => '/test-user-data'),
+    getAppPath: vi.fn(() => '/test-app'),
     getVersion: vi.fn(),
     on: vi.fn((eventName: string, listener: () => void) => {
       if (eventName === 'window-all-closed') {
@@ -14,7 +15,7 @@ const electron = vi.hoisted(() => {
 
       return app;
     }),
-    once: vi.fn((eventName: string, listener: () => void) => {
+    once: vi.fn((eventName: string, listener: (event?: { preventDefault(): void }) => void) => {
       if (eventName === 'before-quit') {
         beforeQuitListener = listener;
       }
@@ -36,6 +37,7 @@ const electron = vi.hoisted(() => {
       windowAllClosedListener = undefined;
       app.enableSandbox.mockClear();
       app.getPath.mockClear();
+      app.getAppPath.mockClear();
       app.on.mockClear();
       app.once.mockClear();
       app.quit.mockClear();
@@ -65,15 +67,62 @@ const applicationDatabase = vi.hoisted(() => {
 
 const mainWindow = vi.hoisted(() => {
   const loadURL = vi.fn();
-  const create = vi.fn(() => ({ focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() }));
+  const first = { focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() };
+  const replacement = { focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL: vi.fn(), show: vi.fn() };
+  const create = vi.fn(() => first);
 
   return {
     create,
+    first,
     loadURL,
+    replacement,
     reset: () => {
-      create.mockClear();
+      create.mockReset();
+      create.mockReturnValue(first);
       loadURL.mockReset();
+      first.focus.mockReset();
+      first.isDestroyed.mockReset();
+      first.isDestroyed.mockReturnValue(false);
+      first.show.mockReset();
+      replacement.focus.mockReset();
+      replacement.isDestroyed.mockReset();
+      replacement.isDestroyed.mockReturnValue(false);
+      replacement.loadURL.mockReset();
+      replacement.show.mockReset();
     },
+  };
+});
+
+const runtime = vi.hoisted(() => {
+  const start = vi.fn();
+  const stop = vi.fn(async () => undefined);
+  const getStatus = vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 }));
+  const subscribeStatus = vi.fn(() => () => undefined);
+  const RuntimeSupervisor = vi.fn(function RuntimeSupervisorMock() {
+    return { getStatus, start, stop, subscribeStatus };
+  });
+
+  return {
+    RuntimeSupervisor,
+    getStatus,
+    start,
+    stop,
+    subscribeStatus,
+    reset: () => {
+      RuntimeSupervisor.mockClear();
+      getStatus.mockClear();
+      start.mockClear();
+      stop.mockClear();
+      subscribeStatus.mockClear();
+    },
+  };
+});
+
+const tray = vi.hoisted(() => {
+  const create = vi.fn();
+  return {
+    create,
+    reset: () => create.mockReset(),
   };
 });
 
@@ -81,6 +130,8 @@ vi.mock('electron', () => electron);
 vi.mock('../src/main/create-window', () => ({ createMainWindow: mainWindow.create }));
 vi.mock('../src/main/register-app-protocol', () => ({ registerAppProtocol: vi.fn() }));
 vi.mock('../src/main/storage/database', () => applicationDatabase);
+vi.mock('../src/main/runtime/runtime-supervisor', () => ({ RuntimeSupervisor: runtime.RuntimeSupervisor }));
+vi.mock('../src/main/tray/create-tray', () => ({ createTray: tray.create }));
 
 describe('main window lifecycle', () => {
   beforeEach(() => {
@@ -90,6 +141,8 @@ describe('main window lifecycle', () => {
     electron.reset();
     applicationDatabase.reset();
     mainWindow.reset();
+    runtime.reset();
+    tray.reset();
   });
 
   it('keeps the application process alive when the last window closes', async () => {
@@ -113,10 +166,44 @@ describe('main window lifecycle', () => {
 
     const listener = electron.getBeforeQuitListener();
     expect(listener).toBeTypeOf('function');
-    listener?.();
+    listener?.({ preventDefault: vi.fn() });
+    await vi.waitFor(() => {
+      expect(electron.app.quit).toHaveBeenCalledOnce();
+    });
 
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(electron.removeHandler).toHaveBeenCalledTimes(9);
+  });
+
+  it('recreates a destroyed window from the tray Open action', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    mainWindow.first.isDestroyed.mockReturnValue(true);
+    mainWindow.create.mockReturnValueOnce(mainWindow.replacement);
+
+    const options = tray.create.mock.calls[0]?.[0] as { showWindow(): Promise<void> };
+    await options.showWindow();
+
+    expect(mainWindow.create).toHaveBeenCalledTimes(2);
+    expect(mainWindow.replacement.loadURL).toHaveBeenCalledWith('catbots://app/index.html');
+    expect(mainWindow.replacement.show).toHaveBeenCalledOnce();
+    expect(mainWindow.replacement.focus).toHaveBeenCalledOnce();
+  });
+
+  it('stops the runtime before quitting from the renderer-independent tray action', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    const options = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
+    await options.quit();
+
+    expect(runtime.start).toHaveBeenCalledOnce();
+    expect(runtime.stop).toHaveBeenCalledOnce();
+    expect(applicationDatabase.close).toHaveBeenCalledOnce();
+    expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(electron.app.quit.mock.invocationCallOrder[0]);
   });
 
   it('closes resources, reports safely, and quits when startup fails', async () => {
@@ -132,6 +219,7 @@ describe('main window lifecycle', () => {
       expect(electron.app.quit).toHaveBeenCalledOnce();
     });
 
+    expect(runtime.stop).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith('Catbots fatal startup error');
     expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
