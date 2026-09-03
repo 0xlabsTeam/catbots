@@ -25,3 +25,6 @@ void app.whenReady().then(async () => {
   const mainWindow = createMainWindow();
   await mainWindow.loadURL(`${appOrigin}/index.html`);
 });
+
+// Subscribing preserves the process after the final window closes; Task 8 adds tray controls.
+app.on('window-all-closed', () => undefined);
