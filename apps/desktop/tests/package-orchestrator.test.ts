@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { createRunner, createSignalController, runForgeWithSignalHandling, runPackaging, type SpawnedChild } from '../../../scripts/package-desktop.mjs';
+import { createRunner, createSignalController, restoreProcessOptions, runForgeWithSignalHandling, runPackaging, type SpawnedChild } from '../../../scripts/package-desktop.mjs';
 
 function fakeChild(): SpawnedChild {
   const child = new EventEmitter() as SpawnedChild;
@@ -21,6 +21,19 @@ describe('package orchestrator runner', () => {
     await run('forge', []);
     expect(calls[0]?.cwd).toMatch(/apps\/desktop$/);
     expect(calls[0]?.cwd).not.toMatch(/catbots-m0$/);
+  });
+
+  it('spawns host restoration in an isolated process group without terminal stdio', async () => {
+    const options: Array<{ detached?: boolean; stdio: string; windowsHide?: boolean }> = [];
+    const run = createRunner((_command: string, _args: string[], spawnOptions: { detached?: boolean; stdio: string; windowsHide?: boolean }) => {
+      options.push(spawnOptions);
+      const child = fakeChild();
+      queueMicrotask(() => child.emit('exit', 0, null));
+      return child;
+    });
+    await run('npm', ['run', 'install'], '/workspace', undefined, restoreProcessOptions('darwin'));
+    expect(options[0]).toMatchObject({ detached: true, stdio: 'ignore' });
+    expect(restoreProcessOptions('win32')).toEqual({ stdio: 'ignore', windowsHide: true });
   });
 });
 
@@ -173,6 +186,39 @@ describe('package lifecycle', () => {
     await restoreStarted;
     const interrupted = listeners.get('SIGTERM')?.();
     finishRestore?.();
+    await interrupted;
+    await running;
+    expect(calls).toEqual(['restore-started', 'restore-finished', 'exit:143']);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('does not terminate an isolated restoration child when a terminal SIGTERM arrives', async () => {
+    const listeners = new Map<string, () => Promise<void>>();
+    const calls: string[] = [];
+    const child = fakeChild();
+    child.kill = (signal: string) => calls.push(`kill:${signal}`);
+    let markRestoreStarted: (() => void) | undefined;
+    const restoreStarted = new Promise<void>((resolveStarted) => { markRestoreStarted = resolveStarted; });
+    const running = runPackaging({
+      rebuildElectron: async () => undefined,
+      forge: async () => undefined,
+      restoreHost: async (onSpawn?: (child: SpawnedChild) => void) => {
+        onSpawn?.(child);
+        calls.push('restore-started');
+        markRestoreStarted?.();
+        await new Promise<void>((resolveExit) => child.once('exit', () => resolveExit()));
+        calls.push('restore-finished');
+      },
+      signalOptions: {
+        on: (signal: string, handler: () => Promise<void>) => listeners.set(signal, handler),
+        off: (signal: string) => listeners.delete(signal),
+        exit: (code: number) => calls.push(`exit:${code}`),
+      },
+    });
+    await restoreStarted;
+    const interrupted = listeners.get('SIGTERM')?.();
+    expect(calls).toEqual(['restore-started']);
+    child.emit('exit', 0, null);
     await interrupted;
     await running;
     expect(calls).toEqual(['restore-started', 'restore-finished', 'exit:143']);

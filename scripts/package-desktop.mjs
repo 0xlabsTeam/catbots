@@ -8,9 +8,9 @@ const [major] = process.versions.node.split('.').map(Number);
 if (major !== 22) throw new Error(`Catbots packaging requires Node.js 22.x; found ${process.versions.node}.`);
 
 export function createRunner(spawnCommand = spawn) {
-  return function run(command, args, cwd = desktop, onSpawn) {
+  return function run(command, args, cwd = desktop, onSpawn, processOptions = {}) {
   return new Promise((resolveRun, reject) => {
-    const child = spawnCommand(command, args, { cwd, env: process.env, stdio: 'inherit' });
+    const child = spawnCommand(command, args, { cwd, env: process.env, stdio: 'inherit', ...processOptions });
     onSpawn?.(child);
     child.once('error', reject);
     child.once('exit', (code, signal) => code === 0 ? resolveRun() : reject(new Error(`${command} failed (${signal ?? code})`)));
@@ -26,12 +26,15 @@ export function waitForChildExit(child) {
 
 export async function runPackaging({ rebuildElectron, forge, restoreHost, signalOptions }) {
   let activeChild;
+  let restorationChild;
   let restorePromise;
-  const restoreOnce = () => restorePromise ??= restoreHost();
+  const restoreOnce = () => restorePromise ??= restoreHost((child) => { restorationChild = child; });
   const controller = signalOptions === undefined ? undefined : createSignalController({
     ...signalOptions,
     terminate: (signal) => activeChild?.kill(signal),
-    waitForExit: () => activeChild === undefined ? Promise.resolve() : waitForChildExit(activeChild),
+    waitForExit: () => activeChild !== undefined
+      ? waitForChildExit(activeChild)
+      : restorationChild === undefined ? Promise.resolve() : waitForChildExit(restorationChild),
     restoreHost: restoreOnce,
   });
   const runStage = async (stage) => {
@@ -114,9 +117,21 @@ export async function runForgeWithSignalHandling({ runCommand, command, args, on
 
 const run = createRunner();
 
+export function restoreProcessOptions(platform = process.platform) {
+  return platform === 'win32'
+    ? { stdio: 'ignore', windowsHide: true }
+    : { detached: true, stdio: 'ignore' };
+}
+
 const nativePath = resolve(root, 'node_modules/better-sqlite3');
-async function restoreHost() {
-  await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'install', '--prefix', nativePath], root);
+async function restoreHost(onSpawn) {
+  await run(
+    process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    ['run', 'install', '--prefix', nativePath],
+    root,
+    onSpawn,
+    restoreProcessOptions(),
+  );
 }
 
 async function main() {
