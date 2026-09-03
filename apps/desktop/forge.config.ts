@@ -25,7 +25,11 @@ const config: ForgeConfig = {
     asar: true,
     extraResource: ['assets/trayTemplate.png'],
     // Keep only Vite output in the app bundle. This also excludes local configuration and planning artifacts.
-    ignore: (file: string) => !file.startsWith('/.vite'),
+    ignore: (file: string) => {
+      // Electron Packager asks about the project root with an empty path; it must never be ignored.
+      if (!file) return false;
+      return !file.startsWith('/.vite');
+    },
   },
   hooks: {
     packageAfterCopy: stageSqliteRuntimeDependencies,

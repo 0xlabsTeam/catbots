@@ -24,6 +24,14 @@
 
 ## Environment findings and remaining acceptance
 
+## Fix round 1 investigation
+
+Reproduction began from a removed `apps/desktop/out` and ran `pnpm --filter @catbots/desktop package`. Without escalation, Electron Packager failed while resolving GitHub; with escalation it reached `Finalizing package`, returned success, ran `postpackage`, and still left no `apps/desktop/out` directory. Forge's debug output proves the resolved output path is `/Users/artizno/0xlabs/catbots/.worktrees/catbots-m0/apps/desktop/out` and its resolved target is `darwin/arm64`.
+
+The prior custom Vite ignore was not equivalent to the installed plugin default: `VitePlugin.resolveForgeConfig` has `if (!file) return false`, while the custom function returned `true` for `''`, excluding the package root. That root condition is corrected. This did **not** produce an artifact, establishing a distinct remaining component-boundary failure after Packager begins finalization. A temporary callback diagnostic did not receive any ignore-path calls before Forge returned, further indicating that failure is downstream or outside the ignore predicate.
+
+The E2E source now uses real Node `ChildProcess` exit events, registers the replacement-window promise before asking Main to open it, removes the nonexistent `app.isQuiting` and `waitForEvent` calls, includes E2E sources in `tsc`, and removes its temporary directory if launch fails. Artifact discovery, hardened signing/data-directory guard, ABI isolation, archive inspection, and successful release-gate execution are not yet completed.
+
 An initial direct Electron smoke launch exposed the host `better-sqlite3` ABI mismatch (Node ABI 147 versus Electron ABI 143). The package script now rebuilds for Electron and restores the host build afterwards; `node` can again open an in-memory SQLite database and the full unit suite passes.
 
 Before the ABI correction, direct source-launch and Playwright runs either exited at database startup or hung before `app.whenReady()` in this host. The remaining packaging issue is distinct: Forge logs successful Vite compilation and `Finalizing package`, then returns no `Catbots.app` or ZIP. Because the app binary is absent, this host cannot complete the rendered First Launch E2E or the positive tray lifecycle run. The automated lifecycle test and guarded native E2E seam are present, but their positive browser execution remains unverified here; do not treat Task 8's tray-loop acceptance as proven by this report.
