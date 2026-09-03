@@ -10,7 +10,7 @@ The renderer is sandboxed and accesses native capabilities only through a small 
 
 ## Run locally
 
-Install Node.js and pnpm, then:
+Install Node.js 22 and pnpm, then:
 
 ```sh
 pnpm install
@@ -28,6 +28,6 @@ pnpm test:e2e
 pnpm make
 ```
 
-`pnpm test:e2e` uses an isolated temporary data directory. `pnpm make` creates the current-platform artifact beneath `apps/desktop/out/make` and checks that local configuration and planning artifacts are absent.
+`pnpm test:e2e` uses a canonical dedicated child of the operating system temporary directory and only enables its native lifecycle seam for development or positively ad-hoc-signed test builds. `pnpm make` creates the current-platform artifact beneath `apps/desktop/out/make`, then inspects the app bundle, `app.asar`, and generated ZIP for local configuration, rollback, planning, review, and visual artifacts.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development conventions and [SECURITY.md](SECURITY.md) for vulnerability reporting.

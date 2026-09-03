@@ -1,9 +1,10 @@
 import { app, dialog, utilityProcess, type BrowserWindow, type Tray } from 'electron';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BotRepository } from './bots/bot-repository';
 import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
-import { isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
+import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
 import { registerIpcHandlers } from './ipc/register-ipc';
 import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
@@ -27,11 +28,21 @@ app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
-    const productionSigned = process.mas === true;
+    const e2eRequested = process.env.NODE_ENV === 'test' && process.env.CATBOTS_E2E_DATA_DIR !== undefined;
+    const unsignedBuild = e2eRequested && isUnsignedDevelopmentBuild({
+      executablePath: process.execPath,
+      isDefaultApp: process.defaultApp === true,
+      isMacAppStore: process.mas === true,
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+    });
+    const e2eAllowed = isUnsignedE2ETestProcess(process.env, unsignedBuild);
     const dataDirectory = await resolveApplicationDataDirectory({
       defaultDirectory: app.getPath('userData'),
       environment: process.env,
-      isProductionSigned: productionSigned,
+      allowE2EDataDirectory: e2eAllowed,
+      protectedDirectories: [app.getAppPath(), app.getPath('userData')],
+      temporaryRoot: tmpdir(),
     });
     const connection = database.start(dataDirectory);
 
@@ -61,7 +72,7 @@ void app.whenReady()
       quit: requestQuit,
       getRuntimeStatus: () => runtime.getStatus(),
     });
-    if (isUnsignedE2ETestProcess(process.env, productionSigned)) {
+    if (e2eAllowed) {
       Object.assign(globalThis, {
         __catbotsE2E: {
           openMainWindow,

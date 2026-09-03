@@ -2,6 +2,8 @@
 
 ## Setup and checks
 
+Release packaging requires Node.js 22.x; the scripts fail fast on other majors.
+
 ```sh
 pnpm install
 pnpm dev
@@ -11,7 +13,7 @@ pnpm test:e2e
 pnpm make
 ```
 
-Run the relevant focused test before changing behavior, then run the full checks before opening a contribution. The Electron E2E suite uses an isolated temporary data directory and must clean up its application process even when a test fails.
+Run the relevant focused test before changing behavior, then run the full checks before opening a contribution. The Electron E2E suite uses an isolated canonical `catbots-e2e-*` child of the OS temporary directory and must clean up its application process even when a test fails. Its native lifecycle seam requires `NODE_ENV=test` plus a positively established development/default or macOS ad-hoc build; production-signed and MAS builds cannot enable it.
 
 ## M0 engineering boundaries
 
@@ -22,4 +24,4 @@ Run the relevant focused test before changing behavior, then run the full checks
 - M0 has no cloud backend, telemetry, trading, Backtest, strategy execution, or Hyperliquid network calls.
 - Preserve close-to-tray behavior; Main owns the native Quit confirmation and orderly runtime shutdown.
 
-The package gate rejects `local.env.yaml`, its rollback copy, and `.superpowers` visual/planning artifacts.
+The package gate recursively rejects `local.env.yaml` and rollback/temp variants, `.superpowers`, and review/visual artifacts from the app bundle, `app.asar`, and generated ZIP.

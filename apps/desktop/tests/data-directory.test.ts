@@ -2,14 +2,25 @@ import { mkdtemp, mkdir, realpath, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveApplicationDataDirectory } from '../src/main/data-directory';
+import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from '../src/main/data-directory';
 
 const temporaryDirectories: string[] = [];
 
 async function createTemporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(await realpath(tmpdir()), 'catbots-data-directory-test-'));
+  const directory = await mkdtemp(join(await realpath(tmpdir()), 'catbots-e2e-'));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+function options(directory: string, overrides: Partial<Parameters<typeof resolveApplicationDataDirectory>[0]> = {}) {
+  return {
+    allowE2EDataDirectory: true,
+    defaultDirectory: '/application/user-data',
+    environment: { CATBOTS_E2E_DATA_DIR: directory, NODE_ENV: 'test' },
+    protectedDirectories: ['/application', '/application/user-data'],
+    temporaryRoot: tmpdir(),
+    ...overrides,
+  };
 }
 
 afterEach(async () => {
@@ -19,52 +30,55 @@ afterEach(async () => {
 });
 
 describe('resolveApplicationDataDirectory', () => {
-  it('uses a resolved, existing E2E directory only in an unsigned test process', async () => {
+  it('uses only a canonical dedicated E2E child below the real OS temporary root', async () => {
     const directory = await createTemporaryDirectory();
-
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: directory, NODE_ENV: 'test' },
-      isProductionSigned: false,
-    })).resolves.toBe(directory);
+    await expect(resolveApplicationDataDirectory(options(directory))).resolves.toBe(directory);
   });
 
-  it('does not honor the E2E override outside an unsigned test process', async () => {
+  it('does not honor the override unless the centralized test/build guard allows it', async () => {
     const directory = await createTemporaryDirectory();
-
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: directory, NODE_ENV: 'production' },
-      isProductionSigned: false,
-    })).resolves.toBe('/application/user-data');
-
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: directory, NODE_ENV: 'test' },
-      isProductionSigned: true,
-    })).resolves.toBe('/application/user-data');
+    await expect(resolveApplicationDataDirectory(options(directory, { allowE2EDataDirectory: false }))).resolves.toBe('/application/user-data');
   });
 
-  it('rejects a relative, missing, or symlinked E2E directory', async () => {
+  it('rejects a relative, missing, symlinked, nested, or non-Catbots temporary directory', async () => {
     const directory = await createTemporaryDirectory();
     const link = join(directory, 'linked-data');
     await mkdir(join(directory, 'target'));
     await symlink(join(directory, 'target'), link);
+    const nonDedicated = await mkdtemp(join(await realpath(tmpdir()), 'another-app-'));
+    temporaryDirectories.push(nonDedicated);
 
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: 'relative-data', NODE_ENV: 'test' },
-      isProductionSigned: false,
-    })).rejects.toThrow('CATBOTS_E2E_DATA_DIR must be an existing resolved absolute directory');
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: join(directory, 'missing'), NODE_ENV: 'test' },
-      isProductionSigned: false,
-    })).rejects.toThrow('CATBOTS_E2E_DATA_DIR must be an existing resolved absolute directory');
-    await expect(resolveApplicationDataDirectory({
-      defaultDirectory: '/application/user-data',
-      environment: { CATBOTS_E2E_DATA_DIR: link, NODE_ENV: 'test' },
-      isProductionSigned: false,
-    })).rejects.toThrow('CATBOTS_E2E_DATA_DIR must be an existing resolved absolute directory');
+    await expect(resolveApplicationDataDirectory(options('relative-data'))).rejects.toThrow('canonical dedicated child');
+    await expect(resolveApplicationDataDirectory(options(join(directory, 'missing')))).rejects.toThrow('canonical dedicated child');
+    await expect(resolveApplicationDataDirectory(options(link))).rejects.toThrow('canonical dedicated child');
+    await expect(resolveApplicationDataDirectory(options(nonDedicated))).rejects.toThrow('canonical dedicated child');
+  });
+});
+
+describe('unsigned E2E build guard', () => {
+  it('accepts development default-app processes and macOS ad-hoc packaged builds only', () => {
+    expect(isUnsignedDevelopmentBuild({ executablePath: '/app', isDefaultApp: true, isMacAppStore: false, isPackaged: false, platform: 'darwin' })).toBe(true);
+    expect(isUnsignedDevelopmentBuild({
+      executablePath: '/app',
+      isDefaultApp: false,
+      isMacAppStore: false,
+      isPackaged: true,
+      platform: 'darwin',
+      inspectMacSignature: () => 'Signature=adhoc\nTeamIdentifier=not set',
+    })).toBe(true);
+  });
+
+  it('rejects a production signature, MAS build, and unproven packaged build', () => {
+    const signed = 'Authority=Developer ID Application\nTeamIdentifier=TEAM';
+    expect(isUnsignedDevelopmentBuild({ executablePath: '/app', isDefaultApp: false, isMacAppStore: false, isPackaged: true, platform: 'darwin', inspectMacSignature: () => signed })).toBe(false);
+    expect(isUnsignedDevelopmentBuild({ executablePath: '/app', isDefaultApp: false, isMacAppStore: true, isPackaged: true, platform: 'darwin', inspectMacSignature: () => 'Signature=adhoc\nTeamIdentifier=not set' })).toBe(false);
+    expect(isUnsignedDevelopmentBuild({ executablePath: '/app', isDefaultApp: false, isMacAppStore: false, isPackaged: true, platform: 'linux' })).toBe(false);
+  });
+
+  it('requires NODE_ENV=test, the isolated data-dir variable, and positive unsigned state', () => {
+    expect(isUnsignedE2ETestProcess({ NODE_ENV: 'test', CATBOTS_E2E_DATA_DIR: '/tmp/catbots-e2e-id' }, true)).toBe(true);
+    expect(isUnsignedE2ETestProcess({ NODE_ENV: 'production', CATBOTS_E2E_DATA_DIR: '/tmp/catbots-e2e-id' }, true)).toBe(false);
+    expect(isUnsignedE2ETestProcess({ NODE_ENV: 'test' }, true)).toBe(false);
+    expect(isUnsignedE2ETestProcess({ NODE_ENV: 'test', CATBOTS_E2E_DATA_DIR: '/tmp/catbots-e2e-id' }, false)).toBe(false);
   });
 });
