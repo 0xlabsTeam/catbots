@@ -136,12 +136,17 @@ const tray = vi.hoisted(() => {
   };
 });
 
+const llmTester = vi.hoisted(() => ({
+  testLlmConnection: vi.fn(async () => ({ ok: true as const, model: 'fixture-model' })),
+}));
+
 vi.mock('electron', () => electron);
 vi.mock('../src/main/create-window', () => ({ createMainWindow: mainWindow.create }));
 vi.mock('../src/main/register-app-protocol', () => ({ registerAppProtocol: vi.fn() }));
 vi.mock('../src/main/storage/database', () => applicationDatabase);
 vi.mock('../src/main/runtime/runtime-supervisor', () => ({ RuntimeSupervisor: runtime.RuntimeSupervisor }));
 vi.mock('../src/main/tray/create-tray', () => ({ createTray: tray.create }));
+vi.mock('../src/main/llm/test-llm-connection', () => llmTester);
 
 describe('main window lifecycle', () => {
   beforeEach(() => {
@@ -153,6 +158,7 @@ describe('main window lifecycle', () => {
     mainWindow.reset();
     runtime.reset();
     tray.reset();
+    llmTester.testLlmConnection.mockClear();
   });
 
   it('keeps the application process alive when the last window closes', async () => {
@@ -164,6 +170,32 @@ describe('main window lifecycle', () => {
     listener?.();
 
     expect(electron.app.quit).not.toHaveBeenCalled();
+  });
+
+  it('injects the Main-owned compatible-provider connection tester', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(tray.create).toHaveBeenCalledOnce());
+    const testConnection = electron.handle.mock.calls.find(([channel]) => channel === 'config:test-llm')?.[1] as
+      | ((event: Electron.IpcMainInvokeEvent, input: unknown) => Promise<unknown>)
+      | undefined;
+    const input = {
+      profile: { name: 'Fixture', telemetry: false },
+      llm: {
+        provider: 'openai-compatible',
+        baseUrl: 'https://provider.example/v1',
+        apiKey: 'main-process-only-secret',
+        model: 'fixture-model',
+      },
+      exchanges: {},
+    };
+
+    await expect(testConnection?.(
+      { senderFrame: { url: 'catbots://app/index.html' } } as Electron.IpcMainInvokeEvent,
+      input,
+    )).resolves.toEqual({ ok: true, model: 'fixture-model' });
+    expect(llmTester.testLlmConnection).toHaveBeenCalledWith(input.llm);
   });
 
   it('keeps native resources alive when the initial renderer load fails and Open retries it', async () => {

@@ -6,6 +6,7 @@ import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
 import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
 import { registerIpcHandlers } from './ipc/register-ipc';
+import { testLlmConnection } from './llm/test-llm-connection';
 import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
 import { ApplicationDatabase } from './storage/database';
@@ -63,6 +64,7 @@ void app.whenReady()
       configRepository,
       botRepository,
       runtime,
+      testLlmConnection: (config) => testLlmConnection(config.llm),
     });
     tray = createTray({
       iconPath: app.isPackaged
