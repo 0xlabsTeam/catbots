@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { BotRepository } from './bots/bot-repository';
 import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
+import { isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
 import { registerIpcHandlers } from './ipc/register-ipc';
 import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
@@ -20,12 +21,18 @@ let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let quitting = false;
+let e2eQuitResponse: number | undefined;
 
 app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
-    const dataDirectory = app.getPath('userData');
+    const productionSigned = process.mas === true;
+    const dataDirectory = await resolveApplicationDataDirectory({
+      defaultDirectory: app.getPath('userData'),
+      environment: process.env,
+      isProductionSigned: productionSigned,
+    });
     const connection = database.start(dataDirectory);
 
     registerAppProtocol({
@@ -47,11 +54,24 @@ void app.whenReady()
       runtime,
     });
     tray = createTray({
-      iconPath: join(app.getAppPath(), 'assets', 'trayTemplate.png'),
+      iconPath: app.isPackaged
+        ? join(process.resourcesPath, 'trayTemplate.png')
+        : join(__dirname, '..', '..', 'assets', 'trayTemplate.png'),
       showWindow: openMainWindow,
       quit: requestQuit,
       getRuntimeStatus: () => runtime.getStatus(),
     });
+    if (isUnsignedE2ETestProcess(process.env, productionSigned)) {
+      Object.assign(globalThis, {
+        __catbotsE2E: {
+          openMainWindow,
+          requestQuit: async (response: number) => {
+            e2eQuitResponse = response;
+            await requestQuit();
+          },
+        },
+      });
+    }
     await openMainWindow();
   })
   .catch(async () => {
@@ -103,16 +123,19 @@ async function requestQuit(): Promise<void> {
   if (quitting) return;
 
   try {
-    const result = await dialog.showMessageBox({
-      type: 'warning',
-      title: 'Quit Catbots?',
-      message: 'Quit Catbots?',
-      detail: 'Catbots will stop its local runtime before quitting.',
-      buttons: ['Quit Catbots', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-    });
+    const result = e2eQuitResponse === undefined
+      ? await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Quit Catbots?',
+        message: 'Quit Catbots?',
+        detail: 'Catbots will stop its local runtime before quitting.',
+        buttons: ['Quit Catbots', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      })
+      : { response: e2eQuitResponse };
+    e2eQuitResponse = undefined;
     if (result.response !== 0) return;
   } catch {
     console.error('Catbots quit confirmation unavailable');

@@ -5,8 +5,11 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:host": "pnpm rebuild better-sqlite3",
+    "package": "pnpm rebuild:native && electron-forge package",
+    "postpackage": "pnpm rebuild:host",
+    "make": "electron-forge make && node ../../scripts/verify-package-contents.mjs out",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -23,6 +23,9 @@ async function stageSqliteRuntimeDependencies(
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: ['assets/trayTemplate.png'],
+    // Keep only Vite output in the app bundle. This also excludes local configuration and planning artifacts.
+    ignore: (file: string) => !file.startsWith('/.vite'),
   },
   hooks: {
     packageAfterCopy: stageSqliteRuntimeDependencies,

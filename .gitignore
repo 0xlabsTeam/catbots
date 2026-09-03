@@ -3,3 +3,7 @@
 node_modules/
 .vite/
 out/
+local.env.yaml
+local.env.yaml.previous
+test-results/
+playwright-report/
