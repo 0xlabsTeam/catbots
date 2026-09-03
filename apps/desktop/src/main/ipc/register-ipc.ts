@@ -1,4 +1,5 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron';
+import { z } from 'zod';
 import {
   CreateDraftBotInputSchema,
   LocalConfigSchema,
@@ -43,6 +44,18 @@ export type IpcHandlerDependencies = {
 
 export type IpcHandlers = ReturnType<typeof createIpcHandlers>;
 
+const RuntimeStatusSchema = z.object({
+  state: z.enum(['starting', 'ready', 'stopping', 'stopped', 'error']),
+  activeBots: z.number().int().nonnegative(),
+}).strict();
+
+type RegisteredIpcHandlers = {
+  dependencies: IpcHandlerDependencies;
+  dispose(): void;
+};
+
+let activeRegistration: RegisteredIpcHandlers | undefined;
+
 export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
   const assertSender = (event: IpcMainInvokeEvent): void => {
     assertTrustedAppSenderUrl(event.senderFrame?.url);
@@ -51,17 +64,31 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
   return {
     getVersion: async (event: IpcMainInvokeEvent): Promise<string> => {
       assertSender(event);
-      return dependencies.app.getVersion();
+      try {
+        const version = dependencies.app.getVersion();
+        if (typeof version !== 'string') throw new Error('Invalid version response');
+        return version;
+      } catch {
+        throw new IpcRequestError('APP_VERSION_FAILED');
+      }
     },
 
     showMainWindow: async (event: IpcMainInvokeEvent): Promise<void> => {
       assertSender(event);
-      await dependencies.app.showMainWindow();
+      try {
+        await dependencies.app.showMainWindow();
+      } catch {
+        throw new IpcRequestError('APP_SHOW_MAIN_WINDOW_FAILED');
+      }
     },
 
     quitApplication: async (event: IpcMainInvokeEvent): Promise<void> => {
       assertSender(event);
-      await dependencies.app.quitApplication();
+      try {
+        await dependencies.app.quitApplication();
+      } catch {
+        throw new IpcRequestError('APP_QUIT_APPLICATION_FAILED');
+      }
     },
 
     getBootstrapState: async (event: IpcMainInvokeEvent): Promise<BootstrapState> => {
@@ -130,12 +157,45 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
 
     getRuntimeStatus: async (event: IpcMainInvokeEvent): Promise<RuntimeStatus> => {
       assertSender(event);
-      return dependencies.runtime.getStatus();
+      try {
+        return RuntimeStatusSchema.parse(dependencies.runtime.getStatus());
+      } catch {
+        throw new IpcRequestError('RUNTIME_STATUS_FAILED');
+      }
     },
   };
 }
 
 export function registerIpcHandlers(dependencies: IpcHandlerDependencies): () => void {
+  const previousRegistration = activeRegistration;
+  if (previousRegistration !== undefined) {
+    activeRegistration = undefined;
+    previousRegistration.dispose();
+  }
+
+  let registration: RegisteredIpcHandlers;
+  try {
+    registration = installIpcHandlers(dependencies);
+  } catch (error) {
+    if (previousRegistration !== undefined) {
+      try {
+        activeRegistration = installIpcHandlers(previousRegistration.dependencies);
+      } catch {
+        activeRegistration = undefined;
+      }
+    }
+    throw error;
+  }
+  activeRegistration = registration;
+
+  return () => {
+    if (activeRegistration !== registration) return;
+    activeRegistration = undefined;
+    registration.dispose();
+  };
+}
+
+function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpcHandlers {
   const handlers = createIpcHandlers(dependencies);
   const channels: ReadonlyArray<readonly [string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown]> = [
     ['app:get-version', handlers.getVersion],
@@ -148,14 +208,51 @@ export function registerIpcHandlers(dependencies: IpcHandlerDependencies): () =>
     ['bots:create-draft', handlers.createDraftBot],
     ['runtime:get-status', handlers.getRuntimeStatus],
   ];
+  const registeredChannels: string[] = [];
+  let unsubscribeRuntime: (() => void) | undefined;
 
-  for (const [channel, handler] of channels) {
-    ipcMain.handle(channel, handler);
+  try {
+    for (const [channel, handler] of channels) {
+      ipcMain.handle(channel, handler);
+      registeredChannels.push(channel);
+    }
+    unsubscribeRuntime = dependencies.runtime.subscribeStatus((candidate: RuntimeStatus) => {
+      forwardRuntimeStatus(candidate);
+    });
+    if (typeof unsubscribeRuntime !== 'function') throw new Error('Invalid runtime subscription');
+  } catch (error) {
+    unsubscribeRuntime?.();
+    removeOwnedHandlers(registeredChannels);
+    throw error;
   }
 
-  return () => {
-    for (const [channel] of channels) ipcMain.removeHandler(channel);
+  return {
+    dependencies,
+    dispose: () => {
+      unsubscribeRuntime?.();
+      unsubscribeRuntime = undefined;
+      removeOwnedHandlers(registeredChannels);
+    },
   };
+}
+
+function removeOwnedHandlers(channels: readonly string[]): void {
+  for (const channel of [...channels].reverse()) ipcMain.removeHandler(channel);
+}
+
+function forwardRuntimeStatus(candidate: unknown): void {
+  const parsed = RuntimeStatusSchema.safeParse(candidate);
+  if (!parsed.success) return;
+
+  for (const target of webContents.getAllWebContents()) {
+    try {
+      if (target.isDestroyed()) continue;
+      assertTrustedAppSenderUrl(target.getURL());
+      target.send('runtime:status', parsed.data);
+    } catch {
+      // A destroyed, untrusted, or failed renderer target must not affect other targets.
+    }
+  }
 }
 
 function parseRequest<T>(schema: { safeParse(input: unknown): { success: boolean; data?: T } }, input: unknown): T {

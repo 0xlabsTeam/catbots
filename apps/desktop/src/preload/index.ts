@@ -26,7 +26,9 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     getStatus: () => ipcRenderer.invoke('runtime:get-status'),
     subscribeStatus: (listener: (status: RuntimeStatus) => void): (() => void) => {
       runtimeListeners.add(listener);
-      void ipcRenderer.invoke('runtime:get-status').then((status: RuntimeStatus) => listener(status)).catch(() => undefined);
+      void ipcRenderer.invoke('runtime:get-status').then((status: RuntimeStatus) => {
+        if (runtimeListeners.has(listener)) listener(status);
+      }).catch(() => undefined);
       return () => runtimeListeners.delete(listener);
     },
   },

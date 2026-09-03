@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { LocalConfigSchema } from '@catbots/contracts';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LocalConfigSchema, type RuntimeStatus } from '@catbots/contracts';
 import { buildWindowOptions } from '../src/main/create-window';
 import { denyUnexpectedNavigation } from '../src/main/create-window';
 import { assertTrustedAppSenderUrl } from '../src/main/ipc-security';
@@ -12,18 +12,28 @@ const electronBridge = vi.hoisted(() => ({
   invoke: vi.fn(),
   on: vi.fn(),
   removeHandler: vi.fn(),
+  getAllWebContents: vi.fn<() => unknown[]>(() => []),
 }));
 
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: electronBridge.exposeInMainWorld },
   ipcMain: { handle: electronBridge.handle, removeHandler: electronBridge.removeHandler },
   ipcRenderer: { invoke: electronBridge.invoke, on: electronBridge.on },
+  webContents: { getAllWebContents: electronBridge.getAllWebContents },
   net: { fetch: vi.fn() },
   protocol: {
     handle: vi.fn(),
     registerSchemesAsPrivileged: vi.fn(),
   },
 }));
+
+beforeEach(() => {
+  electronBridge.handle.mockReset();
+  electronBridge.removeHandler.mockReset();
+  electronBridge.invoke.mockReset();
+  electronBridge.getAllWebContents.mockReset();
+  electronBridge.getAllWebContents.mockReturnValue([]);
+});
 
 describe('buildWindowOptions', () => {
   it('isolates and sandboxes the renderer', () => {
@@ -56,6 +66,18 @@ describe('application origin boundaries', () => {
 
   it('rejects an IPC sender outside the application entry document', () => {
     expect(() => assertTrustedAppSenderUrl('catbots://app/settings.html')).toThrow('Untrusted IPC sender');
+  });
+
+  it.each([
+    'catbots://app/%69ndex.html',
+    'catbots://app/index.html?next=settings',
+    'catbots://app/index.html#settings',
+    'catbots://app:443/index.html',
+    'catbots://user@app/index.html',
+    'CATBOTS://app/index.html',
+    undefined,
+  ])('rejects non-canonical IPC sender spelling %s', (senderUrl) => {
+    expect(() => assertTrustedAppSenderUrl(senderUrl)).toThrow('IPC_SENDER_NOT_ALLOWED');
   });
 });
 
@@ -93,7 +115,7 @@ function createDependencies() {
     },
     runtime: {
       getStatus: vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 })),
-      subscribeStatus: vi.fn(() => () => undefined),
+      subscribeStatus: vi.fn((_listener: (status: RuntimeStatus) => void) => () => undefined),
     },
     testLlmConnection: vi.fn(async () => ({ ok: true as const, model: 'provider/model' })),
   };
@@ -172,6 +194,50 @@ describe('validated IPC handlers', () => {
     expect(dependencies.runtime.getStatus).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['getVersion', 'APP_VERSION_FAILED'],
+    ['showMainWindow', 'APP_SHOW_MAIN_WINDOW_FAILED'],
+    ['quitApplication', 'APP_QUIT_APPLICATION_FAILED'],
+    ['getRuntimeStatus', 'RUNTIME_STATUS_FAILED'],
+  ] as const)('redacts dependency failures from %s', async (handlerName, code) => {
+    const secret = `sentinel-secret-${handlerName}`;
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+
+    if (handlerName === 'getVersion') dependencies.app.getVersion.mockImplementationOnce(() => { throw new Error(secret); });
+    if (handlerName === 'showMainWindow') dependencies.app.showMainWindow.mockImplementationOnce(() => { throw new Error(secret); });
+    if (handlerName === 'quitApplication') dependencies.app.quitApplication.mockImplementationOnce(() => { throw new Error(secret); });
+    if (handlerName === 'getRuntimeStatus') dependencies.runtime.getStatus.mockImplementationOnce(() => { throw new Error(secret); });
+
+    const request = handlerName === 'getVersion'
+      ? handlers.getVersion(localEvent)
+      : handlerName === 'showMainWindow'
+        ? handlers.showMainWindow(localEvent)
+        : handlerName === 'quitApplication'
+          ? handlers.quitApplication(localEvent)
+          : handlers.getRuntimeStatus(localEvent);
+    const error = await request.catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as { code?: unknown }).code).toBe(code);
+    expect(String(error)).not.toContain(secret);
+  });
+
+  it('returns the fixed no-network M0 connection-test result without an injected tester', async () => {
+    const dependencies = createDependencies();
+    const { testLlmConnection: _testLlmConnection, ...withoutTester } = dependencies;
+    const handlers = createIpcHandlers(withoutTester);
+
+    await expect(handlers.testLlmConnection(localEvent, validConfig)).resolves.toEqual({
+      ok: false,
+      code: 'LLM_CONNECTION_TEST_UNAVAILABLE',
+      message: 'LLM connection testing is unavailable in M0.',
+    });
+    expect(dependencies.configRepository.getRedacted).not.toHaveBeenCalled();
+    expect(dependencies.configRepository.save).not.toHaveBeenCalled();
+    expect(dependencies.botRepository.list).not.toHaveBeenCalled();
+  });
+
   it('registers only the named typed IPC channels', () => {
     const remove = registerIpcHandlers(createDependencies());
 
@@ -190,6 +256,90 @@ describe('validated IPC handlers', () => {
     remove();
     expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
   });
+
+  it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
+    let pushStatus: ((status: unknown) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const dependencies = createDependencies();
+    dependencies.runtime.subscribeStatus.mockImplementation((listener: (status: RuntimeStatus) => void) => {
+      pushStatus = listener as (status: unknown) => void;
+      return unsubscribe;
+    });
+    const trustedTarget = {
+      getURL: vi.fn(() => 'catbots://app/index.html'),
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    };
+    const destroyedTarget = {
+      getURL: vi.fn(() => 'catbots://app/index.html'),
+      isDestroyed: vi.fn(() => true),
+      send: vi.fn(),
+    };
+    const untrustedTarget = {
+      getURL: vi.fn(() => 'https://attacker.example/'),
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    };
+    electronBridge.getAllWebContents.mockReturnValue([trustedTarget, destroyedTarget, untrustedTarget]);
+
+    const remove = registerIpcHandlers(dependencies);
+    pushStatus?.({ state: 'ready', activeBots: 0 });
+    pushStatus?.({ state: 'ready', activeBots: -1 });
+
+    expect(trustedTarget.send).toHaveBeenCalledExactlyOnceWith('runtime:status', { state: 'ready', activeBots: 0 });
+    expect(destroyedTarget.send).not.toHaveBeenCalled();
+    expect(untrustedTarget.send).not.toHaveBeenCalled();
+
+    remove();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('replaces only its owned registration and makes stale disposers harmless', () => {
+    const firstDependencies = createDependencies();
+    const secondDependencies = createDependencies();
+
+    const removeFirst = registerIpcHandlers(firstDependencies);
+    const removeSecond = registerIpcHandlers(secondDependencies);
+    removeFirst();
+
+    expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    removeSecond();
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+  });
+
+  it('restores the previous owned registration after a replacement failure', () => {
+    const firstDependencies = createDependencies();
+    const secondDependencies = createDependencies();
+    const thirdDependencies = createDependencies();
+    registerIpcHandlers(firstDependencies);
+    let configSaveAttempts = 0;
+    electronBridge.handle.mockImplementation((channel: string) => {
+      if (channel === 'config:save' && configSaveAttempts++ === 0) {
+        throw new Error('replacement registration failed');
+      }
+    });
+
+    expect(() => registerIpcHandlers(secondDependencies)).toThrow('replacement registration failed');
+    expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledTimes(2);
+
+    const removeThird = registerIpcHandlers(thirdDependencies);
+    removeThird();
+  });
+
+  it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
+    electronBridge.handle.mockImplementation((channel: string) => {
+      if (channel === 'config:save') throw new Error('external handler already registered');
+    });
+
+    expect(() => registerIpcHandlers(createDependencies())).toThrow('external handler already registered');
+    expect(electronBridge.removeHandler.mock.calls.map(([channel]) => channel)).toEqual([
+      'config:get-bootstrap-state',
+      'app:quit-application',
+      'app:show-main-window',
+      'app:get-version',
+    ]);
+  });
 });
 
 describe('preload bridge', () => {
@@ -207,5 +357,24 @@ describe('preload bridge', () => {
     expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'runtime']);
     expect(JSON.stringify(api)).not.toContain('ipcRenderer');
     expect(JSON.stringify(api)).not.toContain('process');
+  });
+
+  it('does not call a listener after it unsubscribes before the initial status resolves', async () => {
+    await import('../src/preload/index');
+    const [, api] = electronBridge.exposeInMainWorld.mock.calls[0] as [string, {
+      runtime: { subscribeStatus(listener: (status: { state: string; activeBots: number }) => void): () => void };
+    }];
+    let resolveStatus: ((status: { state: string; activeBots: number }) => void) | undefined;
+    electronBridge.invoke.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveStatus = resolve;
+    }));
+    const listener = vi.fn();
+
+    const unsubscribe = api.runtime.subscribeStatus(listener);
+    unsubscribe();
+    resolveStatus?.({ state: 'stopped', activeBots: 0 });
+    await Promise.resolve();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

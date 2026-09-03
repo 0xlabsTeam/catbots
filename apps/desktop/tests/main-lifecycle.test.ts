@@ -24,11 +24,13 @@ const electron = vi.hoisted(() => {
     quit: vi.fn(),
     whenReady: vi.fn(() => new Promise<void>(() => undefined)),
   };
+  const removeHandler = vi.fn();
 
   return {
     app,
     getBeforeQuitListener: () => beforeQuitListener,
     getWindowAllClosedListener: () => windowAllClosedListener,
+    removeHandler,
     reset: () => {
       beforeQuitListener = undefined;
       windowAllClosedListener = undefined;
@@ -38,8 +40,9 @@ const electron = vi.hoisted(() => {
       app.once.mockClear();
       app.quit.mockClear();
       app.whenReady.mockClear();
+      removeHandler.mockClear();
     },
-    ipcMain: { handle: vi.fn() },
+    ipcMain: { handle: vi.fn(), removeHandler },
   };
 });
 
@@ -60,8 +63,22 @@ const applicationDatabase = vi.hoisted(() => {
   };
 });
 
+const mainWindow = vi.hoisted(() => {
+  const loadURL = vi.fn();
+  const create = vi.fn(() => ({ focus: vi.fn(), isDestroyed: vi.fn(() => false), loadURL, show: vi.fn() }));
+
+  return {
+    create,
+    loadURL,
+    reset: () => {
+      create.mockClear();
+      loadURL.mockReset();
+    },
+  };
+});
+
 vi.mock('electron', () => electron);
-vi.mock('../src/main/create-window', () => ({ createMainWindow: vi.fn(() => ({ loadURL: vi.fn() })) }));
+vi.mock('../src/main/create-window', () => ({ createMainWindow: mainWindow.create }));
 vi.mock('../src/main/register-app-protocol', () => ({ registerAppProtocol: vi.fn() }));
 vi.mock('../src/main/storage/database', () => applicationDatabase);
 
@@ -72,6 +89,7 @@ describe('main window lifecycle', () => {
     vi.stubGlobal('MAIN_WINDOW_VITE_NAME', 'main_window');
     electron.reset();
     applicationDatabase.reset();
+    mainWindow.reset();
   });
 
   it('keeps the application process alive when the last window closes', async () => {
@@ -98,6 +116,7 @@ describe('main window lifecycle', () => {
     listener?.();
 
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
+    expect(electron.removeHandler).toHaveBeenCalledTimes(9);
   });
 
   it('closes resources, reports safely, and quits when startup fails', async () => {
@@ -115,6 +134,21 @@ describe('main window lifecycle', () => {
 
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith('Catbots fatal startup error');
+    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
+  });
+
+  it('disposes owned IPC handlers when startup fails after registration', async () => {
+    const secret = 'late startup failure containing a secret';
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mainWindow.loadURL.mockRejectedValueOnce(new Error(secret));
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => {
+      expect(electron.app.quit).toHaveBeenCalledOnce();
+    });
+
+    expect(electron.removeHandler).toHaveBeenCalledTimes(9);
     expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
   });
 });

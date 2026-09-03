@@ -12,6 +12,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 const appOrigin = 'catbots://app';
 const database = new ApplicationDatabase();
+let disposeIpcHandlers: (() => void) | undefined;
 const stoppedRuntime = {
   getStatus: () => ({ state: 'stopped' as const, activeBots: 0 }),
   subscribeStatus: () => () => undefined,
@@ -32,7 +33,7 @@ void app.whenReady()
     const mainWindow = createMainWindow();
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
-    registerIpcHandlers({
+    disposeIpcHandlers = registerIpcHandlers({
       app: {
         getVersion: () => app.getVersion(),
         showMainWindow: () => {
@@ -50,14 +51,26 @@ void app.whenReady()
     await mainWindow.loadURL(`${appOrigin}/index.html`);
   })
   .catch(() => {
+    disposeRegisteredIpcHandlers();
     database.close();
     console.error('Catbots fatal startup error');
     app.quit();
   });
 
 app.once('before-quit', () => {
+  disposeRegisteredIpcHandlers();
   database.close();
 });
 
 // Subscribing preserves the process after the final window closes; Task 8 adds tray controls.
 app.on('window-all-closed', () => undefined);
+
+function disposeRegisteredIpcHandlers(): void {
+  const dispose = disposeIpcHandlers;
+  disposeIpcHandlers = undefined;
+  try {
+    dispose?.();
+  } catch {
+    // Shutdown must continue even if Electron has already removed an IPC handler.
+  }
+}
