@@ -41,3 +41,11 @@ Runtime-worker root cause fix: a dedicated `vite.runtime-worker.config.ts` now f
 An initial direct Electron smoke launch exposed the host `better-sqlite3` ABI mismatch (Node ABI 147 versus Electron ABI 143). The package script now rebuilds for Electron and restores the host build afterwards; `node` can again open an in-memory SQLite database and the full unit suite passes.
 
 Before the ABI correction, direct source-launch and Playwright runs either exited at database startup or hung before `app.whenReady()` in this host. The remaining packaging issue is distinct: Forge logs successful Vite compilation and `Finalizing package`, then returns no `Catbots.app` or ZIP. Because the app binary is absent, this host cannot complete the rendered First Launch E2E or the positive tray lifecycle run. The automated lifecycle test and guarded native E2E seam are present, but their positive browser execution remains unverified here; do not treat Task 8's tray-loop acceptance as proven by this report.
+
+## Orchestrator signal and type boundary
+
+The packaging module now has a narrow colocated TypeScript declaration rather than suppressing JavaScript-module errors. The declaration exposes only the command runner, child-process, signal-controller, and lifecycle seams; test callbacks are explicitly typed and `tsconfig` remains strict.
+
+The runner now surfaces the actual spawned Forge child to a signal controller. On `SIGINT` or `SIGTERM`, the controller registers its exit wait before forwarding the signal, waits for that child to exit, restores the host ABI once, removes both listeners, and exits with 130 or 143. If restoration fails during interruption, it emits only the fixed safe diagnostic `Catbots host ABI restoration failed after interruption.` and exits nonzero. The focused injected-child test verifies this wiring; its fake child receives `SIGINT`, restoration does not begin until its exit event, and listeners are removed.
+
+Validation under Node 22: `pnpm --filter @catbots/desktop test` passed (13 files, 118 tests) and `pnpm typecheck` passed. Package/direct-launch/E2E reruns remain next and are not claimed here.
