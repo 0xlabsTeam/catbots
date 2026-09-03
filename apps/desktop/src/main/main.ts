@@ -1,6 +1,7 @@
 import { app, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { createMainWindow } from './create-window';
+import { assertTrustedAppSenderUrl } from './ipc-security';
 import { registerAppProtocol } from './register-app-protocol';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -17,19 +18,10 @@ void app.whenReady().then(async () => {
   });
 
   ipcMain.handle('app:get-version', (event) => {
-    if (event.senderFrame?.url !== `${appOrigin}/index.html`) {
-      throw new Error('Untrusted IPC sender');
-    }
-
+    assertTrustedAppSenderUrl(event.senderFrame?.url);
     return app.getVersion();
   });
 
-  const mainWindow = createMainWindow(join(__dirname, 'index.js'));
+  const mainWindow = createMainWindow();
   await mainWindow.loadURL(`${appOrigin}/index.html`);
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
 });

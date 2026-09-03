@@ -69,7 +69,7 @@ export function registerAppProtocol(options: AppProtocolOptions): void {
   });
 }
 
-function getSafeRelativePath(requestUrl: string): string | undefined {
+export function getSafeRelativePath(requestUrl: string): string | undefined {
   let request: URL;
   try {
     request = new URL(requestUrl);
@@ -77,7 +77,7 @@ function getSafeRelativePath(requestUrl: string): string | undefined {
     return undefined;
   }
 
-  if (request.protocol !== 'catbots:' || request.hostname !== 'app') {
+  if (request.protocol !== 'catbots:' || request.host !== 'app') {
     return undefined;
   }
 
