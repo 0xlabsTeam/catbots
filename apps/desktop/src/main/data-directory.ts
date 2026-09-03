@@ -19,14 +19,33 @@ export type UnsignedBuildOptions = {
   inspectMacSignature?: (executablePath: string) => string | undefined;
 };
 
-const invalidTestDirectoryMessage = 'CATBOTS_E2E_DATA_DIR must be a canonical dedicated child of the OS temporary directory';
-const e2eDirectoryPrefix = 'catbots-e2e-';
+export type MacSignatureCommandResult = {
+  error?: Error;
+  status: number | null;
+  stderr: string;
+  stdout: string;
+};
 
-export function inspectMacSignature(executablePath: string): string | undefined {
-  const result = spawnSync('codesign', ['-dv', '--verbose=4', executablePath], {
+export type MacSignatureCommand = (command: string, args: readonly string[]) => MacSignatureCommandResult;
+
+const invalidTestDirectoryMessage = 'CATBOTS_E2E_DATA_DIR must be a canonical dedicated child of the OS temporary directory';
+const e2eDirectoryPattern = /^catbots-e2e-[A-Za-z0-9]{6,}$/;
+
+function runMacSignatureCommand(command: string, args: readonly string[]): MacSignatureCommandResult {
+  const result = spawnSync(command, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  return {
+    error: result.error,
+    status: result.status,
+    stderr: result.stderr,
+    stdout: result.stdout,
+  };
+}
+
+export function inspectMacSignature(executablePath: string, runCommand: MacSignatureCommand = runMacSignatureCommand): string | undefined {
+  const result = runCommand('/usr/bin/codesign', ['-dv', '--verbose=4', executablePath]);
   if (result.error !== undefined || result.status !== 0) return undefined;
   return `${result.stdout}${result.stderr}`;
 }
@@ -58,6 +77,13 @@ async function ensureNotSymlink(directory: string): Promise<void> {
   if (!status.isDirectory() || status.isSymbolicLink()) throw new Error(invalidTestDirectoryMessage);
 }
 
+async function canonicalProtectedDirectory(directory: string): Promise<string> {
+  const status = await lstat(directory);
+  const canonicalDirectory = await realpath(directory);
+  if (status.isSymbolicLink() || canonicalDirectory !== directory) throw new Error(invalidTestDirectoryMessage);
+  return canonicalDirectory;
+}
+
 export async function resolveApplicationDataDirectory(options: DataDirectoryOptions): Promise<string> {
   const requested = options.environment.CATBOTS_E2E_DATA_DIR;
   if (!options.allowE2EDataDirectory || requested === undefined) return options.defaultDirectory;
@@ -66,13 +92,14 @@ export async function resolveApplicationDataDirectory(options: DataDirectoryOpti
   try {
     const canonicalRoot = await realpath(options.temporaryRoot);
     const canonicalDirectory = await realpath(requested);
-    if (canonicalDirectory !== requested || dirname(canonicalDirectory) !== canonicalRoot || !basename(canonicalDirectory).startsWith(e2eDirectoryPrefix)) {
+    if (canonicalDirectory !== requested || dirname(canonicalDirectory) !== canonicalRoot || !e2eDirectoryPattern.test(basename(canonicalDirectory))) {
       throw new Error(invalidTestDirectoryMessage);
     }
     await ensureNotSymlink(canonicalRoot);
     await ensureNotSymlink(canonicalDirectory);
     for (const protectedDirectory of options.protectedDirectories) {
-      if (isInside(canonicalDirectory, resolve(protectedDirectory)) || isInside(resolve(protectedDirectory), canonicalDirectory)) {
+      const canonicalProtected = await canonicalProtectedDirectory(resolve(protectedDirectory));
+      if (isInside(canonicalDirectory, canonicalProtected) || isInside(canonicalProtected, canonicalDirectory)) {
         throw new Error(invalidTestDirectoryMessage);
       }
     }

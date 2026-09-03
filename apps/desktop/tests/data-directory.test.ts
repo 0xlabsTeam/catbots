@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, realpath, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from '../src/main/data-directory';
+import { inspectMacSignature, isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from '../src/main/data-directory';
 
 const temporaryDirectories: string[] = [];
 
@@ -17,7 +17,7 @@ function options(directory: string, overrides: Partial<Parameters<typeof resolve
     allowE2EDataDirectory: true,
     defaultDirectory: '/application/user-data',
     environment: { CATBOTS_E2E_DATA_DIR: directory, NODE_ENV: 'test' },
-    protectedDirectories: ['/application', '/application/user-data'],
+    protectedDirectories: [],
     temporaryRoot: tmpdir(),
     ...overrides,
   };
@@ -53,9 +53,33 @@ describe('resolveApplicationDataDirectory', () => {
     await expect(resolveApplicationDataDirectory(options(link))).rejects.toThrow('canonical dedicated child');
     await expect(resolveApplicationDataDirectory(options(nonDedicated))).rejects.toThrow('canonical dedicated child');
   });
+
+  it('rejects a weak/static suffix and protected directory symlink aliases', async () => {
+    const root = await createTemporaryDirectory();
+    const weakDirectory = join(root, 'catbots-e2e-fixed');
+    await mkdir(weakDirectory);
+    await expect(resolveApplicationDataDirectory(options(weakDirectory, { temporaryRoot: root }))).rejects.toThrow('canonical dedicated child');
+
+    const directory = await createTemporaryDirectory();
+    const protectedTarget = join(root, 'protected');
+    const protectedAlias = join(root, 'protected-alias');
+    await mkdir(protectedTarget);
+    await symlink(protectedTarget, protectedAlias);
+    await expect(resolveApplicationDataDirectory(options(directory, { protectedDirectories: [protectedAlias] }))).rejects.toThrow('canonical dedicated child');
+  });
 });
 
 describe('unsigned E2E build guard', () => {
+  it('uses the absolute macOS signer path even when PATH could provide a fake codesign', () => {
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const signature = inspectMacSignature('/fake/executable', (command: string, args: readonly string[]) => {
+      calls.push({ command, args });
+      return { status: 0, stderr: 'Signature=adhoc\nTeamIdentifier=not set', stdout: '' };
+    });
+    expect(signature).toContain('Signature=adhoc');
+    expect(calls).toEqual([{ command: '/usr/bin/codesign', args: ['-dv', '--verbose=4', '/fake/executable'] }]);
+  });
+
   it('accepts development default-app processes and macOS ad-hoc packaged builds only', () => {
     expect(isUnsignedDevelopmentBuild({ executablePath: '/app', isDefaultApp: true, isMacAppStore: false, isPackaged: false, platform: 'darwin' })).toBe(true);
     expect(isUnsignedDevelopmentBuild({
