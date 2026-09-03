@@ -1,0 +1,38 @@
+{
+  "name": "@catbots/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cloudflare/kumo": "^2.13.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "better-sqlite3": "^12.6.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-vite": "^7.10.2",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^40.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

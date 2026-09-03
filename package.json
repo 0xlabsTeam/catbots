@@ -1,0 +1,18 @@
+{
+  "name": "catbots",
+  "private": true,
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "dev": "pnpm --filter @catbots/desktop start",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "make": "pnpm --filter @catbots/desktop make"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild"
+    ]
+  }
+}
