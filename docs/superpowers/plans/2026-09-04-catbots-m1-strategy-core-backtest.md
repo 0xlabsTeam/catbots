@@ -253,21 +253,21 @@ git commit -m "feat: validate TCA strategy graphs"
 - Produces `EvaluationContext` with evaluation timestamp, trigger event, market, indicators, marketplace data, positions/account, and bot state.
 - Produces `ConditionResult = { value: true | false | 'unknown'; reason: ConditionReason; inputs: ReferencedInput[] }`.
 
-- [ ] **Step 1: Write failing truth-table and reference tests**
+- [x] **Step 1: Write failing truth-table and reference tests**
 
 Cover every comparator and every combiner over true/false/unknown, nested combinations, `combine.not` cardinality, `combine.at_least` certainty bounds, missing references, stale values, unauthorized values, invalid values, and immutable context snapshots.
 
-- [ ] **Step 2: Confirm failure**
+- [x] **Step 2: Confirm failure**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- condition-evaluator.test.ts`
 
 Expected: FAIL because context and evaluator modules are unavailable.
 
-- [ ] **Step 3: Implement explicit reference resolution and truth tables**
+- [x] **Step 3: Implement explicit reference resolution and truth tables**
 
 Never substitute data sources. Resolve a configured reference to either one provenance-bearing value or an `unknown` reason code. Short-circuit combiners only when the final result is certain, while preserving a result record for every visited Condition.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- condition-evaluator.test.ts`
 
@@ -277,7 +277,7 @@ Run: `pnpm --filter @catbots/strategy-runtime typecheck`
 
 Expected: exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/strategy-runtime/src
