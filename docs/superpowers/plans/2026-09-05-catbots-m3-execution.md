@@ -445,7 +445,7 @@ Document Paper start/stop, Hyperliquid testnet Agent/API Wallet setup, risk limi
 
 Change each completed checkbox in this plan and M3 in the delivery roadmap only when its corresponding command has fresh exit code 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add README.md docs/superpowers/plans
