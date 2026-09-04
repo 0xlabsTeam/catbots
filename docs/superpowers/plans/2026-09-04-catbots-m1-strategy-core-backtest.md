@@ -303,17 +303,17 @@ git commit -m "feat: evaluate three-valued conditions"
 - Produces `evaluateTrigger(compiledStrategy, triggerInput, context): RuntimeEvaluation`.
 - Runtime output includes proposed normalized effects and monotonically sequenced audit events.
 
-- [ ] **Step 1: Write failing trigger tests**
+- [x] **Step 1: Write failing trigger tests**
 
 Cover UTC alignment, one-minute lower bound, inclusive/exclusive range boundaries, event type/filter matching, event deduplication key derivation, and stable ordering when timestamps match.
 
-- [ ] **Step 2: Implement trigger activation functions and verify**
+- [x] **Step 2: Implement trigger activation functions and verify**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- triggers.test.ts`
 
 Expected: PASS after implementation.
 
-- [ ] **Step 3: Write failing runtime/audit tests**
+- [x] **Step 3: Write failing runtime/audit tests**
 
 Assert contiguous sequence numbers and the required Backtest subset:
 
@@ -321,11 +321,11 @@ Assert contiguous sequence numbers and the required Backtest subset:
 
 Also cover `unknown` suppression, false branches, two Actions controlled by one root, sanitized inputs, deterministic trace/idempotency IDs, and exactly one terminal event.
 
-- [ ] **Step 4: Implement runtime evaluation and trace builder**
+- [x] **Step 4: Implement runtime evaluation and trace builder**
 
 Runtime accepts IDs and time from injected deterministic services. It does not call `Date.now`, `Math.random`, storage, network, or an execution venue. Backtest uses a simulation approval in place of the M3 Risk Engine and labels it as simulation metadata rather than a live risk approval.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- triggers.test.ts runtime.test.ts`
 
