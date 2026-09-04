@@ -17,6 +17,9 @@ importers:
       '@catbots/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@catbots/strategy-runtime':
+        specifier: workspace:*
+        version: link:../../packages/strategy-runtime
       '@cloudflare/kumo':
         specifier: ^2.13.0
         version: 2.13.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.2.18)(date-fns@4.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.5.4)

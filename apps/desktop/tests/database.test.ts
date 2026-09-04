@@ -42,14 +42,27 @@ describe('openDatabase', () => {
 });
 
 describe('migrateDatabase', () => {
-  it('records schema version 1 once when called repeatedly', () => {
+  it('applies every schema migration once when called repeatedly', () => {
     const db = trackDatabase(openDatabase(':memory:'));
 
     migrateDatabase(db);
     migrateDatabase(db);
 
-    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }]);
-    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bots'").all()).toEqual([{ name: 'bots' }]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
+      { version: 1 },
+      { version: 2 },
+    ]);
+    expect(db.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name IN ('bots', 'strategy_revisions', 'chat_messages', 'backtest_runs', 'backtest_traces')
+      ORDER BY name
+    `).all()).toEqual([
+      { name: 'backtest_runs' },
+      { name: 'backtest_traces' },
+      { name: 'bots' },
+      { name: 'chat_messages' },
+      { name: 'strategy_revisions' },
+    ]);
   });
 
   it('rolls back an incomplete migration when schema creation fails', () => {
@@ -58,6 +71,28 @@ describe('migrateDatabase', () => {
 
     expect(() => migrateDatabase(db)).toThrow(/bots/i);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").all()).toEqual([]);
+  });
+
+  it('upgrades an existing version 1 database without recreating bots', () => {
+    const db = trackDatabase(openDatabase(':memory:'));
+    db.exec(`
+      CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+      CREATE TABLE bots (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        market TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO schema_migrations VALUES (1, '2026-09-01T00:00:00.000Z');
+      INSERT INTO bots VALUES ('bot-1', 'Existing bot', 'BTC-PERP', 'draft', '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z');
+    `);
+
+    migrateDatabase(db);
+
+    expect(db.prepare('SELECT id, name FROM bots').all()).toEqual([{ id: 'bot-1', name: 'Existing bot' }]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }]);
   });
 });
 
@@ -69,7 +104,10 @@ describe('ApplicationDatabase', () => {
     const db = lifecycle.start(dataDirectory);
 
     expect(db.name).toBe(join(dataDirectory, 'catbots.db'));
-    expect(db.prepare('SELECT version FROM schema_migrations').all()).toEqual([{ version: 1 }]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
+      { version: 1 },
+      { version: 2 },
+    ]);
     lifecycle.close();
     expect(db.open).toBe(false);
   });
