@@ -29,7 +29,7 @@ export default function App({ api, preview = false }: AppProps) {
   else screen = (
     <AppShell destination={destination} onNavigate={setDestination}>
       {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
-      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} onBack={() => setSelectedBot(null)} /> : null}
+      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} /> : null}
       {destination === 'settings' ? <SettingsScreen api={api.config} config={bootstrap.config} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'data' ? <PlaceholderScreen title="Data" description="Installed indicators and local data products will appear here in a later milestone." /> : null}
       {destination === 'activity' ? <PlaceholderScreen title="Activity" description="Local alerts and execution traces will appear here in a later milestone." /> : null}

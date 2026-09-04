@@ -130,6 +130,9 @@ describe('ExecutionRepository', () => {
       { sequence: 1, type: 'action.proposed' },
       { sequence: 2, type: 'risk.approved' },
     ]);
+    expect(repository.listDeploymentAuditEvents(deploymentId, 10).map(({ type }) => type)).toEqual([
+      'action.proposed', 'risk.approved',
+    ]);
     expect(repository.claimOutboxItem('sha256:action-1', '2026-09-05T00:00:01.000Z')).toMatchObject({
       status: 'claimed', attempts: 1,
     });

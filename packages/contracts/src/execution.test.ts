@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AuditEventViewSchema,
   DeploymentSchema,
+  GetDeploymentInputSchema,
   LivePreflightViewSchema,
+  PaperDeploymentViewSchema,
+  PauseDeploymentInputSchema,
   RiskLimitsSchema,
   StartLiveInputSchema,
   StartPaperInputSchema,
@@ -115,5 +118,48 @@ describe('execution contracts', () => {
       ...audit,
       adapter: { ...audit.adapter, authorization: 'Bearer secret' },
     }).success).toBe(false);
+  });
+
+  it('exposes a strict renderer-safe Paper state with its durable audit log', () => {
+    const deployment = DeploymentSchema.parse({
+      id: deploymentId,
+      botId,
+      strategyId: 'btc-combined-flow',
+      strategyVersion: 3,
+      mode: 'paper',
+      venue: 'paper',
+      network: 'paper',
+      marketBindings: ['BTC-PERP'],
+      riskLimits,
+      status: 'running',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    const view = {
+      deployment,
+      state: {
+        equityUsd: '10000',
+        positions: [{ market: 'BTC-PERP', side: 'long', notionalUsd: '500', quantity: '5', entryPrice: '100', leverage: 2 }],
+        orders: [{
+          type: 'open_position', market: 'BTC-PERP', side: 'long', orderType: 'market',
+          notionalUsd: '500', leverage: 2, clientOrderId: 'paper-order-1', status: 'filled', filledAt: timestamp,
+        }],
+      },
+      auditEvents: [{
+        id: 'event-1', traceId: 'trace-1', sequence: 1, type: 'trigger.received',
+        occurredAt: timestamp, strategyId: deployment.strategyId, strategyVersion: 3,
+        deploymentId, mode: 'paper', summary: 'trigger received', riskRuleIds: [],
+      }],
+    };
+
+    expect(PaperDeploymentViewSchema.parse(view)).toEqual(view);
+    expect(PaperDeploymentViewSchema.safeParse({ ...view, agentPrivateKey: 'secret' }).success).toBe(false);
+    expect(PaperDeploymentViewSchema.safeParse({ ...view, state: { ...view.state, equityUsd: '-1' } }).success).toBe(false);
+  });
+
+  it('uses strict deployment query and pause requests', () => {
+    expect(GetDeploymentInputSchema.safeParse({ deploymentId }).success).toBe(true);
+    expect(PauseDeploymentInputSchema.safeParse({ deploymentId }).success).toBe(true);
+    expect(GetDeploymentInputSchema.safeParse({ deploymentId, privateKey: 'secret' }).success).toBe(false);
   });
 });

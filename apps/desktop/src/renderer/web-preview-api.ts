@@ -4,15 +4,20 @@ import {
   GetTraceInputSchema,
   GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
+  GetDeploymentInputSchema,
+  PauseDeploymentInputSchema,
   REDACTED_SECRET,
   RunWorkbenchBacktestInputSchema,
   SendWorkbenchMessageInputSchema,
+  StartPaperInputSchema,
+  StopDeploymentInputSchema,
   type AgentToolActivity,
   type BacktestSummary,
   type BotSummary,
   type CatbotsDesktopApi,
   type ChatMessage,
   type RedactedLocalConfig,
+  type PaperDeploymentView,
   type StrategyRevision,
   type TraceDetail,
   type WorkbenchState,
@@ -30,6 +35,7 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
   const bots: BotSummary[] = [];
   const workbenches = new Map<string, PreviewWorkbench>();
   const activityListeners = new Set<(activity: AgentToolActivity) => void>();
+  const deployments = new Map<string, PaperDeploymentView>();
 
   const getWorkbench = (botId: string, version?: number): WorkbenchState => {
     const bot = bots.find(({ id }) => id === botId);
@@ -160,11 +166,62 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         return () => activityListeners.delete(listener);
       },
     },
+    deployments: {
+      startPaper: async (input) => {
+        const request = StartPaperInputSchema.parse(input);
+        const workbench = workbenches.get(request.botId);
+        const revision = workbench?.revisions.find(({ version }) => version === request.strategyVersion);
+        const bot = bots.find(({ id }) => id === request.botId);
+        if (revision?.status !== 'approved' || bot === undefined) throw new Error('Preview strategy must be approved');
+        const timestamp = new Date().toISOString();
+        const id = crypto.randomUUID();
+        const view: PaperDeploymentView = {
+          deployment: {
+            id, botId: request.botId, strategyId: revision.strategyId, strategyVersion: request.strategyVersion,
+            mode: 'paper', venue: 'paper', network: 'paper', marketBindings: [bot.market], riskLimits: request.riskLimits,
+            status: 'running', createdAt: timestamp, updatedAt: timestamp,
+          },
+          state: { equityUsd: '10000', positions: [], orders: [] },
+          auditEvents: [],
+        };
+        deployments.set(id, view);
+        return structuredClone(view);
+      },
+      getPaper: async (input) => {
+        const request = GetDeploymentInputSchema.parse(input);
+        const view = deployments.get(request.deploymentId);
+        if (view === undefined) throw new Error('Preview deployment not found');
+        return structuredClone(view);
+      },
+      pausePaper: async (input) => {
+        const request = PauseDeploymentInputSchema.parse(input);
+        return updatePreviewDeployment(deployments, request.deploymentId, 'paused');
+      },
+      stopPaper: async (input) => {
+        const request = StopDeploymentInputSchema.parse(input);
+        return updatePreviewDeployment(deployments, request.deploymentId, 'stopped');
+      },
+    },
     runtime: {
       getStatus: async () => ({ state: 'stopped', activeBots: 0 }),
       subscribeStatus: () => () => undefined,
     },
   };
+}
+
+function updatePreviewDeployment(
+  deployments: Map<string, PaperDeploymentView>,
+  deploymentId: string,
+  status: 'paused' | 'stopped',
+): PaperDeploymentView {
+  const current = deployments.get(deploymentId);
+  if (current === undefined) throw new Error('Preview deployment not found');
+  const next: PaperDeploymentView = {
+    ...current,
+    deployment: { ...current.deployment, status, updatedAt: new Date().toISOString() },
+  };
+  deployments.set(deploymentId, next);
+  return structuredClone(next);
 }
 
 function previewRevision(botId: string, version: number, createdAt: string): StrategyRevision {

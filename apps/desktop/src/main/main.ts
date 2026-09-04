@@ -10,6 +10,8 @@ import { installM0PermissionPolicy } from './install-permission-policy';
 import { testLlmConnection } from './llm/test-llm-connection';
 import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
+import { DeploymentService } from './execution/deployment-service';
+import { ExecutionRepository } from './execution/execution-repository';
 import { ApplicationDatabase } from './storage/database';
 import { createTray, type TrayController } from './tray/create-tray';
 import { WorkbenchRepository } from './workbench/workbench-repository';
@@ -60,6 +62,10 @@ void app.whenReady()
     const botRepository = new BotRepository(connection);
     const workbenchRepository = new WorkbenchRepository(connection);
     const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository });
+    const deploymentService = new DeploymentService({
+      executionRepository: new ExecutionRepository(connection),
+      workbenchRepository,
+    });
     runtime.start();
     disposeIpcHandlers = registerIpcHandlers({
       app: {
@@ -70,6 +76,7 @@ void app.whenReady()
       configRepository,
       botRepository,
       workbenchService,
+      deploymentService,
       runtime,
       testLlmConnection,
     });

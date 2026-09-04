@@ -4,11 +4,16 @@ import {
   AgentToolActivitySchema,
   ApproveStrategyRevisionInputSchema,
   GetTraceInputSchema,
+  GetDeploymentInputSchema,
   GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
   RunWorkbenchBacktestInputSchema,
+  PaperDeploymentViewSchema,
+  PauseDeploymentInputSchema,
   RuntimeStatusSchema,
   SendWorkbenchMessageInputSchema,
+  StartPaperInputSchema,
+  StopDeploymentInputSchema,
   type AgentToolActivity,
   type BootstrapState,
   type ConnectionTestResult,
@@ -24,6 +29,7 @@ import {
 } from '../config/config-repository';
 import { assertTrustedAppSenderUrl } from '../ipc-security';
 import type { WorkbenchService } from '../workbench/workbench-service';
+import type { DeploymentService } from '../execution/deployment-service';
 
 export class IpcRequestError extends Error {
   readonly code: string;
@@ -51,6 +57,7 @@ export type IpcHandlerDependencies = {
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
   botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
   workbenchService: Pick<WorkbenchService, 'get' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'>;
+  deploymentService: Pick<DeploymentService, 'startPaper' | 'getPaperDeployment' | 'pause' | 'stop'>;
   runtime: RuntimePort;
   testLlmConnection?: (provider: LocalConfig['llm']) => Promise<ConnectionTestResult>;
 };
@@ -231,6 +238,49 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       }
     },
 
+    startPaperDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(StartPaperInputSchema, input);
+      try {
+        const deployment = dependencies.deploymentService.startPaper(request);
+        return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(deployment.id));
+      } catch {
+        throw new IpcRequestError('PAPER_DEPLOYMENT_START_FAILED');
+      }
+    },
+
+    getPaperDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(GetDeploymentInputSchema, input);
+      try {
+        return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(request.deploymentId));
+      } catch {
+        throw new IpcRequestError('PAPER_DEPLOYMENT_GET_FAILED');
+      }
+    },
+
+    pausePaperDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(PauseDeploymentInputSchema, input);
+      try {
+        dependencies.deploymentService.pause(request.deploymentId);
+        return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(request.deploymentId));
+      } catch {
+        throw new IpcRequestError('PAPER_DEPLOYMENT_PAUSE_FAILED');
+      }
+    },
+
+    stopPaperDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(StopDeploymentInputSchema, input);
+      try {
+        dependencies.deploymentService.stop(request.deploymentId);
+        return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(request.deploymentId));
+      } catch {
+        throw new IpcRequestError('PAPER_DEPLOYMENT_STOP_FAILED');
+      }
+    },
+
     getRuntimeStatus: async (event: IpcMainInvokeEvent): Promise<RuntimeStatus> => {
       assertSender(event);
       try {
@@ -291,6 +341,10 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['workbench:run-backtest', handlers.runWorkbenchBacktest],
     ['workbench:approve-revision', handlers.approveStrategyRevision],
     ['workbench:get-trace', handlers.getWorkbenchTrace],
+    ['deployments:start-paper', handlers.startPaperDeployment],
+    ['deployments:get-paper', handlers.getPaperDeployment],
+    ['deployments:pause-paper', handlers.pausePaperDeployment],
+    ['deployments:stop-paper', handlers.stopPaperDeployment],
     ['runtime:get-status', handlers.getRuntimeStatus],
   ];
   const registeredChannels: string[] = [];

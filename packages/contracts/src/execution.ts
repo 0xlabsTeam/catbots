@@ -9,6 +9,10 @@ export const PositiveDecimalStringSchema = z.string()
   .regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/)
   .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0, 'Must be greater than zero');
 
+export const NonNegativeDecimalStringSchema = z.string()
+  .regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/)
+  .refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0, 'Must not be negative');
+
 const UniqueMarketsSchema = z.array(z.string().trim().min(1).max(40)).min(1).refine(
   (markets) => new Set(markets).size === markets.length,
   'Markets must be unique',
@@ -80,10 +84,15 @@ export const StopDeploymentInputSchema = z.object({
   deploymentId: DeploymentIdSchema,
 }).strict();
 
+export const GetDeploymentInputSchema = StopDeploymentInputSchema;
+export const PauseDeploymentInputSchema = StopDeploymentInputSchema;
+
 export type StartPaperInput = z.infer<typeof StartPaperInputSchema>;
 export type PrepareLiveInput = z.infer<typeof PrepareLiveInputSchema>;
 export type StartLiveInput = z.infer<typeof StartLiveInputSchema>;
 export type StopDeploymentInput = z.infer<typeof StopDeploymentInputSchema>;
+export type GetDeploymentInput = z.infer<typeof GetDeploymentInputSchema>;
+export type PauseDeploymentInput = z.infer<typeof PauseDeploymentInputSchema>;
 
 export const LivePreflightCheckIdSchema = z.enum([
   'connection',
@@ -173,3 +182,50 @@ export const AuditEventViewSchema = z.object({
 }).strict();
 
 export type AuditEventView = z.infer<typeof AuditEventViewSchema>;
+
+export const PaperPositionSchema = z.object({
+  market: NonEmptyTextSchema.max(40),
+  side: z.enum(['long', 'short']),
+  notionalUsd: PositiveDecimalStringSchema,
+  quantity: PositiveDecimalStringSchema,
+  entryPrice: PositiveDecimalStringSchema,
+  leverage: z.number().int().min(1).max(50),
+}).strict();
+
+const PaperOrderBaseSchema = z.object({
+  market: NonEmptyTextSchema.max(40),
+  clientOrderId: NonEmptyTextSchema.max(120),
+  status: z.literal('filled'),
+  filledAt: TimestampSchema,
+});
+
+export const PaperOrderSchema = z.discriminatedUnion('type', [
+  PaperOrderBaseSchema.extend({
+    type: z.literal('open_position'),
+    side: z.enum(['long', 'short']),
+    orderType: z.literal('market'),
+    notionalUsd: PositiveDecimalStringSchema,
+    leverage: z.number().int().min(1).max(50),
+  }).strict(),
+  PaperOrderBaseSchema.extend({
+    type: z.literal('close_position'),
+    percent: z.number().finite().positive().max(100),
+  }).strict(),
+]);
+
+export const PaperStateViewSchema = z.object({
+  equityUsd: NonNegativeDecimalStringSchema,
+  positions: z.array(PaperPositionSchema),
+  orders: z.array(PaperOrderSchema),
+}).strict();
+
+export const PaperDeploymentViewSchema = z.object({
+  deployment: DeploymentSchema.refine((deployment) => deployment.mode === 'paper', 'Paper deployment required'),
+  state: PaperStateViewSchema,
+  auditEvents: z.array(AuditEventViewSchema),
+}).strict();
+
+export type PaperPosition = z.infer<typeof PaperPositionSchema>;
+export type PaperOrderView = z.infer<typeof PaperOrderSchema>;
+export type PaperStateView = z.infer<typeof PaperStateViewSchema>;
+export type PaperDeploymentView = z.infer<typeof PaperDeploymentViewSchema>;

@@ -225,6 +225,21 @@ export class ExecutionRepository {
     });
   }
 
+  listDeploymentAuditEvents(deploymentId: string, limit = 200): AuditEventView[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) throw new Error('Audit event limit is invalid');
+    return this.database.prepare(`
+      SELECT audit_events.event_json FROM audit_events
+      JOIN audit_traces ON audit_traces.id = audit_events.trace_id
+      WHERE audit_traces.deployment_id = ?
+      ORDER BY audit_traces.created_at DESC, audit_traces.rowid DESC, audit_events.sequence ASC
+      LIMIT ?
+    `).all(deploymentId, limit).map((row) => {
+      const serialized = (row as { event_json: unknown }).event_json;
+      if (typeof serialized !== 'string') throw new Error('Stored audit event is invalid');
+      return AuditEventViewSchema.parse(JSON.parse(serialized));
+    });
+  }
+
   hasTrace(traceId: string): boolean {
     return this.database.prepare('SELECT 1 FROM audit_traces WHERE id = ?').get(traceId) !== undefined;
   }

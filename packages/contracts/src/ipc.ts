@@ -1,6 +1,13 @@
 import type { BotSummary } from './bots';
 import type { LocalSettingsPatch, RedactedLocalConfig } from './config';
 import type {
+  GetDeploymentInput,
+  PaperDeploymentView,
+  PauseDeploymentInput,
+  StartPaperInput,
+  StopDeploymentInput,
+} from './execution';
+import type {
   AgentToolActivity,
   ApproveStrategyRevisionInput,
   BacktestSummary,
@@ -52,6 +59,12 @@ export interface CatbotsDesktopApi {
     approveRevision(input: ApproveStrategyRevisionInput): Promise<StrategyRevision>;
     getTrace(input: GetTraceInput): Promise<TraceDetail>;
     subscribeActivity(listener: (activity: AgentToolActivity) => void): () => void;
+  };
+  deployments: {
+    startPaper(input: StartPaperInput): Promise<PaperDeploymentView>;
+    getPaper(input: GetDeploymentInput): Promise<PaperDeploymentView>;
+    pausePaper(input: PauseDeploymentInput): Promise<PaperDeploymentView>;
+    stopPaper(input: StopDeploymentInput): Promise<PaperDeploymentView>;
   };
   runtime: {
     getStatus(): Promise<RuntimeStatus>;

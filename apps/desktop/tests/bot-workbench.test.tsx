@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatbotsDesktopApi, WorkbenchState } from '@catbots/contracts';
+import type { CatbotsDesktopApi, PaperDeploymentView, WorkbenchState } from '@catbots/contracts';
 
 vi.mock('../src/renderer/workbench/StrategyGraph', () => ({
   StrategyGraph: ({ revision, onSelectNode }: { revision: WorkbenchState['currentRevision']; onSelectNode(node: NonNullable<WorkbenchState['currentRevision']>['nodes'][number]): void }) => (
@@ -51,7 +51,31 @@ function api(): CatbotsDesktopApi['workbench'] {
   };
 }
 
+const paperView: PaperDeploymentView = {
+  deployment: {
+    id: '028f3f75-89ab-7def-8123-456789abcdef', botId: state.bot.id, strategyId: 'strategy', strategyVersion: 1,
+    mode: 'paper', venue: 'paper', network: 'paper', marketBindings: ['BTC-PERP'], status: 'running',
+    riskLimits: {
+      maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3, maxDailyLossUsd: '300',
+      maxDrawdownPercent: 12, allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+    },
+    createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
+  },
+  state: { equityUsd: '10000', positions: [], orders: [] },
+  auditEvents: [],
+};
+
+function deploymentApi(): CatbotsDesktopApi['deployments'] {
+  return {
+    startPaper: vi.fn().mockResolvedValue(paperView),
+    getPaper: vi.fn().mockResolvedValue(paperView),
+    pausePaper: vi.fn().mockResolvedValue({ ...paperView, deployment: { ...paperView.deployment, status: 'paused' } }),
+    stopPaper: vi.fn().mockResolvedValue({ ...paperView, deployment: { ...paperView.deployment, status: 'stopped' } }),
+  };
+}
+
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('ResizeObserver', class ResizeObserver {
     observe() {}
     unobserve() {}
@@ -63,7 +87,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('BotWorkbenchScreen', () => {
   it('loads chat and a visual flow without rendering canonical JSON', async () => {
-    render(<BotWorkbenchScreen bot={state.bot} api={api()} onBack={vi.fn()} />);
+    render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
 
     expect(await screen.findByRole('heading', { name: 'BTC Flow' })).toBeTruthy();
     expect(screen.getByText('Describe your entry and exit rules.')).toBeTruthy();
@@ -75,7 +99,7 @@ describe('BotWorkbenchScreen', () => {
   it('sends a natural-language requirement and shows safe activity state', async () => {
     const workbenchApi = api();
     const user = userEvent.setup();
-    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} onBack={vi.fn()} />);
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
     await screen.findByRole('heading', { name: 'BTC Flow' });
 
     await user.type(screen.getByLabelText('Message Catbots AI'), 'Use ETF inflow');
@@ -89,7 +113,7 @@ describe('BotWorkbenchScreen', () => {
     const workbenchApi = api();
     workbenchApi.sendMessage = vi.fn().mockRejectedValue(new Error('provider secret detail'));
     const user = userEvent.setup();
-    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} onBack={vi.fn()} />);
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
     await screen.findByRole('heading', { name: 'BTC Flow' });
 
     const composer = screen.getByLabelText('Message Catbots AI');
@@ -104,7 +128,7 @@ describe('BotWorkbenchScreen', () => {
   it('selects a node for inspection and requires explicit approval confirmation', async () => {
     const workbenchApi = api();
     const user = userEvent.setup();
-    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} onBack={vi.fn()} />);
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
     await screen.findByRole('heading', { name: 'BTC Flow' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Mock strategy graph' }));
@@ -115,5 +139,29 @@ describe('BotWorkbenchScreen', () => {
     expect(workbenchApi.approveRevision).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Confirm approval' }));
     expect(workbenchApi.approveRevision).toHaveBeenCalledWith({ botId: state.bot.id, version: 1 });
+  });
+
+  it('starts an approved revision in Paper mode and exposes performance and logs tabs', async () => {
+    const workbenchApi = api();
+    workbenchApi.get = vi.fn().mockResolvedValue({
+      ...state,
+      currentRevision: { ...state.currentRevision!, status: 'approved', approvedAt: '2026-09-05T00:00:00.000Z' },
+    });
+    const paperApi = deploymentApi();
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={paperApi} onBack={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'BTC Flow' });
+
+    await user.click(screen.getByRole('button', { name: 'Run Paper' }));
+    expect(paperApi.startPaper).toHaveBeenCalledWith(expect.objectContaining({
+      botId: state.bot.id, strategyVersion: 1,
+      riskLimits: expect.objectContaining({ allowedMarkets: ['BTC-PERP'] }),
+    }));
+    expect(await screen.findByText('Paper running')).toBeTruthy();
+
+    await user.click(screen.getByRole('tab', { name: 'Performance' }));
+    expect(screen.getByText('$10,000.00')).toBeTruthy();
+    await user.click(screen.getByRole('tab', { name: 'Logs' }));
+    expect(screen.getByText('Waiting for the first trigger.')).toBeTruthy();
   });
 });

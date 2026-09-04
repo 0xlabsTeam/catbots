@@ -38,6 +38,12 @@ const catbots: CatbotsDesktopApi = deepFreeze({
       return () => activityListeners.delete(listener);
     },
   },
+  deployments: {
+    startPaper: (input) => ipcRenderer.invoke('deployments:start-paper', input),
+    getPaper: (input) => ipcRenderer.invoke('deployments:get-paper', input),
+    pausePaper: (input) => ipcRenderer.invoke('deployments:pause-paper', input),
+    stopPaper: (input) => ipcRenderer.invoke('deployments:stop-paper', input),
+  },
   runtime: {
     getStatus: () => ipcRenderer.invoke('runtime:get-status'),
     subscribeStatus: (listener: (status: RuntimeStatus) => void): (() => void) => {

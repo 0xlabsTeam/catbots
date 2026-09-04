@@ -2,7 +2,14 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LocalConfigSchema, REDACTED_SECRET, type AgentToolActivity, type RuntimeStatus } from '@catbots/contracts';
+import {
+  LocalConfigSchema,
+  REDACTED_SECRET,
+  type AgentToolActivity,
+  type PaperDeploymentView,
+  type RiskLimits,
+  type RuntimeStatus,
+} from '@catbots/contracts';
 import { buildWindowOptions } from '../src/main/create-window';
 import { denyUnexpectedNavigation } from '../src/main/create-window';
 import { ConfigRepository } from '../src/main/config/config-repository';
@@ -109,6 +116,22 @@ const settingsPatch = {
     model: 'provider/model',
   },
 };
+const deploymentId = '028f3f75-89ab-7def-8123-456789abcdef';
+const botId = '018f3f75-89ab-7def-8123-456789abcdef';
+const riskLimits: RiskLimits = {
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+  maxDailyLossUsd: '300', maxDrawdownPercent: 12,
+  allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+};
+const paperView: PaperDeploymentView = {
+  deployment: {
+    id: deploymentId, botId, strategyId: 'btc-paper', strategyVersion: 1,
+    mode: 'paper', venue: 'paper', network: 'paper', marketBindings: ['BTC-PERP'],
+    riskLimits, status: 'running', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
+  },
+  state: { equityUsd: '10000', positions: [], orders: [] },
+  auditEvents: [],
+};
 
 function createDependencies() {
   return {
@@ -134,6 +157,12 @@ function createDependencies() {
       approveRevision: vi.fn(),
       getTrace: vi.fn(),
       subscribeActivity: vi.fn((_listener: (activity: AgentToolActivity) => void) => () => undefined),
+    },
+    deploymentService: {
+      startPaper: vi.fn(() => paperView.deployment),
+      getPaperDeployment: vi.fn(() => paperView),
+      pause: vi.fn(() => ({ ...paperView.deployment, status: 'paused' as const })),
+      stop: vi.fn(() => ({ ...paperView.deployment, status: 'stopped' as const })),
     },
     runtime: {
       getStatus: vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 })),
@@ -214,6 +243,35 @@ describe('validated IPC handlers', () => {
     expect(dependencies.workbenchService.get).toHaveBeenCalledWith({ botId });
     expect(dependencies.workbenchService.sendMessage).toHaveBeenCalledWith({ botId, message: 'Build a momentum bot' });
     expect(dependencies.workbenchService.approveRevision).toHaveBeenCalledWith({ botId, version: 1 });
+  });
+
+  it('validates Paper deployment requests before service access', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+
+    await expect(handlers.startPaperDeployment(localEvent, { botId, strategyVersion: 1, riskLimits: { ...riskLimits, maxOrderUsd: '0' } }))
+      .rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.getPaperDeployment(localEvent, { deploymentId: 'not-a-uuid' })).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.pausePaperDeployment(localEvent, {})).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.stopPaperDeployment(fakeRemoteEvent, { deploymentId })).rejects.toThrow('IPC_SENDER_NOT_ALLOWED');
+    expect(dependencies.deploymentService.startPaper).not.toHaveBeenCalled();
+    expect(dependencies.deploymentService.getPaperDeployment).not.toHaveBeenCalled();
+  });
+
+  it('starts, reads, pauses, and stops Paper deployments through renderer-safe views', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+    const start = { botId, strategyVersion: 1, riskLimits };
+
+    await expect(handlers.startPaperDeployment(localEvent, start)).resolves.toEqual(paperView);
+    await expect(handlers.getPaperDeployment(localEvent, { deploymentId })).resolves.toEqual(paperView);
+    await expect(handlers.pausePaperDeployment(localEvent, { deploymentId })).resolves.toEqual(paperView);
+    await expect(handlers.stopPaperDeployment(localEvent, { deploymentId })).resolves.toEqual(paperView);
+
+    expect(dependencies.deploymentService.startPaper).toHaveBeenCalledWith(start);
+    expect(dependencies.deploymentService.getPaperDeployment).toHaveBeenCalledTimes(4);
+    expect(dependencies.deploymentService.pause).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.deploymentService.stop).toHaveBeenCalledWith(deploymentId);
   });
 
   it('rejects malformed configuration before repository access without exposing its secret', async () => {
@@ -415,11 +473,15 @@ describe('validated IPC handlers', () => {
       'workbench:run-backtest',
       'workbench:approve-revision',
       'workbench:get-trace',
+      'deployments:start-paper',
+      'deployments:get-paper',
+      'deployments:pause-paper',
+      'deployments:stop-paper',
       'runtime:get-status',
     ]);
 
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
   });
 
   it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
@@ -496,9 +558,9 @@ describe('validated IPC handlers', () => {
     removeFirst();
 
     expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
   });
 
   it('restores the previous owned registration after a replacement failure', () => {
@@ -529,11 +591,11 @@ describe('validated IPC handlers', () => {
     const removeFirst = registerIpcHandlers(firstDependencies);
 
     expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
 
     const removeSecond = registerIpcHandlers(secondDependencies);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
   });
 
   it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
@@ -544,9 +606,9 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
 
     const removeReplacement = registerIpcHandlers(createDependencies());
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
     removeReplacement();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
   });
 
   it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
@@ -554,11 +616,11 @@ describe('validated IPC handlers', () => {
     invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
 
     expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
 
     const remove = registerIpcHandlers(createDependencies());
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
   });
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
@@ -587,9 +649,10 @@ describe('preload bridge', () => {
     expect(Object.isFrozen(api.config)).toBe(true);
     expect(Object.isFrozen(api.bots)).toBe(true);
     expect(Object.isFrozen(api.workbench)).toBe(true);
+    expect(Object.isFrozen(api.deployments)).toBe(true);
     expect(Object.isFrozen(api.runtime)).toBe(true);
     expect(Object.isFrozen((api.app as { getVersion: unknown }).getVersion)).toBe(true);
-    expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'workbench', 'runtime']);
+    expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'workbench', 'deployments', 'runtime']);
     expect(JSON.stringify(api)).not.toContain('ipcRenderer');
     expect(JSON.stringify(api)).not.toContain('process');
   });

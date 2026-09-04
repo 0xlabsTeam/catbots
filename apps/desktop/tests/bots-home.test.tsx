@@ -65,6 +65,12 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
       getTrace: vi.fn(),
       subscribeActivity: vi.fn(() => () => undefined),
     },
+    deployments: {
+      startPaper: vi.fn(),
+      getPaper: vi.fn(),
+      pausePaper: vi.fn(),
+      stopPaper: vi.fn(),
+    },
     runtime: { getStatus: vi.fn(), subscribeStatus: vi.fn(() => () => undefined) },
   };
 }

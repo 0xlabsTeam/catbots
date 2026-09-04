@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Banner, LayerCard, Tabs } from '@cloudflare/kumo';
-import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, StrategyRevision, WorkbenchState } from '@catbots/contracts';
+import { Badge, Banner, Button, LayerCard, Tabs } from '@cloudflare/kumo';
+import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, PaperDeploymentView, RiskLimits, StrategyRevision, WorkbenchState } from '@catbots/contracts';
 
 import { ChatPanel } from '../workbench/ChatPanel';
 import { BacktestPanel } from '../workbench/BacktestPanel';
@@ -11,16 +11,19 @@ import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
 export type BotWorkbenchScreenProps = Readonly<{
   bot: BotSummary;
   api: CatbotsDesktopApi['workbench'];
+  deploymentApi: CatbotsDesktopApi['deployments'];
   onBack(): void;
 }>;
 
-export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps) {
+export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkbenchScreenProps) {
   const [state, setState] = useState<WorkbenchState | null>(null);
   const [selectedNode, setSelectedNode] = useState<StrategyRevision['nodes'][number] | null>(null);
   const [activity, setActivity] = useState<AgentToolActivity | null>(null);
   const [tab, setTab] = useState('flow');
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [deployment, setDeployment] = useState<PaperDeploymentView | null>(null);
+  const [changingDeployment, setChangingDeployment] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +35,15 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
     });
     return () => { active = false; unsubscribe(); };
   }, [api, bot.id]);
+
+  useEffect(() => {
+    if (deployment?.deployment.status !== 'running') return;
+    const deploymentId = deployment.deployment.id;
+    const timer = window.setInterval(() => {
+      void deploymentApi.getPaper({ deploymentId }).then(setDeployment).catch(() => undefined);
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [deployment?.deployment.id, deployment?.deployment.status, deploymentApi]);
 
   const send = async (message: string) => {
     setSending(true);
@@ -74,6 +86,36 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
       setApproving(false);
     }
   };
+  const startPaper = async () => {
+    const revision = state?.currentRevision;
+    if (revision?.status !== 'approved') return;
+    setChangingDeployment(true);
+    setError(null);
+    try {
+      setDeployment(await deploymentApi.startPaper({
+        botId: bot.id,
+        strategyVersion: revision.version,
+        riskLimits: defaultRiskLimits(bot.market),
+      }));
+    } catch {
+      setError('Paper deployment could not start. Check approval and risk limits.');
+    } finally {
+      setChangingDeployment(false);
+    }
+  };
+  const changePaperStatus = async (action: 'pause' | 'stop') => {
+    if (deployment === null) return;
+    setChangingDeployment(true);
+    setError(null);
+    try {
+      const input = { deploymentId: deployment.deployment.id };
+      setDeployment(await (action === 'pause' ? deploymentApi.pausePaper(input) : deploymentApi.stopPaper(input)));
+    } catch {
+      setError(`Paper deployment could not ${action}.`);
+    } finally {
+      setChangingDeployment(false);
+    }
+  };
 
   if (state === null) {
     return <section className="workbench-loading" role="status">{error ?? 'Loading bot workspace…'}</section>;
@@ -85,8 +127,18 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
       <div className="workbench-grid">
         <ChatPanel messages={state.messages} activity={activity} sending={sending} onSend={send} />
         <section className="workbench-canvas" aria-label="Strategy workspace">
+          <PaperControls
+            revision={state.currentRevision}
+            deployment={deployment}
+            changing={changingDeployment}
+            onStart={startPaper}
+            onPause={() => void changePaperStatus('pause')}
+            onStop={() => void changePaperStatus('stop')}
+          />
           <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
-          {tab === 'flow' ? (
+          {tab === 'performance' ? <PaperPerformance deployment={deployment} />
+            : tab === 'logs' ? <PaperLogs deployment={deployment} />
+            : tab === 'flow' ? (
             state.currentRevision === null
               ? <LayerCard className="workbench-empty"><h2>Start with a requirement</h2><p>Tell Catbots AI when to evaluate, which conditions to combine, and what action to take.</p></LayerCard>
               : <StrategyGraph revision={state.currentRevision} onSelectNode={setSelectedNode} />
@@ -105,4 +157,87 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
       </div>
     </section>
   );
+}
+
+function PaperControls({ revision, deployment, changing, onStart, onPause, onStop }: Readonly<{
+  revision: StrategyRevision | null;
+  deployment: PaperDeploymentView | null;
+  changing: boolean;
+  onStart(): void;
+  onPause(): void;
+  onStop(): void;
+}>) {
+  const status = deployment?.deployment.status;
+  return (
+    <LayerCard className="paper-controls">
+      <div>
+        <p className="eyebrow">EXECUTION</p>
+        <strong>{status === undefined ? 'Paper is stopped' : `Paper deployment is ${status}`}</strong>
+        <p>Local simulation · risk checks and every flow event are logged.</p>
+      </div>
+      <div className="paper-control-actions">
+        {status === 'running' ? <Badge variant="success">Paper running</Badge> : null}
+        {(status === undefined || status === 'stopped') && revision?.status === 'approved'
+          ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
+          : null}
+        {status === 'running' ? <Button type="button" variant="secondary" disabled={changing} onClick={onPause}>Pause</Button> : null}
+        {status === 'running' || status === 'paused'
+          ? <Button type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
+          : null}
+      </div>
+    </LayerCard>
+  );
+}
+
+function PaperPerformance({ deployment }: { deployment: PaperDeploymentView | null }) {
+  if (deployment === null) return <EmptyPaper title="No Paper run yet" description="Approve this strategy and run it in Paper mode to see execution performance." />;
+  return (
+    <LayerCard className="paper-performance">
+      <p className="eyebrow">PAPER PERFORMANCE</p>
+      <div className="paper-metrics">
+        <Metric label="Equity" value={formatUsd(deployment.state.equityUsd)} />
+        <Metric label="Open positions" value={String(deployment.state.positions.length)} />
+        <Metric label="Filled orders" value={String(deployment.state.orders.length)} />
+        <Metric label="Audit events" value={String(deployment.auditEvents.length)} />
+      </div>
+    </LayerCard>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function PaperLogs({ deployment }: { deployment: PaperDeploymentView | null }) {
+  if (deployment === null) return <EmptyPaper title="No execution logs" description="Paper flow events will appear here after a run starts." />;
+  if (deployment.auditEvents.length === 0) return <EmptyPaper title="Paper is ready" description="Waiting for the first trigger." />;
+  return (
+    <LayerCard className="paper-logs">
+      <ol>
+        {deployment.auditEvents.map((event) => (
+          <li key={event.id}>
+            <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
+            <strong>{event.type}</strong>
+            <span>{event.summary}</span>
+          </li>
+        ))}
+      </ol>
+    </LayerCard>
+  );
+}
+
+function EmptyPaper({ title, description }: { title: string; description: string }) {
+  return <LayerCard className="workbench-empty"><h2>{title}</h2><p>{description}</p></LayerCard>;
+}
+
+function defaultRiskLimits(market: string): RiskLimits {
+  return {
+    maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+    maxDailyLossUsd: '300', maxDrawdownPercent: 12,
+    allowedMarkets: [market], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+  };
+}
+
+function formatUsd(value: string): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value));
 }

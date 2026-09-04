@@ -674,6 +674,74 @@ h2 {
   margin-bottom: .75rem;
 }
 
+.paper-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .75rem;
+  padding: .875rem 1rem;
+}
+
+.paper-controls p:not(.eyebrow) {
+  margin-top: .25rem;
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.paper-control-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.paper-performance,
+.paper-logs {
+  padding: 1rem;
+}
+
+.paper-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+  margin-top: 1rem;
+}
+
+.paper-metrics > div {
+  display: grid;
+  gap: .35rem;
+  padding: 1rem;
+  border: 1px solid var(--color-kumo-line);
+  border-radius: .5rem;
+  background: var(--color-kumo-canvas);
+}
+
+.paper-metrics span,
+.paper-logs time,
+.paper-logs span {
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.paper-metrics strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-logs ol {
+  display: grid;
+  gap: .5rem;
+  list-style: none;
+}
+
+.paper-logs li {
+  display: grid;
+  grid-template-columns: 11rem 10rem minmax(0, 1fr);
+  gap: .75rem;
+  padding: .75rem;
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
 .workbench-empty {
   display: grid;
   min-height: 32rem;

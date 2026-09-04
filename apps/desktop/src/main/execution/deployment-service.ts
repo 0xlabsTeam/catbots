@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { DeploymentSchema, StartPaperInputSchema, type Deployment, type StartPaperInput } from '@catbots/contracts';
+import {
+  DeploymentSchema,
+  PaperDeploymentViewSchema,
+  StartPaperInputSchema,
+  type Deployment,
+  type PaperDeploymentView,
+  type StartPaperInput,
+} from '@catbots/contracts';
 import {
   createBuiltinRegistry,
   createEvaluationContext,
@@ -140,6 +147,16 @@ export class DeploymentService {
     return runtime.adapter.snapshot();
   }
 
+  getPaperDeployment(deploymentId: string): PaperDeploymentView {
+    const deployment = this.dependencies.executionRepository.getDeployment(deploymentId);
+    if (deployment.mode !== 'paper') throw new Error('Paper deployment required');
+    return PaperDeploymentViewSchema.parse({
+      deployment,
+      state: this.getPaperState(deploymentId),
+      auditEvents: this.dependencies.executionRepository.listDeploymentAuditEvents(deploymentId),
+    });
+  }
+
   pause(deploymentId: string): Deployment {
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     return this.dependencies.executionRepository.pause(deploymentId, timestamp);
@@ -148,7 +165,6 @@ export class DeploymentService {
   stop(deploymentId: string): Deployment {
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     this.dependencies.executionRepository.requestStop(deploymentId, timestamp);
-    this.active.delete(deploymentId);
     return this.dependencies.executionRepository.completeStop(deploymentId, timestamp);
   }
 }
