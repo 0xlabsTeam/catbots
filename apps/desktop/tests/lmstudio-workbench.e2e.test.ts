@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { AgentToolActivity } from '@catbots/contracts';
 
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { migrateDatabase } from '../src/main/storage/migrations';
@@ -40,6 +41,8 @@ runAgainstLocalModel('LM Studio workbench', () => {
         }),
       },
     });
+    const activities: AgentToolActivity[] = [];
+    service.subscribeActivity((activity) => activities.push(activity));
 
     const state = await service.sendMessage({
       botId: bot.id,
@@ -49,6 +52,9 @@ runAgainstLocalModel('LM Studio workbench', () => {
         'Add a separate ETF-flow update event flow that closes the whole position when BTC ETF daily net flow is negative.',
         'Discover the available nodes and data products first, validate the complete strategy, then backtest the saved revision with $10,000 initial capital, 5 bps fees, and 5 bps slippage.',
       ].join(' '),
+    }).catch((error: unknown) => {
+      const tools = activities.filter(({ phase }) => phase === 'tool_completed').map(({ tool, message }) => tool ?? message);
+      throw new Error(`LM Studio Agent failed after tools: ${tools.join(' -> ')}`, { cause: error });
     });
 
     expect(state.currentRevision).not.toBeNull();

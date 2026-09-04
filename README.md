@@ -2,11 +2,11 @@
 
 Catbots is a local-first Electron desktop application. It includes local-profile onboarding, local Settings stored in `local.env.yaml`, local SQLite bot records, compatible LLM providers, a constrained strategy-design Agent, versioned Trigger–Condition–Action graphs, deterministic Backtests, React Flow visualization, and execution traces. It has no Catbots cloud account or telemetry.
 
-The M0 release is macOS-only. The implementation keeps portable boundaries where practical, but Windows and Linux packages are not built, tested, or supported in this milestone.
+The current release is macOS-only. The implementation keeps portable boundaries where practical, but Windows and Linux packages are not built, tested, or supported yet.
 
 ## Current safety boundary
 
-The Strategy Runtime validates and evaluates versioned Trigger–Condition–Action JSON and runs deterministic local Backtests. AI strategy authoring and Backtests are enabled; Paper and Hyperliquid Live execution are not enabled yet. Provider credentials are local configuration only; no master wallet private key is accepted or stored.
+The Strategy Runtime validates and evaluates versioned Trigger–Condition–Action JSON and runs deterministic local Backtests. AI strategy authoring, Backtests, Paper deployments, and guarded Hyperliquid testnet deployments are enabled. Hyperliquid mainnet is disabled. Catbots accepts only a dedicated Agent/API Wallet private key for Live signing; a master-wallet private key is rejected and must never be entered or stored.
 
 The renderer is sandboxed and accesses native capabilities only through a small validated preload API. Secrets are transient during form entry, written only to the local configuration file, masked when read back, and must never be committed.
 
@@ -44,6 +44,22 @@ console.log(result.metrics, result.manifest.artifactHash);
 ```
 
 The package records a complete audit trace for executed, skipped, unknown, rejected, and failed paths. Backtest output is historical simulation, not a promise of future returns.
+
+## Paper and Hyperliquid testnet operator guide
+
+Create a bot, describe its Trigger → Condition → Action rules in Chat, and let the Agent validate and Backtest the draft. Inspect the Flow, Backtest metrics, and trace, then select **Approve version**. Only an immutable approved revision can run.
+
+For Paper mode, select **Run Paper** in the bot workbench. The default execution boundaries are a $1,000 maximum order, $2,500 maximum position, 3× maximum leverage, $300 maximum daily loss, 12% maximum drawdown, the bot's selected market, both long and short sides, and four orders per minute. Use **Pause** to suspend evaluation while retaining Paper state, or **Stop** to persistently terminate the deployment. Inspect **Performance** for equity, positions, fills, and audit-event count; inspect **Logs** for the ordered execution trace.
+
+For Hyperliquid testnet Live mode:
+
+1. In Hyperliquid testnet, authorize a dedicated Agent/API Wallet for the account that will trade. Keep the master-wallet key outside Catbots.
+2. Open **Settings**, enable **Hyperliquid testnet**, enter the master account's public address and the dedicated Agent/API Wallet private key, test the LLM connection, and save. The Settings form is the only writer of `local.env.yaml`; stored secrets are returned to the renderer only as masks.
+3. Backtest and approve the exact strategy revision, then select **Review Live**. Check the masked account, immutable revision, risk limits, data freshness, audit storage, runtime, reconciliation, and Agent Wallet authorization.
+4. Resolve every failed check. Type the bot name exactly, including case, and select **Start Live**. Use **Run Paper instead** whenever you do not intend to submit testnet orders.
+5. Use the persistent **Stop Live** control for an emergency stop and inspect the ordered audit log. An unknown venue response is not blindly retried; Catbots reconciles by deterministic client-order ID and suspends the deployment if it cannot prove a safe outcome.
+
+Treat testnet funds and keys as sensitive. Backtests and Paper results do not predict Live performance, and the testnet gate must not be bypassed to reach mainnet.
 
 ## LM Studio integration test
 

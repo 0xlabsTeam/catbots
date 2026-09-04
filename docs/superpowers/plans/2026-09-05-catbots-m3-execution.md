@@ -245,7 +245,7 @@ git commit -m "feat: execute approved bots in paper mode"
 - Consumes: Task 1 schemas and Task 4 deployment service.
 - Produces: renderer-safe `deployments.startPaper`, `deployments.stop`, `deployments.get`, and `deployments.subscribeActivity` APIs.
 
-- [ ] **Step 1: Write failing IPC and UI tests**
+- [x] **Step 1: Write failing IPC and UI tests**
 
 ```ts
 await user.click(screen.getByRole('button', { name: 'Run' }));
@@ -254,23 +254,23 @@ expect(api.startPaper).toHaveBeenCalledWith(expect.objectContaining({ strategyVe
 expect(screen.getByRole('button', { name: 'Stop bot' })).toBeVisible();
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/ipc-handlers.test.ts tests/workbench.test.tsx`
 
 Expected: FAIL because Paper APIs and enabled controls are absent.
 
-- [ ] **Step 3: Implement validated IPC and Kumo UI**
+- [x] **Step 3: Implement validated IPC and Kumo UI**
 
 Require a valid approved revision, writable audit storage, and confirmation. Show explicit `Paper` mode, PnL/positions, append-only trace summaries, last event time, audit health, and a persistent Stop control. Keep Live routed to its dedicated review page and disabled until Task 8 preflight passes.
 
-- [ ] **Step 4: Run renderer, IPC, and packaged Paper E2E tests**
+- [x] **Step 4: Run renderer, IPC, and packaged Paper E2E tests**
 
 Run: `pnpm --filter @catbots/desktop test && pnpm test:e2e`
 
 Expected: PASS with create → approve → Run Paper → event → inspect trace → Stop persisting across restart.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add packages/contracts apps/desktop/src apps/desktop/tests e2e
@@ -291,7 +291,7 @@ git commit -m "feat: add paper run and stop experience"
 - Consumes: Task 2 `PerpDexAdapter` and existing local Hyperliquid Agent/API Wallet configuration.
 - Produces: `HyperliquidAdapter` and `runHyperliquidPreflight(config, account, signal): Promise<LivePreflightView>` for testnet only.
 
-- [ ] **Step 1: Write failing fixture-based adapter tests**
+- [x] **Step 1: Write failing fixture-based adapter tests**
 
 ```ts
 expect(await adapter.getPositions(account, signal)).toEqual([expect.objectContaining({ market: 'BTC-PERP', side: 'long' })]);
@@ -299,23 +299,23 @@ expect(sentOrder.clientOrderId).toBe(intent.clientOrderId);
 expect(await preflight(masterWalletFixture)).toMatchObject({ ready: false, checks: expect.arrayContaining([expect.objectContaining({ id: 'agent-wallet', ok: false })]) });
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/hyperliquid-adapter.test.ts tests/hyperliquid-preflight.test.ts`
 
 Expected: FAIL because the adapter is absent.
 
-- [ ] **Step 3: Implement HTTP signing, normalization, and preflight behind injected transport**
+- [x] **Step 3: Implement HTTP signing, normalization, and preflight behind injected transport**
 
 Map only normalized contract fields. Allow only Hyperliquid testnet base URLs, bound response bytes/timeouts, redact headers and signatures, verify the configured signer is an approved Agent/API Wallet for the account, and include network, masked account, balance, runtime, audit, data, Backtest, and reconciliation checks.
 
-- [ ] **Step 4: Run contract fixtures and safe-error tests**
+- [x] **Step 4: Run contract fixtures and safe-error tests**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/hyperliquid-adapter.test.ts tests/hyperliquid-preflight.test.ts tests/config-repository.test.ts`
 
 Expected: PASS; malformed/oversized/timeout responses use fixed error codes and expose no secret.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add apps/desktop/src/main/execution/hyperliquid apps/desktop/tests pnpm-lock.yaml
@@ -335,7 +335,7 @@ git commit -m "feat: add hyperliquid testnet adapter"
 - Consumes: Tasks 2, 3, and 6.
 - Produces: `OutboxExecutor.runOnce`, `ReconciliationService.reconcileDeployment`, and fail-closed Live lifecycle transitions.
 
-- [ ] **Step 1: Write failing lost-response and audit-outage tests**
+- [x] **Step 1: Write failing lost-response and audit-outage tests**
 
 ```ts
 await expect(harness.executeWithLostResponse()).rejects.toMatchObject({ code: 'EXECUTION_OUTCOME_UNKNOWN' });
@@ -346,23 +346,23 @@ expect(() => harness.proposeWithBrokenAudit()).toThrow();
 expect(adapter.placeOrder).not.toHaveBeenCalled();
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/live-execution.test.ts tests/reconciliation.test.ts`
 
 Expected: FAIL because no Live executor exists.
 
-- [ ] **Step 3: Implement bounded claim, submit, record, and reconcile transitions**
+- [x] **Step 3: Implement bounded claim, submit, record, and reconcile transitions**
 
 Claim pending rows atomically, submit using the persisted client-order ID, record sanitized outcomes, and never blindly retry an unknown result. Query orders/positions before retry; suspend the deployment when reconciliation cannot prove a safe state. Append a terminal audit event for every outcome.
 
-- [ ] **Step 4: Run duplicate, retry, crash-recovery, and fail-closed tests**
+- [x] **Step 4: Run duplicate, retry, crash-recovery, and fail-closed tests**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/live-execution.test.ts tests/reconciliation.test.ts tests/execution-repository.test.ts`
 
 Expected: PASS; each proposed action maps to at most one external order.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add apps/desktop/src/main/execution apps/desktop/tests
@@ -382,7 +382,7 @@ git commit -m "feat: execute and reconcile live outbox"
 - Consumes: Tasks 1, 5, 6, and 7 renderer-safe APIs.
 - Produces: connection, risk, preflight, deployment-summary, and typed-confirmation UI; `Run Paper instead`; persistent Stop.
 
-- [ ] **Step 1: Write failing Live gate tests**
+- [x] **Step 1: Write failing Live gate tests**
 
 ```ts
 expect(screen.getByRole('button', { name: 'Start Live' })).toBeDisabled();
@@ -391,23 +391,23 @@ expect(screen.getByRole('button', { name: 'Start Live' })).toBeEnabled();
 expect(screen.getByRole('button', { name: 'Run Paper instead' })).toBeVisible();
 ```
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/live-review.test.tsx`
 
 Expected: FAIL because the Live Review route is absent.
 
-- [ ] **Step 3: Implement the dedicated Kumo review page**
+- [x] **Step 3: Implement the dedicated Kumo review page**
 
 Render all five required sections, identify every failed check with repair navigation, require exact case-sensitive bot-name confirmation, display `Live` text plus a red risk icon, and never place a Live start action in a modal. Hide full account IDs and all credentials.
 
-- [ ] **Step 4: Run UI accessibility and packaged testnet E2E**
+- [x] **Step 4: Run UI accessibility and packaged testnet E2E**
 
 Run: `pnpm --filter @catbots/desktop test && pnpm test:e2e`
 
 Expected: PASS; any failed preflight check keeps Live disabled and Paper remains available.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add apps/desktop/src/renderer apps/desktop/tests e2e
@@ -425,23 +425,23 @@ git commit -m "feat: add hyperliquid live safety review"
 - Consumes: all M3 tasks.
 - Produces: repeatable operator instructions and checked acceptance evidence.
 
-- [ ] **Step 1: Run all release gates**
+- [x] **Step 1: Run all release gates**
 
 Run: `pnpm typecheck && pnpm test && pnpm test:e2e && pnpm make`
 
 Expected: all commands exit 0.
 
-- [ ] **Step 2: Run explicit M3 safety acceptance tests**
+- [x] **Step 2: Run explicit M3 safety acceptance tests**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/paper-deployment.test.ts tests/hyperliquid-adapter.test.ts tests/hyperliquid-preflight.test.ts tests/live-execution.test.ts tests/reconciliation.test.ts`
 
 Expected: PASS for Paper parity, testnet normalization, Agent Wallet validation, audit-outage fail-closed behavior, and lost-response reconciliation.
 
-- [ ] **Step 3: Update operator documentation**
+- [x] **Step 3: Update operator documentation**
 
 Document Paper start/stop, Hyperliquid testnet Agent/API Wallet setup, risk limits, Live Review, emergency Stop, trace inspection, and the explicit mainnet-disabled boundary. Include no credential examples that resemble usable secrets.
 
-- [ ] **Step 4: Mark checklist evidence only after reading fresh output**
+- [x] **Step 4: Mark checklist evidence only after reading fresh output**
 
 Change each completed checkbox in this plan and M3 in the delivery roadmap only when its corresponding command has fresh exit code 0.
 

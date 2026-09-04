@@ -33,9 +33,13 @@ Deliver OpenAI-compatible and Anthropic-compatible provider adapters, the constr
 
 ### M3 — Paper and Hyperliquid Live Execution
 
+**Status:** Complete (verified 2026-09-05).
+
 Deliver Paper execution, the venue-neutral Perp DEX contract, Hyperliquid Agent Wallet integration, system Risk Engine, transactional outbox, idempotent execution, reconciliation, Live Review, persistent Stop controls, and full execution traces.
 
 **Acceptance:** Paper and Hyperliquid testnet use the same Strategy Runtime; every triggered flow is auditable; failed audit/risk checks prevent external side effects; repeated events cannot duplicate orders.
+
+**Verification evidence:** Workspace typecheck, all unit/integration tests, packaged desktop and web-preview E2E, macOS packaging, and the 19-test M3 safety acceptance suite passed on Node.js 22. The real LM Studio acceptance test also created and Backtested a complex combined-condition bot with `qwen/qwen3.8-27b`.
 
 ### M4 — Performance, Data Catalog, and Release Hardening
 
