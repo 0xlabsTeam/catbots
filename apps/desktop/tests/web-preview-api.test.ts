@@ -45,4 +45,30 @@ describe('web preview API', () => {
     expect(draft.status).toBe('draft');
     expect(await api.bots.list()).toEqual([draft]);
   });
+
+  it('simulates the complete workbench workflow without storing secrets', async () => {
+    const api = createWebPreviewApi();
+    await api.config.patchSettings(settings);
+    const bot = await api.bots.createDraft({ name: 'BTC Flow', market: 'BTC-PERP' });
+    const activities: string[] = [];
+    const unsubscribe = api.workbench.subscribeActivity((activity) => activities.push(activity.phase));
+
+    const drafted = await api.workbench.sendMessage({ botId: bot.id, message: 'Use ETF flow and RSI' });
+    const backtest = await api.workbench.runBacktest({
+      botId: bot.id,
+      revisionVersion: 1,
+      assumptions: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1 },
+    });
+    const trace = await api.workbench.getTrace({ botId: bot.id, traceId: backtest.traces[0]!.traceId });
+    const approved = await api.workbench.approveRevision({ botId: bot.id, version: 1 });
+    unsubscribe();
+
+    expect(drafted.currentRevision).toMatchObject({ version: 1, status: 'draft' });
+    expect(backtest).toMatchObject({ revisionVersion: 1, dataSource: 'Bundled sample data', status: 'completed' });
+    expect(trace.events.map(({ type }) => type)).toEqual(['trigger.received', 'condition.evaluated', 'flow.completed']);
+    expect(approved.status).toBe('approved');
+    expect(activities).toContain('thinking');
+    expect(activities).toContain('backtest_progress');
+    expect(JSON.stringify(await api.workbench.get({ botId: bot.id }))).not.toContain(settings.llm.apiKey);
+  });
 });
