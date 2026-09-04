@@ -7,6 +7,7 @@ import {
   type Deployment,
 } from '@catbots/contracts';
 import type { NormalizedOrderIntent } from '@catbots/execution-core';
+import type { AuditEvent } from '@catbots/strategy-runtime';
 
 export type AuditTraceIdentity = Readonly<{
   id: string;
@@ -198,6 +199,14 @@ export class ExecutionRepository {
     return this.getDeployment(deploymentId);
   }
 
+  pause(deploymentId: string, pausedAt: string): Deployment {
+    const result = this.database.prepare(`
+      UPDATE deployments SET status = 'paused', updated_at = ? WHERE id = ? AND status = 'running'
+    `).run(pausedAt, deploymentId);
+    if (result.changes !== 1) throw new Error('Running deployment not found');
+    return this.getDeployment(deploymentId);
+  }
+
   listRecoverableDeployments(): Deployment[] {
     return this.database.prepare(`
       SELECT * FROM deployments
@@ -214,6 +223,54 @@ export class ExecutionRepository {
       if (typeof serialized !== 'string') throw new Error('Stored audit event is invalid');
       return AuditEventViewSchema.parse(JSON.parse(serialized));
     });
+  }
+
+  hasTrace(traceId: string): boolean {
+    return this.database.prepare('SELECT 1 FROM audit_traces WHERE id = ?').get(traceId) !== undefined;
+  }
+
+  recordPaperTrace(deploymentId: string, sourceEvents: readonly AuditEvent[]): AuditEventView[] {
+    if (sourceEvents.length === 0) throw new Error('Paper trace events are required');
+    const traceId = sourceEvents[0]?.traceId ?? '';
+    if (this.hasTrace(traceId)) return this.listAuditEvents(traceId);
+    return this.database.transaction(() => {
+      const deployment = this.getDeployment(deploymentId);
+      if (deployment.mode !== 'paper' || deployment.status !== 'running') throw new Error('Running Paper deployment not found');
+      const events = sourceEvents.map(toAuditEventView);
+      if (events.some((event, index) => event.deploymentId !== deploymentId || event.sequence !== index + 1 || event.traceId !== traceId)) {
+        throw new Error('Paper trace identity or sequence does not match');
+      }
+      const last = events.at(-1);
+      if (last === undefined) throw new Error('Paper trace events are required');
+      const status = last?.type === 'flow.completed' ? 'completed' : last?.type === 'flow.failed' ? 'failed'
+        : last?.type === 'flow.skipped' ? 'completed' : undefined;
+      if (status === undefined) throw new Error('Paper trace must be terminal');
+      const first = sourceEvents[0];
+      if (first === undefined) throw new Error('Paper trace identity is missing');
+      this.database.prepare(`
+        INSERT INTO audit_traces (
+          id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        traceId,
+        deploymentId,
+        first.triggerEventId ?? `interval:${first.evaluationTime}`,
+        first.idempotencyKey,
+        status,
+        first.createdAt,
+        last.occurredAt,
+      );
+      for (const event of events) this.insertAuditEvent(event);
+      return events;
+    }).immediate();
+  }
+
+  completeStop(deploymentId: string, completedAt: string): Deployment {
+    const result = this.database.prepare(`
+      UPDATE deployments SET status = 'stopped', updated_at = ? WHERE id = ? AND status = 'stopping'
+    `).run(completedAt, deploymentId);
+    if (result.changes !== 1) throw new Error('Stopping deployment not found');
+    return this.getDeployment(deploymentId);
   }
 
   private findOutboxItem(idempotencyKey: string): ExecutionOutboxItem | null {
@@ -317,4 +374,25 @@ function toOutboxItem(row: OutboxRow): ExecutionOutboxItem {
 function parseStoredJson(value: unknown): unknown {
   if (typeof value !== 'string') throw new Error('Stored JSON value is invalid');
   return JSON.parse(value);
+}
+
+function toAuditEventView(event: AuditEvent): AuditEventView {
+  const violatedRuleIds = Array.isArray(event.details.violatedRuleIds)
+    ? event.details.violatedRuleIds.filter((value): value is string => typeof value === 'string')
+    : [];
+  return AuditEventViewSchema.parse({
+    id: event.id,
+    traceId: event.traceId,
+    sequence: event.sequence,
+    type: event.type,
+    occurredAt: event.createdAt,
+    strategyId: event.strategyId,
+    strategyVersion: event.strategyVersion,
+    deploymentId: event.deploymentId,
+    mode: event.mode,
+    ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+    ...(event.nodeType === undefined ? {} : { nodeType: event.nodeType }),
+    summary: event.type.replaceAll('.', ' '),
+    riskRuleIds: violatedRuleIds,
+  });
 }

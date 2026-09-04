@@ -156,7 +156,7 @@ const SanitizedAdapterMetadataSchema = z.object({
 }).strict();
 
 export const AuditEventViewSchema = z.object({
-  id: z.string().uuid(),
+  id: NonEmptyTextSchema.max(240),
   traceId: NonEmptyTextSchema.max(120),
   sequence: z.number().int().positive(),
   type: AuditEventTypeSchema,

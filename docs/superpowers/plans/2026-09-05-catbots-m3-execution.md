@@ -188,14 +188,13 @@ git commit -m "feat: persist execution audit outbox"
 **Files:**
 - Create: `apps/desktop/src/main/execution/paper-adapter.ts`
 - Create: `apps/desktop/src/main/execution/deployment-service.ts`
-- Modify: `apps/desktop/src/main/runtime/runtime-worker.ts`
 - Test: `apps/desktop/tests/paper-deployment.test.ts`
 
 **Interfaces:**
 - Consumes: approved revisions, live event snapshots, Task 2 risk decisions, and Task 3 repository.
 - Produces: `DeploymentService.startPaper`, `ingestEvent`, `pause`, `stop`, and Paper positions/performance/audit views.
 
-- [ ] **Step 1: Write a failing Paper parity test**
+- [x] **Step 1: Write a failing Paper parity test**
 
 ```ts
 const paper = await harness.startPaper({ botId, strategyVersion: 1, riskLimits });
@@ -204,23 +203,23 @@ expect(paper.adapter.orders).toHaveLength(1);
 expect(harness.trace()).toHaveContiguousTypes(['trigger.received', 'risk.approved', 'execution.filled', 'flow.completed']);
 ```
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/paper-deployment.test.ts`
 
 Expected: FAIL because Paper deployment is unavailable.
 
-- [ ] **Step 3: Implement Paper using the canonical evaluator**
+- [x] **Step 3: Implement Paper using the canonical evaluator**
 
 Resolve one immutable context per trigger, call `evaluateTrigger`, pass proposed effects through `evaluateRisk`, append every result, and fill approved normalized intents in `PaperAdapter`. Deduplicate by trigger event ID plus action node ID. Stop persists before the worker acknowledges it.
 
-- [ ] **Step 4: Run parity, restart, duplicate-event, and audit-failure tests**
+- [x] **Step 4: Run parity, restart, duplicate-event, and audit-failure tests**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/paper-deployment.test.ts tests/runtime-supervisor.test.ts`
 
 Expected: PASS; duplicate events create one Paper order and restart never resumes a stopped deployment.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add apps/desktop/src/main/execution apps/desktop/src/main/runtime apps/desktop/tests
@@ -232,6 +231,8 @@ git commit -m "feat: execute approved bots in paper mode"
 **Files:**
 - Modify: `packages/contracts/src/ipc.ts`
 - Modify: `apps/desktop/src/main/ipc/register-ipc.ts`
+- Modify: `apps/desktop/src/main/runtime/runtime-worker.ts`
+- Modify: `apps/desktop/src/main/runtime/runtime-supervisor.ts`
 - Modify: `apps/desktop/src/preload/index.ts`
 - Modify: `apps/desktop/src/renderer/screens/BotWorkbenchScreen.tsx`
 - Create: `apps/desktop/src/renderer/workbench/PerformancePanel.tsx`
