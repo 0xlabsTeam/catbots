@@ -85,6 +85,22 @@ describe('BotWorkbenchScreen', () => {
     expect(await screen.findByText('Use ETF inflow')).toBeTruthy();
   });
 
+  it('preserves the Chat draft when the Agent request fails', async () => {
+    const workbenchApi = api();
+    workbenchApi.sendMessage = vi.fn().mockRejectedValue(new Error('provider secret detail'));
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} onBack={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'BTC Flow' });
+
+    const composer = screen.getByLabelText('Message Catbots AI');
+    await user.type(composer, 'Keep this requirement');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('Catbots AI could not complete that request. Try again.')).toBeTruthy();
+    expect((composer as HTMLTextAreaElement).value).toBe('Keep this requirement');
+    expect(document.body.textContent).not.toContain('provider secret detail');
+  });
+
   it('selects a node for inspection and requires explicit approval confirmation', async () => {
     const workbenchApi = api();
     const user = userEvent.setup();

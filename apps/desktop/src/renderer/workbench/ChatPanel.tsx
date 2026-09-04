@@ -16,8 +16,7 @@ export function ChatPanel({ messages, activity, sending, onSend }: ChatPanelProp
     event.preventDefault();
     const message = draft.trim();
     if (message.length === 0 || sending) return;
-    setDraft('');
-    void onSend(message);
+    void onSend(message).then(() => setDraft('')).catch(() => undefined);
   };
   return (
     <LayerCard render={<section aria-labelledby="chat-panel-title" />} className="chat-panel">

@@ -40,6 +40,7 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
       setState(await api.sendMessage({ botId: bot.id, message }));
     } catch {
       setError('Catbots AI could not complete that request. Try again.');
+      throw new Error('WORKBENCH_MESSAGE_FAILED');
     } finally {
       setSending(false);
     }
