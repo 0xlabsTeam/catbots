@@ -86,7 +86,7 @@ export class ExecutionRepository {
   }
 
   proposeLiveAction(input: LiveActionProposal): ExecutionOutboxItem {
-    const existing = this.findOutboxItem(input.outbox.idempotencyKey);
+    const existing = this.getOutboxItem(input.outbox.idempotencyKey);
     if (existing !== null) {
       if (!sameOutboxIdentity(existing, input.outbox)) throw new Error('Execution idempotency collision');
       return existing;
@@ -129,20 +129,27 @@ export class ExecutionRepository {
         input.outbox.createdAt,
         input.outbox.createdAt,
       );
-      const created = this.findOutboxItem(input.outbox.idempotencyKey);
+      const created = this.getOutboxItem(input.outbox.idempotencyKey);
       if (created === null) throw new Error('Created outbox item could not be loaded');
       return created;
     }).immediate();
   }
 
-  claimOutboxItem(idempotencyKey: string, claimedAt: string): ExecutionOutboxItem | null {
+  claimOutboxItem(idempotencyKey: string, claimedAt: string, submissionEvent?: AuditEventView): ExecutionOutboxItem | null {
     return this.database.transaction(() => {
+      const pending = this.getOutboxItem(idempotencyKey);
+      if (pending === null || pending.status !== 'pending') return null;
+      if (submissionEvent !== undefined) {
+        const event = AuditEventViewSchema.parse(submissionEvent);
+        this.requireNextAuditEvent(pending.traceId, event);
+        this.insertAuditEvent(event);
+      }
       const result = this.database.prepare(`
         UPDATE execution_outbox
         SET status = 'claimed', attempts = attempts + 1, claimed_at = ?, updated_at = ?
         WHERE idempotency_key = ? AND status = 'pending'
       `).run(claimedAt, claimedAt, idempotencyKey);
-      return result.changes === 1 ? this.findOutboxItem(idempotencyKey) : null;
+      return result.changes === 1 ? this.getOutboxItem(idempotencyKey) : null;
     }).immediate();
   }
 
@@ -152,7 +159,7 @@ export class ExecutionRepository {
     status: Extract<ExecutionOutboxItem['status'], 'acknowledged' | 'rejected' | 'unknown'>,
   ): ExecutionOutboxItem {
     return this.database.transaction(() => {
-      const item = this.findOutboxItem(idempotencyKey);
+      const item = this.getOutboxItem(idempotencyKey);
       if (item === null || item.status !== 'claimed') throw new Error('Claimed outbox item not found');
       const event = AuditEventViewSchema.parse(source);
       this.requireNextAuditEvent(item.traceId, event);
@@ -162,7 +169,7 @@ export class ExecutionRepository {
       `).run(status, event.occurredAt, idempotencyKey);
       if (result.changes !== 1) throw new Error('Outbox outcome could not be recorded');
       this.insertAuditEvent(event);
-      const updated = this.findOutboxItem(idempotencyKey);
+      const updated = this.getOutboxItem(idempotencyKey);
       if (updated === null) throw new Error('Updated outbox item could not be loaded');
       return updated;
     }).immediate();
@@ -213,6 +220,61 @@ export class ExecutionRepository {
       WHERE status IN ('running', 'paused', 'stopping', 'recovering')
       ORDER BY created_at, rowid
     `).all().map((row) => toDeployment(row as DeploymentRow));
+  }
+
+  getOutboxItem(idempotencyKey: string): ExecutionOutboxItem | null {
+    const row = this.database.prepare(`
+      SELECT * FROM execution_outbox WHERE idempotency_key = ?
+    `).get(idempotencyKey) as OutboxRow | undefined;
+    return row === undefined ? null : toOutboxItem(row);
+  }
+
+  listOutboxItems(
+    deploymentId: string,
+    status?: ExecutionOutboxItem['status'],
+  ): ExecutionOutboxItem[] {
+    const rows = status === undefined
+      ? this.database.prepare('SELECT * FROM execution_outbox WHERE deployment_id = ? ORDER BY created_at, rowid').all(deploymentId)
+      : this.database.prepare('SELECT * FROM execution_outbox WHERE deployment_id = ? AND status = ? ORDER BY created_at, rowid').all(deploymentId, status);
+    return rows.map((row) => toOutboxItem(row as OutboxRow));
+  }
+
+  recordReconciledOutcome(
+    idempotencyKey: string,
+    source: AuditEventView,
+    status: Extract<ExecutionOutboxItem['status'], 'acknowledged' | 'rejected'>,
+  ): ExecutionOutboxItem {
+    return this.database.transaction(() => {
+      const item = this.getOutboxItem(idempotencyKey);
+      if (item === null || (item.status !== 'unknown' && item.status !== 'claimed')) throw new Error('Uncertain outbox item not found');
+      const event = AuditEventViewSchema.parse(source);
+      this.requireNextAuditEvent(item.traceId, event);
+      const result = this.database.prepare(`
+        UPDATE execution_outbox SET status = ?, updated_at = ?
+        WHERE idempotency_key = ? AND status IN ('unknown', 'claimed')
+      `).run(status, event.occurredAt, idempotencyKey);
+      if (result.changes !== 1) throw new Error('Reconciled outbox outcome could not be recorded');
+      this.insertAuditEvent(event);
+      const updated = this.getOutboxItem(idempotencyKey);
+      if (updated === null) throw new Error('Reconciled outbox item could not be loaded');
+      return updated;
+    }).immediate();
+  }
+
+  suspendDeployment(deploymentId: string, suspendedAt: string): Deployment {
+    const result = this.database.prepare(`
+      UPDATE deployments SET status = 'suspended', updated_at = ?
+      WHERE id = ? AND status IN ('running', 'recovering', 'preflight')
+    `).run(suspendedAt, deploymentId);
+    if (result.changes !== 1) throw new Error('Live deployment cannot be suspended from its current state');
+    return this.getDeployment(deploymentId);
+  }
+
+  nextAuditSequence(traceId: string): number {
+    const row = this.database.prepare('SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events WHERE trace_id = ?')
+      .get(traceId) as { sequence: number } | undefined;
+    if (row === undefined) throw new Error('Audit trace not found');
+    return row.sequence + 1;
   }
 
   listAuditEvents(traceId: string): AuditEventView[] {
@@ -286,13 +348,6 @@ export class ExecutionRepository {
     `).run(completedAt, deploymentId);
     if (result.changes !== 1) throw new Error('Stopping deployment not found');
     return this.getDeployment(deploymentId);
-  }
-
-  private findOutboxItem(idempotencyKey: string): ExecutionOutboxItem | null {
-    const row = this.database.prepare(`
-      SELECT * FROM execution_outbox WHERE idempotency_key = ?
-    `).get(idempotencyKey) as OutboxRow | undefined;
-    return row === undefined ? null : toOutboxItem(row);
   }
 
   private requireNextAuditEvent(traceId: string, event: AuditEventView): void {

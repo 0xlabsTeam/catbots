@@ -146,6 +146,7 @@ export const AuditEventTypeSchema = z.enum([
   'execution.queued',
   'execution.submitted',
   'execution.acknowledged',
+  'execution.unknown',
   'execution.rejected',
   'execution.partially_filled',
   'execution.filled',
