@@ -3,6 +3,7 @@ import { Banner, LayerCard, Tabs } from '@cloudflare/kumo';
 import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, StrategyRevision, WorkbenchState } from '@catbots/contracts';
 
 import { ChatPanel } from '../workbench/ChatPanel';
+import { BacktestPanel } from '../workbench/BacktestPanel';
 import { InspectorPanel } from '../workbench/InspectorPanel';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
@@ -83,12 +84,21 @@ export function BotWorkbenchScreen({ bot, api, onBack }: BotWorkbenchScreenProps
       <div className="workbench-grid">
         <ChatPanel messages={state.messages} activity={activity} sending={sending} onSend={send} />
         <section className="workbench-canvas" aria-label="Strategy workspace">
-          <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }]} value={tab} onValueChange={setTab} variant="underline" />
+          <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
           {tab === 'flow' ? (
             state.currentRevision === null
               ? <LayerCard className="workbench-empty"><h2>Start with a requirement</h2><p>Tell Catbots AI when to evaluate, which conditions to combine, and what action to take.</p></LayerCard>
               : <StrategyGraph revision={state.currentRevision} onSelectNode={setSelectedNode} />
-          ) : <LayerCard className="workbench-empty"><h2>No backtest selected</h2><p>Backtest controls and performance results are the next part of this workspace.</p></LayerCard>}
+          ) : state.currentRevision === null
+            ? <LayerCard className="workbench-empty"><h2>Create a strategy first</h2><p>A valid revision is required before a Backtest can run.</p></LayerCard>
+            : <BacktestPanel
+                key={state.currentRevision.version}
+                botId={bot.id}
+                revision={state.currentRevision}
+                backtests={state.backtests.filter(({ revisionVersion }) => revisionVersion === state.currentRevision?.version)}
+                api={api}
+                onCompleted={(backtest) => setState((previous) => previous === null ? previous : { ...previous, backtests: [backtest, ...previous.backtests] })}
+              />}
         </section>
         <InspectorPanel node={selectedNode} />
       </div>

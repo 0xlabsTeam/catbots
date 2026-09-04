@@ -385,6 +385,189 @@ h2 {
   gap: .75rem;
 }
 
+.backtest-panel,
+.backtest-results {
+  display: grid;
+  gap: 1rem;
+}
+
+.backtest-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.backtest-toolbar h2 {
+  margin-top: .2rem;
+  font-size: 1.25rem;
+}
+
+.backtest-assumptions,
+.backtest-muted,
+.backtest-provenance,
+.backtest-observation,
+.trace-section header span {
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.backtest-assumption-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(7rem, 1fr));
+  gap: .75rem;
+  padding: .75rem;
+  border: 1px solid var(--color-kumo-line);
+  border-radius: .75rem;
+  background: var(--color-kumo-elevated);
+}
+
+.backtest-empty {
+  display: grid;
+  min-height: 22rem;
+  place-content: center;
+  gap: .5rem;
+  text-align: center;
+  color: var(--text-color-kumo-subtle);
+}
+
+.backtest-provenance {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.metric-card {
+  display: grid;
+  gap: .35rem;
+  padding: .9rem;
+}
+
+.metric-card span {
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.metric-card strong {
+  color: var(--text-color-kumo-strong);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.equity-card {
+  padding: 1rem;
+}
+
+.equity-card h3,
+.trace-section h3,
+.backtest-trades h3 {
+  color: var(--text-color-kumo-strong);
+  font-size: .9375rem;
+  font-weight: 600;
+}
+
+.equity-table {
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.equity-table summary {
+  cursor: pointer;
+}
+
+.backtest-trades {
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.backtest-trades h3 {
+  margin-bottom: .75rem;
+}
+
+.equity-curve {
+  width: 100%;
+  height: 12rem;
+  margin-top: .75rem;
+  overflow: visible;
+}
+
+.equity-curve polyline {
+  fill: none;
+  stroke: var(--text-color-kumo-brand);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.trace-section,
+.trace-browser,
+.trace-list,
+.trace-timeline {
+  display: grid;
+  gap: .75rem;
+}
+
+.trace-section header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.trace-browser {
+  grid-template-columns: minmax(12rem, .8fr) minmax(16rem, 1.2fr);
+}
+
+.trace-list button {
+  justify-content: space-between;
+  height: auto;
+  text-align: left;
+}
+
+.trace-list button > span,
+.trace-list small,
+.trace-timeline li > div {
+  display: grid;
+  gap: .2rem;
+}
+
+.trace-list small,
+.trace-timeline time,
+.trace-timeline small {
+  color: var(--text-color-kumo-subtle);
+  font-size: .6875rem;
+}
+
+.trace-timeline {
+  padding: 1rem;
+  list-style: none;
+}
+
+.trace-timeline li {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
+  gap: .65rem;
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+.trace-sequence {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-content: center;
+  border-radius: 999px;
+  color: var(--text-color-kumo-brand);
+  background: var(--color-kumo-tint);
+  font-size: .6875rem;
+  font-weight: 600;
+}
+
 .workbench-title h1 {
   margin-top: .2rem;
   font-size: 1.75rem;
@@ -603,6 +786,15 @@ h2 {
 
   .workbench-header-actions {
     flex-wrap: wrap;
+  }
+
+  .metric-grid,
+  .trace-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .backtest-assumption-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
