@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck src/config.ts src/bots.ts src/ipc.ts src/index.ts"
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck src/config.ts src/bots.ts src/workbench.ts src/ipc.ts src/index.ts"
   },
   "dependencies": {
     "zod": "^4.3.6"
