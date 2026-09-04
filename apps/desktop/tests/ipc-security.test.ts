@@ -167,6 +167,9 @@ function createDependencies() {
     runtime: {
       getStatus: vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 })),
       subscribeStatus: vi.fn((_listener: (status: RuntimeStatus) => void) => () => undefined),
+      startDeployment: vi.fn(),
+      pauseDeployment: vi.fn(),
+      stopDeployment: vi.fn(),
     },
     testLlmConnection: vi.fn(async () => ({ ok: true as const, model: 'provider/model' })),
   };
@@ -271,6 +274,22 @@ describe('validated IPC handlers', () => {
     expect(dependencies.deploymentService.startPaper).toHaveBeenCalledWith(start);
     expect(dependencies.deploymentService.getPaperDeployment).toHaveBeenCalledTimes(4);
     expect(dependencies.deploymentService.pause).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.deploymentService.stop).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.runtime.startDeployment).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.runtime.pauseDeployment).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.runtime.stopDeployment).toHaveBeenCalledWith(deploymentId);
+  });
+
+  it('stops a newly persisted Paper deployment when the runtime worker is unavailable', async () => {
+    const dependencies = createDependencies();
+    dependencies.runtime.startDeployment.mockImplementationOnce(() => { throw new Error('worker secret'); });
+    const handlers = createIpcHandlers(dependencies);
+
+    const error = await handlers.startPaperDeployment(localEvent, { botId, strategyVersion: 1, riskLimits })
+      .catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ code: 'PAPER_DEPLOYMENT_START_FAILED' });
+    expect(String(error)).not.toContain('worker secret');
     expect(dependencies.deploymentService.stop).toHaveBeenCalledWith(deploymentId);
   });
 

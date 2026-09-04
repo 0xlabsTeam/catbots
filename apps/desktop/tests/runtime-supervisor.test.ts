@@ -63,6 +63,32 @@ describe('RuntimeSupervisor', () => {
     expect(observed).toEqual(['starting', 'ready']);
   });
 
+  it('routes deployment lifecycle commands through the worker and publishes its active count', () => {
+    const worker = createWorkerDouble();
+    const supervisor = new RuntimeSupervisor(() => worker);
+    supervisor.start();
+    worker.emit('message', { type: 'ready' });
+
+    supervisor.startDeployment('028f3f75-89ab-7def-8123-456789abcdef');
+    worker.emit('message', { type: 'runtime-status', activeBots: 1 });
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: 'deployment:start', deploymentId: '028f3f75-89ab-7def-8123-456789abcdef',
+    });
+    expect(supervisor.getStatus()).toEqual({ state: 'ready', activeBots: 1 });
+
+    supervisor.pauseDeployment('028f3f75-89ab-7def-8123-456789abcdef');
+    supervisor.stopDeployment('028f3f75-89ab-7def-8123-456789abcdef');
+    expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'deployment:pause' }));
+    expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'deployment:stop' }));
+  });
+
+  it('fails closed when a deployment command is sent before the worker is ready', () => {
+    const supervisor = new RuntimeSupervisor(() => createWorkerDouble());
+    supervisor.start();
+
+    expect(() => supervisor.startDeployment('028f3f75-89ab-7def-8123-456789abcdef')).toThrow('RUNTIME_NOT_READY');
+  });
+
   it('ignores a ready event from a stopped worker after a replacement starts', async () => {
     const first = createWorkerDouble();
     const second = createWorkerDouble();

@@ -1,13 +1,16 @@
 import type { RuntimeStatus } from '@catbots/contracts';
 
-export type RuntimeWorkerMessage = { type: 'ready' };
+export type RuntimeWorkerMessage = { type: 'ready' } | { type: 'runtime-status'; activeBots: number };
+export type RuntimeWorkerCommand =
+  | { type: 'shutdown' }
+  | { type: 'deployment:start' | 'deployment:pause' | 'deployment:stop'; deploymentId: string };
 
 export interface RuntimeWorkerPort {
   on(event: 'message', listener: (message: unknown) => void): this;
   on(event: 'exit', listener: (code: number) => void): this;
   on(event: 'error', listener: (...details: unknown[]) => void): this;
   removeListener?(event: 'message' | 'exit' | 'error', listener: (...details: unknown[]) => void): this;
-  postMessage(message: { type: 'shutdown' }): void;
+  postMessage(message: RuntimeWorkerCommand): void;
   kill(): boolean;
 }
 
@@ -94,6 +97,18 @@ export class RuntimeSupervisor {
     return () => this.listeners.delete(listener);
   }
 
+  startDeployment(deploymentId: string): void {
+    this.postDeploymentCommand('deployment:start', deploymentId);
+  }
+
+  pauseDeployment(deploymentId: string): void {
+    this.postDeploymentCommand('deployment:pause', deploymentId);
+  }
+
+  stopDeployment(deploymentId: string): void {
+    this.postDeploymentCommand('deployment:stop', deploymentId);
+  }
+
   stop(): Promise<void> {
     if (this.stopPromise !== undefined) return this.stopPromise;
 
@@ -123,8 +138,20 @@ export class RuntimeSupervisor {
   }
 
   private handleMessage(generation: number, port: RuntimeWorkerPort, message: unknown): void {
-    if (!this.isCurrent(generation, port) || this.status.state !== 'starting') return;
-    if (isReadyMessage(message)) this.setState('ready');
+    if (!this.isCurrent(generation, port)) return;
+    if (this.status.state === 'starting' && isReadyMessage(message)) {
+      this.setState('ready');
+      return;
+    }
+    if (this.status.state === 'ready' && isRuntimeStatusMessage(message)) {
+      this.setStatus({ state: 'ready', activeBots: message.activeBots });
+    }
+  }
+
+  private postDeploymentCommand(type: Exclude<RuntimeWorkerCommand['type'], 'shutdown'>, deploymentId: string): void {
+    if (this.status.state !== 'ready' || this.activeWorker === undefined) throw new Error('RUNTIME_NOT_READY');
+    if (deploymentId.trim().length === 0) throw new Error('INVALID_DEPLOYMENT_ID');
+    this.activeWorker.port.postMessage({ type, deploymentId });
   }
 
   private handleExit(generation: number, port: RuntimeWorkerPort): void {
@@ -203,8 +230,12 @@ export class RuntimeSupervisor {
   }
 
   private setState(state: RuntimeStatus['state']): void {
-    if (this.status.state === state) return;
-    this.status = { state, activeBots: 0 };
+    this.setStatus({ state, activeBots: state === 'ready' ? this.status.activeBots : 0 });
+  }
+
+  private setStatus(status: RuntimeStatus): void {
+    if (this.status.state === status.state && this.status.activeBots === status.activeBots) return;
+    this.status = status;
     for (const listener of this.listeners) {
       try {
         listener(this.getStatus());
@@ -223,4 +254,12 @@ function isReadyMessage(message: unknown): message is RuntimeWorkerMessage {
   return typeof message === 'object'
     && message !== null
     && (message as { type?: unknown }).type === 'ready';
+}
+
+function isRuntimeStatusMessage(message: unknown): message is Extract<RuntimeWorkerMessage, { type: 'runtime-status' }> {
+  return typeof message === 'object'
+    && message !== null
+    && (message as { type?: unknown }).type === 'runtime-status'
+    && Number.isInteger((message as { activeBots?: unknown }).activeBots)
+    && Number((message as { activeBots?: unknown }).activeBots) >= 0;
 }

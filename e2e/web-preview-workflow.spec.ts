@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('web preview completes Create → Chat → Flow → Backtest → Approve', async ({ page }) => {
+test('web preview completes Create → Chat → Flow → Backtest → Approve → Paper', async ({ page }) => {
   await page.goto('http://127.0.0.1:4176/web-preview.html');
   await expect(page.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
 
@@ -34,4 +34,13 @@ test('web preview completes Create → Chat → Flow → Backtest → Approve', 
   await page.getByRole('button', { name: 'Approve v1' }).click();
   await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Run Paper' }).click();
+  await expect(page.getByText('Paper running', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Performance' }).click();
+  await expect(page.getByText('$10,000.00')).toBeVisible();
+  await page.getByRole('tab', { name: 'Logs' }).click();
+  await expect(page.getByText('Waiting for the first trigger.')).toBeVisible();
+  await page.getByRole('button', { name: 'Stop' }).click();
+  await expect(page.getByText('Paper deployment is stopped')).toBeVisible();
 });

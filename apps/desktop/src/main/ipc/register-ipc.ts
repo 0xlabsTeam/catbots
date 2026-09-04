@@ -44,6 +44,9 @@ export class IpcRequestError extends Error {
 type RuntimePort = {
   getStatus(): RuntimeStatus;
   subscribeStatus(listener: (status: RuntimeStatus) => void): () => void;
+  startDeployment(deploymentId: string): void;
+  pauseDeployment(deploymentId: string): void;
+  stopDeployment(deploymentId: string): void;
 };
 
 type ApplicationPort = {
@@ -241,10 +244,20 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
     startPaperDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
       assertSender(event);
       const request = parseRequest(StartPaperInputSchema, input);
+      let deploymentId: string | undefined;
       try {
         const deployment = dependencies.deploymentService.startPaper(request);
+        deploymentId = deployment.id;
+        dependencies.runtime.startDeployment(deployment.id);
         return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(deployment.id));
       } catch {
+        if (deploymentId !== undefined) {
+          try {
+            dependencies.deploymentService.stop(deploymentId);
+          } catch {
+            // The fixed IPC failure remains authoritative; startup never proceeds to the renderer.
+          }
+        }
         throw new IpcRequestError('PAPER_DEPLOYMENT_START_FAILED');
       }
     },
@@ -264,6 +277,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       const request = parseRequest(PauseDeploymentInputSchema, input);
       try {
         dependencies.deploymentService.pause(request.deploymentId);
+        dependencies.runtime.pauseDeployment(request.deploymentId);
         return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(request.deploymentId));
       } catch {
         throw new IpcRequestError('PAPER_DEPLOYMENT_PAUSE_FAILED');
@@ -275,6 +289,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       const request = parseRequest(StopDeploymentInputSchema, input);
       try {
         dependencies.deploymentService.stop(request.deploymentId);
+        dependencies.runtime.stopDeployment(request.deploymentId);
         return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(request.deploymentId));
       } catch {
         throw new IpcRequestError('PAPER_DEPLOYMENT_STOP_FAILED');
