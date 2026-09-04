@@ -1,8 +1,15 @@
 import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron';
 import {
   CreateDraftBotInputSchema,
+  AgentToolActivitySchema,
+  ApproveStrategyRevisionInputSchema,
+  GetTraceInputSchema,
+  GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
+  RunWorkbenchBacktestInputSchema,
   RuntimeStatusSchema,
+  SendWorkbenchMessageInputSchema,
+  type AgentToolActivity,
   type BootstrapState,
   type ConnectionTestResult,
   type LocalConfig,
@@ -16,6 +23,7 @@ import {
   LlmCredentialReplacementRequiredError,
 } from '../config/config-repository';
 import { assertTrustedAppSenderUrl } from '../ipc-security';
+import type { WorkbenchService } from '../workbench/workbench-service';
 
 export class IpcRequestError extends Error {
   readonly code: string;
@@ -42,6 +50,7 @@ export type IpcHandlerDependencies = {
   app: ApplicationPort;
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
   botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
+  workbenchService: Pick<WorkbenchService, 'get' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'>;
   runtime: RuntimePort;
   testLlmConnection?: (provider: LocalConfig['llm']) => Promise<ConnectionTestResult>;
 };
@@ -172,6 +181,56 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       }
     },
 
+    getWorkbench: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(GetWorkbenchInputSchema, input);
+      try {
+        return await dependencies.workbenchService.get(request);
+      } catch {
+        throw new IpcRequestError('WORKBENCH_GET_FAILED');
+      }
+    },
+
+    sendWorkbenchMessage: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(SendWorkbenchMessageInputSchema, input);
+      try {
+        return await dependencies.workbenchService.sendMessage(request);
+      } catch {
+        throw new IpcRequestError('WORKBENCH_MESSAGE_FAILED');
+      }
+    },
+
+    runWorkbenchBacktest: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(RunWorkbenchBacktestInputSchema, input);
+      try {
+        return await dependencies.workbenchService.runBacktest(request);
+      } catch {
+        throw new IpcRequestError('WORKBENCH_BACKTEST_FAILED');
+      }
+    },
+
+    approveStrategyRevision: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(ApproveStrategyRevisionInputSchema, input);
+      try {
+        return await dependencies.workbenchService.approveRevision(request);
+      } catch {
+        throw new IpcRequestError('WORKBENCH_APPROVAL_FAILED');
+      }
+    },
+
+    getWorkbenchTrace: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(GetTraceInputSchema, input);
+      try {
+        return await dependencies.workbenchService.getTrace(request);
+      } catch {
+        throw new IpcRequestError('WORKBENCH_TRACE_FAILED');
+      }
+    },
+
     getRuntimeStatus: async (event: IpcMainInvokeEvent): Promise<RuntimeStatus> => {
       assertSender(event);
       try {
@@ -227,10 +286,16 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['config:test-llm', handlers.testLlmConnection],
     ['bots:list', handlers.listBots],
     ['bots:create-draft', handlers.createDraftBot],
+    ['workbench:get', handlers.getWorkbench],
+    ['workbench:send-message', handlers.sendWorkbenchMessage],
+    ['workbench:run-backtest', handlers.runWorkbenchBacktest],
+    ['workbench:approve-revision', handlers.approveStrategyRevision],
+    ['workbench:get-trace', handlers.getWorkbenchTrace],
     ['runtime:get-status', handlers.getRuntimeStatus],
   ];
   const registeredChannels: string[] = [];
   let unsubscribeRuntime: (() => void) | undefined;
+  let unsubscribeActivity: (() => void) | undefined;
 
   try {
     for (const [channel, handler] of channels) {
@@ -242,9 +307,14 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     });
     if (typeof unsubscribe !== 'function') throw new Error('Invalid runtime subscription');
     unsubscribeRuntime = unsubscribe;
+    const unsubscribeWorkbench = dependencies.workbenchService.subscribeActivity((activity) => {
+      forwardWorkbenchActivity(activity);
+    });
+    if (typeof unsubscribeWorkbench !== 'function') throw new Error('Invalid workbench subscription');
+    unsubscribeActivity = unsubscribeWorkbench;
   } catch (error) {
     try {
-      unsubscribeRuntime?.();
+      unsubscribeAll(unsubscribeActivity, unsubscribeRuntime);
     } finally {
       removeOwnedHandlers(registeredChannels);
     }
@@ -258,14 +328,34 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
       if (disposed) return;
       disposed = true;
       const unsubscribe = unsubscribeRuntime;
+      const unsubscribeWorkbench = unsubscribeActivity;
       unsubscribeRuntime = undefined;
+      unsubscribeActivity = undefined;
       try {
-        unsubscribe?.();
+        unsubscribeAll(unsubscribeWorkbench, unsubscribe);
       } finally {
         removeOwnedHandlers(registeredChannels);
       }
     },
   };
+}
+
+function unsubscribeAll(...subscriptions: Array<(() => void) | undefined>): void {
+  let firstFailure: unknown;
+  for (const unsubscribe of subscriptions) {
+    try {
+      unsubscribe?.();
+    } catch (error) {
+      firstFailure ??= error;
+    }
+  }
+  if (firstFailure !== undefined) throw firstFailure;
+}
+
+function forwardWorkbenchActivity(candidate: unknown): void {
+  const parsed = AgentToolActivitySchema.safeParse(candidate);
+  if (!parsed.success) return;
+  forwardToTrustedRenderers('workbench:activity', parsed.data);
 }
 
 function removeOwnedHandlers(channels: readonly string[]): void {
@@ -288,11 +378,15 @@ function forwardRuntimeStatus(candidate: unknown): void {
   const parsed = RuntimeStatusSchema.safeParse(candidate);
   if (!parsed.success) return;
 
+  forwardToTrustedRenderers('runtime:status', parsed.data);
+}
+
+function forwardToTrustedRenderers(channel: string, payload: RuntimeStatus | AgentToolActivity): void {
   for (const target of webContents.getAllWebContents()) {
     try {
       if (target.isDestroyed()) continue;
       assertTrustedAppSenderUrl(target.getURL());
-      target.send('runtime:status', parsed.data);
+      target.send(channel, payload);
     } catch {
       // A destroyed, untrusted, or failed renderer target must not affect other targets.
     }

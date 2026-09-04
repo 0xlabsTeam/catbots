@@ -12,6 +12,8 @@ import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
 import { ApplicationDatabase } from './storage/database';
 import { createTray, type TrayController } from './tray/create-tray';
+import { WorkbenchRepository } from './workbench/workbench-repository';
+import { WorkbenchService } from './workbench/workbench-service';
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -56,6 +58,8 @@ void app.whenReady()
 
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
+    const workbenchRepository = new WorkbenchRepository(connection);
+    const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository });
     runtime.start();
     disposeIpcHandlers = registerIpcHandlers({
       app: {
@@ -65,6 +69,7 @@ void app.whenReady()
       },
       configRepository,
       botRepository,
+      workbenchService,
       runtime,
       testLlmConnection,
     });

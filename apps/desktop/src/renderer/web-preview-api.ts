@@ -56,6 +56,14 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         return draft;
       },
     },
+    workbench: {
+      get: async () => { throw new Error('Web preview workbench is not initialized.'); },
+      sendMessage: async () => { throw new Error('Web preview workbench is not initialized.'); },
+      runBacktest: async () => { throw new Error('Web preview workbench is not initialized.'); },
+      approveRevision: async () => { throw new Error('Web preview workbench is not initialized.'); },
+      getTrace: async () => { throw new Error('Web preview workbench is not initialized.'); },
+      subscribeActivity: () => () => undefined,
+    },
     runtime: {
       getStatus: async () => ({ state: 'stopped', activeBots: 0 }),
       subscribeStatus: () => () => undefined,

@@ -57,6 +57,14 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
       testLlmConnection: vi.fn().mockResolvedValue({ ok: true, model: 'provider/model' }),
     },
     bots: makeApi(),
+    workbench: {
+      get: vi.fn(),
+      sendMessage: vi.fn(),
+      runBacktest: vi.fn(),
+      approveRevision: vi.fn(),
+      getTrace: vi.fn(),
+      subscribeActivity: vi.fn(() => () => undefined),
+    },
     runtime: { getStatus: vi.fn(), subscribeStatus: vi.fn(() => () => undefined) },
   };
 }

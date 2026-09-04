@@ -1,10 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CatbotsDesktopApi, RuntimeStatus } from '@catbots/contracts';
+import type { AgentToolActivity, CatbotsDesktopApi, RuntimeStatus } from '@catbots/contracts';
 
 const runtimeListeners = new Set<(status: RuntimeStatus) => void>();
+const activityListeners = new Set<(activity: AgentToolActivity) => void>();
 
 ipcRenderer.on('runtime:status', (_event, status: RuntimeStatus) => {
   for (const listener of runtimeListeners) listener(status);
+});
+
+ipcRenderer.on('workbench:activity', (_event, activity: AgentToolActivity) => {
+  for (const listener of activityListeners) listener(activity);
 });
 
 const catbots: CatbotsDesktopApi = deepFreeze({
@@ -21,6 +26,17 @@ const catbots: CatbotsDesktopApi = deepFreeze({
   bots: {
     list: () => ipcRenderer.invoke('bots:list'),
     createDraft: (input: unknown) => ipcRenderer.invoke('bots:create-draft', input),
+  },
+  workbench: {
+    get: (input) => ipcRenderer.invoke('workbench:get', input),
+    sendMessage: (input) => ipcRenderer.invoke('workbench:send-message', input),
+    runBacktest: (input) => ipcRenderer.invoke('workbench:run-backtest', input),
+    approveRevision: (input) => ipcRenderer.invoke('workbench:approve-revision', input),
+    getTrace: (input) => ipcRenderer.invoke('workbench:get-trace', input),
+    subscribeActivity: (listener: (activity: AgentToolActivity) => void): (() => void) => {
+      activityListeners.add(listener);
+      return () => activityListeners.delete(listener);
+    },
   },
   runtime: {
     getStatus: () => ipcRenderer.invoke('runtime:get-status'),

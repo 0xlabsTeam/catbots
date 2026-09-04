@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LocalConfigSchema, REDACTED_SECRET, type RuntimeStatus } from '@catbots/contracts';
+import { LocalConfigSchema, REDACTED_SECRET, type AgentToolActivity, type RuntimeStatus } from '@catbots/contracts';
 import { buildWindowOptions } from '../src/main/create-window';
 import { denyUnexpectedNavigation } from '../src/main/create-window';
 import { ConfigRepository } from '../src/main/config/config-repository';
@@ -127,6 +127,14 @@ function createDependencies() {
       list: vi.fn(() => []),
       createDraft: vi.fn(),
     },
+    workbenchService: {
+      get: vi.fn(),
+      sendMessage: vi.fn(),
+      runBacktest: vi.fn(),
+      approveRevision: vi.fn(),
+      getTrace: vi.fn(),
+      subscribeActivity: vi.fn((_listener: (activity: AgentToolActivity) => void) => () => undefined),
+    },
     runtime: {
       getStatus: vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 })),
       subscribeStatus: vi.fn((_listener: (status: RuntimeStatus) => void) => () => undefined),
@@ -179,6 +187,33 @@ describe('validated IPC handlers', () => {
     await expect(handlers.createDraftBot(localEvent, { name: '', market: '' }))
       .rejects.toThrow('INVALID_REQUEST');
     expect(dependencies.botRepository.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('validates every workbench request before service access', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+
+    await expect(handlers.getWorkbench(localEvent, { botId: 'not-a-uuid' })).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.sendWorkbenchMessage(localEvent, { botId: 'not-a-uuid', message: '' })).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.runWorkbenchBacktest(localEvent, {})).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.approveStrategyRevision(localEvent, {})).rejects.toThrow('INVALID_REQUEST');
+    await expect(handlers.getWorkbenchTrace(localEvent, {})).rejects.toThrow('INVALID_REQUEST');
+    expect(dependencies.workbenchService.get).not.toHaveBeenCalled();
+    expect(dependencies.workbenchService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('delegates valid workbench requests without widening their payloads', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+    const botId = '018f3f75-89ab-7def-8123-456789abcdef';
+
+    await handlers.getWorkbench(localEvent, { botId });
+    await handlers.sendWorkbenchMessage(localEvent, { botId, message: 'Build a momentum bot' });
+    await handlers.approveStrategyRevision(localEvent, { botId, version: 1 });
+
+    expect(dependencies.workbenchService.get).toHaveBeenCalledWith({ botId });
+    expect(dependencies.workbenchService.sendMessage).toHaveBeenCalledWith({ botId, message: 'Build a momentum bot' });
+    expect(dependencies.workbenchService.approveRevision).toHaveBeenCalledWith({ botId, version: 1 });
   });
 
   it('rejects malformed configuration before repository access without exposing its secret', async () => {
@@ -375,11 +410,16 @@ describe('validated IPC handlers', () => {
       'config:test-llm',
       'bots:list',
       'bots:create-draft',
+      'workbench:get',
+      'workbench:send-message',
+      'workbench:run-backtest',
+      'workbench:approve-revision',
+      'workbench:get-trace',
       'runtime:get-status',
     ]);
 
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
   });
 
   it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
@@ -419,6 +459,34 @@ describe('validated IPC handlers', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  it('forwards only validated workbench activity to trusted renderers', () => {
+    let pushActivity: ((activity: unknown) => void) | undefined;
+    const dependencies = createDependencies();
+    dependencies.workbenchService.subscribeActivity.mockImplementation((listener: (activity: AgentToolActivity) => void) => {
+      pushActivity = listener as (activity: unknown) => void;
+      return () => undefined;
+    });
+    const trustedTarget = {
+      getURL: vi.fn(() => 'catbots://app/index.html'),
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    };
+    electronBridge.getAllWebContents.mockReturnValue([trustedTarget]);
+    const remove = registerIpcHandlers(dependencies);
+    const activity = {
+      botId: '018f3f75-89ab-7def-8123-456789abcdef',
+      requestId: '018f3f75-89ab-7def-8123-456789abcdee',
+      phase: 'thinking',
+      message: 'Designing the strategy.',
+    };
+
+    pushActivity?.(activity);
+    pushActivity?.({ ...activity, phase: 'unsafe-phase' });
+
+    expect(trustedTarget.send).toHaveBeenCalledExactlyOnceWith('workbench:activity', activity);
+    remove();
+  });
+
   it('replaces only its owned registration and makes stale disposers harmless', () => {
     const firstDependencies = createDependencies();
     const secondDependencies = createDependencies();
@@ -428,9 +496,9 @@ describe('validated IPC handlers', () => {
     removeFirst();
 
     expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
   });
 
   it('restores the previous owned registration after a replacement failure', () => {
@@ -461,11 +529,11 @@ describe('validated IPC handlers', () => {
     const removeFirst = registerIpcHandlers(firstDependencies);
 
     expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
 
     const removeSecond = registerIpcHandlers(secondDependencies);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
   });
 
   it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
@@ -476,9 +544,9 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
 
     const removeReplacement = registerIpcHandlers(createDependencies());
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
     removeReplacement();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
   });
 
   it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
@@ -486,11 +554,11 @@ describe('validated IPC handlers', () => {
     invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
 
     expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(9);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(14);
 
     const remove = registerIpcHandlers(createDependencies());
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(28);
   });
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
@@ -518,9 +586,10 @@ describe('preload bridge', () => {
     expect(Object.isFrozen(api.app)).toBe(true);
     expect(Object.isFrozen(api.config)).toBe(true);
     expect(Object.isFrozen(api.bots)).toBe(true);
+    expect(Object.isFrozen(api.workbench)).toBe(true);
     expect(Object.isFrozen(api.runtime)).toBe(true);
     expect(Object.isFrozen((api.app as { getVersion: unknown }).getVersion)).toBe(true);
-    expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'runtime']);
+    expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'workbench', 'runtime']);
     expect(JSON.stringify(api)).not.toContain('ipcRenderer');
     expect(JSON.stringify(api)).not.toContain('process');
   });
