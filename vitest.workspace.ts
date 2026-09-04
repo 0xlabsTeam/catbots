@@ -7,4 +7,10 @@ export default defineWorkspace([
       include: ['apps/desktop/tests/**/*.test.ts'],
     },
   },
+  {
+    test: {
+      environment: 'node',
+      include: ['packages/strategy-runtime/src/**/*.test.ts'],
+    },
+  },
 ]);
