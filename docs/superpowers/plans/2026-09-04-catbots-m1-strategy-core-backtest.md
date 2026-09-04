@@ -354,25 +354,25 @@ git commit -m "feat: run triggered strategy flows with audit traces"
 - Produces `SimulationClock` that advances only through ordered historical inputs.
 - Produces `SimulatedExecutionAdapter` with normalized orders, fills, positions, cash, fees, funding, slippage, latency, partial fills, and liquidation ledger entries.
 
-- [ ] **Step 1: Write failing clock tests**
+- [x] **Step 1: Write failing clock tests**
 
 Assert monotonic advancement, rejection of time travel, deterministic order for equal timestamps, and repeatable interval emissions.
 
-- [ ] **Step 2: Implement and verify the clock**
+- [x] **Step 2: Implement and verify the clock**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- simulation-clock.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing adapter tests**
+- [x] **Step 3: Write failing adapter tests**
 
-Cover market and limit fills, deterministic latency/slippage, fee and funding debits, configurable partial fills, reduce-only behavior, leverage/margin accounting, liquidation, rejection on absent point-in-time prices, and deterministic client order IDs.
+Cover open/close market intents, deterministic latency/slippage, fee and funding debits, configurable partial fills, partial close behavior, leverage/margin accounting, liquidation, rejection on absent point-in-time prices, and deterministic client order IDs. Explicit limit-order simulation arrives with a registered limit-order Action rather than adding an unregistered execution shape.
 
-- [ ] **Step 4: Implement the normalized simulation ledger**
+- [x] **Step 4: Implement the normalized simulation ledger**
 
 All fill-model assumptions arrive in `BacktestAssumptions`; no hidden defaults may change between runs. Use integer timestamps and decimal-safe quote/base quantities represented as decimal strings at public boundaries.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- simulation-clock.test.ts simulated-adapter.test.ts`
 
