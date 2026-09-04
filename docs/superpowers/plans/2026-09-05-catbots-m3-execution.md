@@ -28,14 +28,14 @@
 **Files:**
 - Create: `packages/contracts/src/execution.ts`
 - Modify: `packages/contracts/src/index.ts`
-- Modify: `packages/contracts/src/ipc.ts`
+- Modify: `packages/contracts/package.json`
 - Test: `packages/contracts/src/execution.test.ts`
 
 **Interfaces:**
 - Consumes: existing `BotStatus`, strategy revision version, and ISO datetime conventions.
-- Produces: `DeploymentSchema`, `RiskLimitsSchema`, `AuditEventViewSchema`, `StartPaperInputSchema`, `PrepareLiveInputSchema`, `StartLiveInputSchema`, `StopDeploymentInputSchema`, and renderer-safe DTOs.
+- Produces: `DeploymentSchema`, `RiskLimitsSchema`, `AuditEventViewSchema`, `StartPaperInputSchema`, `PrepareLiveInputSchema`, `StartLiveInputSchema`, `StopDeploymentInputSchema`, and renderer-safe DTOs. `CatbotsDesktopApi` gains deployment methods in Task 5 together with their real service implementation.
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 ```ts
 expect(DeploymentSchema.safeParse({ mode: 'paper', strategyVersion: 1, allowedMarkets: ['BTC-PERP'] }).success).toBe(true);
@@ -43,13 +43,13 @@ expect(RiskLimitsSchema.safeParse({ maxOrderUsd: '0', maxPositionUsd: '1000', ma
 expect(JSON.stringify(LivePreflightViewSchema.parse(fixture))).not.toContain('privateKey');
 ```
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run: `pnpm --filter @catbots/contracts exec vitest run src/execution.test.ts`
 
 Expected: FAIL because the execution schemas are not exported.
 
-- [ ] **Step 3: Implement strict discriminated contracts**
+- [x] **Step 3: Implement strict discriminated contracts**
 
 ```ts
 export const DeploymentModeSchema = z.enum(['paper', 'live']);
@@ -67,7 +67,7 @@ export const RiskLimitsSchema = z.object({
 
 Define request schemas with UUID bot/deployment IDs and an exact strategy version. Live confirmation contains the exact bot name but never credentials.
 
-- [ ] **Step 4: Run contracts tests and typecheck**
+- [x] **Step 4: Run contracts tests and typecheck**
 
 Run: `pnpm --filter @catbots/contracts test && pnpm --filter @catbots/contracts typecheck`
 
