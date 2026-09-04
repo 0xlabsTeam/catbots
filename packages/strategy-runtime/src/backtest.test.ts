@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { EvaluationValue } from './evaluation-context';
 import { runBacktest, type BacktestRequest } from './backtest';
+import { btcEtfRsiBacktestRequest } from './fixtures/btc-etf-rsi-inputs';
 import { parseStrategyDocument } from './strategy-schema';
 
 const strategy = parseStrategyDocument({
@@ -83,12 +84,25 @@ describe('runBacktest', () => {
     const changedRequest = request();
     changedRequest.inputs[1]!.values['indicator.rsi'] = observed({ value: 20 }, 'sha256:rsi-changed');
     const changed = runBacktest(changedRequest);
+    const changedAssumptionsRequest = request();
+    changedAssumptionsRequest.assumptions = { ...changedAssumptionsRequest.assumptions, feeRateBps: 20 };
+    const changedAssumptions = runBacktest(changedAssumptionsRequest);
+    const changedStrategyRequest = request();
+    changedStrategyRequest.strategy = parseStrategyDocument({
+      ...strategy,
+      strategy: { ...strategy.strategy, version: 2 },
+    });
+    const changedStrategy = runBacktest(changedStrategyRequest);
 
     expect(first.serializedArtifact).toBe(second.serializedArtifact);
     expect(first.manifest.artifactHash).toBe(second.manifest.artifactHash);
     expect(changed.manifest.strategyHash).toBe(first.manifest.strategyHash);
     expect(changed.manifest.inputHash).not.toBe(first.manifest.inputHash);
     expect(changed.manifest.artifactHash).not.toBe(first.manifest.artifactHash);
+    expect(changedAssumptions.manifest.inputHash).toBe(first.manifest.inputHash);
+    expect(changedAssumptions.manifest.assumptionsHash).not.toBe(first.manifest.assumptionsHash);
+    expect(changedStrategy.manifest.inputHash).toBe(first.manifest.inputHash);
+    expect(changedStrategy.manifest.strategyHash).not.toBe(first.manifest.strategyHash);
   });
 
   it('reports progress phases and returns a reproducible partial result when cancelled', () => {
@@ -116,5 +130,23 @@ describe('runBacktest', () => {
     };
 
     expect(runBacktest(sparse).warnings).toEqual(['insufficient_history', 'stale_data']);
+  });
+
+  it('reproduces the M1 interval/event, nested-condition, open/close acceptance flow', () => {
+    const first = runBacktest(btcEtfRsiBacktestRequest());
+    const second = runBacktest(btcEtfRsiBacktestRequest());
+
+    expect(first.serializedArtifact).toBe(second.serializedArtifact);
+    expect(first.manifest.artifactHash).toBe(second.manifest.artifactHash);
+    expect(first.traces.map((trace) => trace.at(-1)?.type)).toEqual([
+      'flow.completed', 'flow.skipped', 'flow.completed',
+    ]);
+    expect(first.traces[1]).toContainEqual(expect.objectContaining({
+      type: 'condition.evaluated',
+      nodeId: 'c-rsi',
+      details: expect.objectContaining({ result: 'unknown', reason: 'data.stale' }),
+    }));
+    expect(first.trades).toHaveLength(1);
+    expect(first.metrics).toMatchObject({ tradeCount: 1, winRatePercent: 100 });
   });
 });

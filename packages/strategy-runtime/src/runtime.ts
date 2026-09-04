@@ -3,7 +3,14 @@ import { evaluateConditionNode, type ConditionResult } from './condition-evaluat
 import type { EvaluationContext } from './evaluation-context';
 import type { CompiledStrategy } from './graph-validator';
 import type { JsonValue, StrategyNode } from './strategy-schema';
-import { deriveTriggerIdempotencyKey, type TriggerInput } from './triggers';
+import {
+  deriveTriggerIdempotencyKey,
+  matchesEventTrigger,
+  matchesIntervalTrigger,
+  type EventTriggerConfig,
+  type IntervalTriggerConfig,
+  type TriggerInput,
+} from './triggers';
 
 export type ProposedEffect = Readonly<{
   nodeId: string;
@@ -31,14 +38,21 @@ export type RuntimeExecutionPort = Readonly<{
   }>;
 }>;
 
-export type RuntimeEvaluationRequest = Readonly<{
+type RuntimeEvaluationRequestBase = Readonly<{
   compiled: CompiledStrategy;
   triggerNodeId: string;
   triggerInput: TriggerInput;
-  context: EvaluationContext;
   deployment: Readonly<{ id: string; mode: 'backtest' | 'paper' | 'live' }>;
   execution: RuntimeExecutionPort;
 }>;
+
+export type RuntimeEvaluationRequest = RuntimeEvaluationRequestBase & (
+  | Readonly<{ context: EvaluationContext; contextFailure?: never }>
+  | Readonly<{
+    context?: undefined;
+    contextFailure: Readonly<{ code: string; message: string }>;
+  }>
+);
 
 export type RuntimeEvaluation = Readonly<{
   traceId: string;
@@ -70,9 +84,16 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
   if (!trigger || trigger.kind !== 'trigger' || !compiled.triggerIds.includes(triggerNodeId)) {
     throw new Error(`Unknown Trigger node: ${triggerNodeId}`);
   }
+  const matches = trigger.type === 'trigger.interval' && triggerInput.kind === 'interval'
+    ? matchesIntervalTrigger(trigger.config as IntervalTriggerConfig, triggerInput.occurredAt)
+    : trigger.type === 'trigger.event' && triggerInput.kind === 'event'
+      ? matchesEventTrigger(trigger.config as EventTriggerConfig, triggerInput.event)
+      : false;
+  if (!matches) throw new Error(`Input does not match Trigger node: ${triggerNodeId}`);
 
   const idempotencyKey = deriveTriggerIdempotencyKey(triggerNodeId, triggerInput);
   const traceId = `trace:${compiled.document.strategy.id}:v${compiled.document.strategy.version}:${idempotencyKey}`;
+  const evaluationTime = context?.evaluatedAt ?? triggerTime(triggerInput);
   const trace = new AuditTraceBuilder({
     traceId,
     idempotencyKey,
@@ -82,13 +103,24 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
     mode: deployment.mode,
     triggerNodeId,
     ...(triggerEventId(triggerInput) ? { triggerEventId: triggerEventId(triggerInput) } : {}),
-    evaluationTime: context.evaluatedAt,
-    createdAt: context.evaluatedAt,
+    evaluationTime,
+    createdAt: evaluationTime,
     actor: 'strategy-runtime',
   });
 
   trace.append('trigger.received', { occurredAt: triggerTime(triggerInput), input: triggerInput }, nodeIdentity(trigger));
   trace.append('context.resolution_started');
+  if (!context) {
+    trace.append('context.failed', request.contextFailure);
+    trace.append('flow.failed', { reason: 'context.resolution_failed' });
+    return Object.freeze({
+      traceId,
+      idempotencyKey,
+      effects: Object.freeze([]),
+      conditionResults: new Map<string, ConditionResult>(),
+      trace: trace.snapshot(),
+    });
+  }
   trace.append('context.resolved', { references: Object.keys(context.values).sort() });
 
   const conditionResults = new Map<string, ConditionResult>();

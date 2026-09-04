@@ -444,21 +444,21 @@ git commit -m "feat: produce deterministic backtest artifacts"
 
 - Fixture includes one interval flow, one ETF Flow event flow, nested `ALL`/`ANY`, RSI and ETF references, position state, open/close Actions, stale-data `unknown`, and point-in-time market/funding inputs.
 
-- [ ] **Step 1: Add the acceptance test before the fixture**
+- [x] **Step 1: Add the acceptance test before the fixture**
 
 Run the same fixture twice in fresh runtime instances and assert byte-identical canonical result JSON, identical artifact hash, identical trades/metrics, and traces for executed, skipped, and unknown paths.
 
-- [ ] **Step 2: Confirm the missing-fixture failure**
+- [x] **Step 2: Confirm the missing-fixture failure**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- backtest.test.ts`
 
 Expected: FAIL because the acceptance fixture is unavailable.
 
-- [ ] **Step 3: Implement the fixture and document M1 usage**
+- [x] **Step 3: Implement the fixture and document M1 usage**
 
 README examples parse, validate, and backtest the fixture through public package exports only. Explicitly state that M1 is simulation-only and makes no performance promise.
 
-- [ ] **Step 4: Run milestone verification**
+- [x] **Step 4: Run milestone verification**
 
 Run: `pnpm --filter @catbots/strategy-runtime test`
 
@@ -476,7 +476,7 @@ Run: `git diff --check`
 
 Expected: no whitespace errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/strategy-runtime README.md pnpm-lock.yaml
@@ -487,12 +487,12 @@ git commit -m "test: prove deterministic M1 backtest flow"
 
 ## Completion Gate
 
-- [ ] Every M1 built-in node has a strict config schema, typed ports, visualization metadata, and requirements metadata.
-- [ ] Valid nested and multi-flow TCA graphs compile; every forbidden topology has a stable validation error.
-- [ ] All Condition truth tables explicitly cover `unknown` and no unknown path proposes an Action.
-- [ ] Backtest evaluation is point-in-time and deterministic across fresh processes.
-- [ ] Fees, funding, slippage, latency, partial fills, and liquidation are explicit tested assumptions.
-- [ ] Every trigger has a complete terminal trace and reproducible integrity hash.
-- [ ] Public trace/artifact schemas contain no secret-bearing fields.
-- [ ] Existing M0 desktop behavior remains green and Paper/Live execution remains unavailable.
-- [ ] The plan and implementation contain no `TBD`, `TODO`, placeholder, or arbitrary-code escape hatch.
+- [x] Every M1 built-in node has a strict config schema, typed ports, visualization metadata, and requirements metadata.
+- [x] Valid nested and multi-flow TCA graphs compile; every forbidden topology has a stable validation error.
+- [x] All Condition truth tables explicitly cover `unknown` and no unknown path proposes an Action.
+- [x] Backtest evaluation is point-in-time and deterministic across fresh runtime instances.
+- [x] Fees, funding, slippage, latency, partial fills, and liquidation are explicit tested assumptions.
+- [x] Every trigger has a complete terminal trace and reproducible integrity hash.
+- [x] Public trace/artifact schemas contain no secret-bearing fields.
+- [x] Existing M0 desktop behavior remains green and Paper/Live execution remains unavailable.
+- [x] The plan and implementation contain no `TBD`, `TODO`, placeholder, or arbitrary-code escape hatch.

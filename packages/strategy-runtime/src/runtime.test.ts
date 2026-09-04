@@ -139,4 +139,61 @@ describe('evaluateTrigger', () => {
       expect.objectContaining({ type: 'flow.failed' }),
     ]);
   });
+
+  it('rejects an interval activation that is not on the registered UTC cadence', () => {
+    expect(() => evaluateTrigger({
+      compiled: compiledStrategy(), triggerNodeId: 't-15m',
+      triggerInput: { kind: 'interval', occurredAt: '2026-09-03T08:16:00.000Z' },
+      context: context(25), deployment: { id: 'backtest-1', mode: 'backtest' },
+      execution: filledExecution(),
+    })).toThrow(/does not match trigger/i);
+  });
+
+  it('rejects an Event input whose registered type or filters do not match', () => {
+    const document = structuredClone(compiledStrategy().document);
+    document.nodes[0] = {
+      id: 't-event', kind: 'trigger', type: 'trigger.event', version: 1,
+      config: { eventType: 'data.etf_flow.updated', filters: { asset: 'BTC' } },
+    };
+    document.edges = document.edges.map((edge) => (
+      edge.source === 't-15m' ? { ...edge, source: 't-event' } : edge
+    ));
+    const validation = validateStrategy(document, createBuiltinRegistry());
+    if (!validation.valid) throw new Error(`Event fixture must compile: ${JSON.stringify(validation.errors)}`);
+
+    expect(() => evaluateTrigger({
+      compiled: validation.compiled,
+      triggerNodeId: 't-event',
+      triggerInput: {
+        kind: 'event',
+        event: {
+          id: 'wrong-event', type: 'market.trade',
+          occurredAt: '2026-09-03T08:15:00.000Z', receivedAt: '2026-09-03T08:15:00.000Z',
+          source: 'fixture', payload: { asset: 'ETH' },
+          quality: { status: 'verified', freshnessSeconds: 0 },
+        },
+      },
+      context: context(25), deployment: { id: 'backtest-1', mode: 'backtest' },
+      execution: filledExecution(),
+    })).toThrow(/does not match trigger/i);
+  });
+
+  it('records context failure and terminates the flow before evaluating Conditions', () => {
+    const execute = vi.fn();
+    const result = evaluateTrigger({
+      compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
+      context: undefined,
+      contextFailure: { code: 'DATA_RESOLVER_UNAVAILABLE', message: 'Resolver did not respond' },
+      deployment: { id: 'backtest-1', mode: 'backtest' },
+      execution: { execute },
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.trace.map((event) => event.type)).toEqual([
+      'trigger.received', 'context.resolution_started', 'context.failed', 'flow.failed',
+    ]);
+    expect(result.trace[2]?.details).toEqual({
+      code: 'DATA_RESOLVER_UNAVAILABLE', message: 'Resolver did not respond',
+    });
+  });
 });

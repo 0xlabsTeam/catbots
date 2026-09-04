@@ -55,6 +55,12 @@ export function matchesEventTrigger(config: EventTriggerConfig, event: TriggerEv
   });
 }
 
+export function matchesIntervalTrigger(config: IntervalTriggerConfig, occurredAt: string): boolean {
+  if (config.alignment !== 'utc') return false;
+  const duration = intervalMilliseconds(config.every);
+  return instant(occurredAt) % duration === 0;
+}
+
 function occurredAt(input: TriggerInput): string {
   return input.kind === 'event' ? input.event.occurredAt : input.occurredAt;
 }
