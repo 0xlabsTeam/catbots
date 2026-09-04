@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@catbots/contracts": "workspace:*",
+    "@catbots/execution-core": "workspace:*",
     "@catbots/strategy-runtime": "workspace:*",
     "@cloudflare/kumo": "^2.13.0",
     "@phosphor-icons/react": "^2.1.10",

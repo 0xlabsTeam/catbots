@@ -17,6 +17,9 @@ importers:
       '@catbots/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@catbots/execution-core':
+        specifier: workspace:*
+        version: link:../../packages/execution-core
       '@catbots/strategy-runtime':
         specifier: workspace:*
         version: link:../../packages/strategy-runtime

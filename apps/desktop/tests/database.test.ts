@@ -51,16 +51,24 @@ describe('migrateDatabase', () => {
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
       { version: 1 },
       { version: 2 },
+      { version: 3 },
     ]);
     expect(db.prepare(`
       SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name IN ('bots', 'strategy_revisions', 'chat_messages', 'backtest_runs', 'backtest_traces')
+      WHERE type = 'table' AND name IN (
+        'bots', 'strategy_revisions', 'chat_messages', 'backtest_runs', 'backtest_traces',
+        'deployments', 'audit_traces', 'audit_events', 'execution_outbox'
+      )
       ORDER BY name
     `).all()).toEqual([
+      { name: 'audit_events' },
+      { name: 'audit_traces' },
       { name: 'backtest_runs' },
       { name: 'backtest_traces' },
       { name: 'bots' },
       { name: 'chat_messages' },
+      { name: 'deployments' },
+      { name: 'execution_outbox' },
       { name: 'strategy_revisions' },
     ]);
   });
@@ -92,7 +100,7 @@ describe('migrateDatabase', () => {
     migrateDatabase(db);
 
     expect(db.prepare('SELECT id, name FROM bots').all()).toEqual([{ id: 'bot-1', name: 'Existing bot' }]);
-    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
   });
 });
 
@@ -107,6 +115,7 @@ describe('ApplicationDatabase', () => {
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
       { version: 1 },
       { version: 2 },
+      { version: 3 },
     ]);
     lifecycle.close();
     expect(db.open).toBe(false);

@@ -73,6 +73,81 @@ const migrations: readonly Migration[] = [
       CREATE INDEX backtest_runs_by_bot ON backtest_runs (bot_id, started_at DESC);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      CREATE TABLE deployments (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT NOT NULL,
+        strategy_id TEXT NOT NULL,
+        strategy_version INTEGER NOT NULL CHECK (strategy_version > 0),
+        mode TEXT NOT NULL CHECK (mode IN ('paper', 'live')),
+        venue TEXT NOT NULL CHECK (venue IN ('paper', 'hyperliquid')),
+        network TEXT NOT NULL CHECK (network IN ('paper', 'testnet')),
+        masked_account TEXT,
+        market_bindings_json TEXT NOT NULL,
+        risk_limits_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('preflight', 'running', 'paused', 'stopping', 'stopped', 'recovering', 'suspended', 'error')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (bot_id, strategy_version) REFERENCES strategy_revisions(bot_id, version) ON DELETE RESTRICT
+      );
+
+      CREATE TRIGGER deployments_strategy_binding_is_immutable
+      BEFORE UPDATE OF bot_id, strategy_id, strategy_version, mode, venue, network, masked_account, market_bindings_json, risk_limits_json, created_at
+      ON deployments
+      BEGIN
+        SELECT RAISE(ABORT, 'deployment binding is immutable');
+      END;
+
+      CREATE TABLE audit_traces (
+        id TEXT PRIMARY KEY,
+        deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE RESTRICT,
+        trigger_event_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('open', 'completed', 'failed')) DEFAULT 'open',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE audit_events (
+        id TEXT PRIMARY KEY,
+        trace_id TEXT NOT NULL REFERENCES audit_traces(id) ON DELETE RESTRICT,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        type TEXT NOT NULL,
+        event_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (trace_id, sequence)
+      );
+
+      CREATE TRIGGER audit_events_are_append_only_update
+      BEFORE UPDATE ON audit_events
+      BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
+
+      CREATE TRIGGER audit_events_are_append_only_delete
+      BEFORE DELETE ON audit_events
+      BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
+
+      CREATE TABLE execution_outbox (
+        id TEXT PRIMARY KEY,
+        deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE RESTRICT,
+        trace_id TEXT NOT NULL REFERENCES audit_traces(id) ON DELETE RESTRICT,
+        action_node_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        client_order_id TEXT NOT NULL UNIQUE,
+        intent_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'claimed', 'acknowledged', 'rejected', 'unknown')) DEFAULT 'pending',
+        attempts INTEGER NOT NULL CHECK (attempts >= 0) DEFAULT 0,
+        claimed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX deployments_by_bot ON deployments (bot_id, created_at DESC);
+      CREATE INDEX audit_events_by_trace ON audit_events (trace_id, sequence);
+      CREATE INDEX execution_outbox_by_status ON execution_outbox (status, created_at);
+    `,
+  },
 ];
 
 export function migrateDatabase(database: Database.Database): void {

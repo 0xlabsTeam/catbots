@@ -73,7 +73,7 @@ Run: `pnpm --filter @catbots/contracts test && pnpm --filter @catbots/contracts 
 
 Expected: PASS with invalid limits and secret-shaped fields rejected.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add packages/contracts
@@ -133,7 +133,7 @@ Run: `pnpm --filter @catbots/execution-core test && pnpm typecheck`
 
 Expected: PASS with every rule ID asserted at its exact boundary.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add packages/execution-core pnpm-lock.yaml
@@ -151,7 +151,7 @@ git commit -m "feat: add venue neutral risk and execution core"
 - Consumes: Task 1 deployment DTOs and Task 2 deterministic IDs.
 - Produces: `ExecutionRepository.createDeployment`, `appendTerminalTrace`, `proposeLiveAction`, `claimOutboxItem`, `recordAdapterOutcome`, `requestStop`, and `listRecoverableDeployments`.
 
-- [ ] **Step 1: Write failing transaction and immutability tests**
+- [x] **Step 1: Write failing transaction and immutability tests**
 
 ```ts
 expect(() => repository.proposeLiveAction(fixture, { failAuditWrite: true })).toThrow();
@@ -160,23 +160,23 @@ expect(repository.claimOutboxItem(key)?.idempotencyKey).toBe(key);
 expect(repository.claimOutboxItem(key)).toBeNull();
 ```
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run: `pnpm --filter @catbots/desktop exec vitest run tests/execution-repository.test.ts`
 
 Expected: FAIL because migration 3 and the repository do not exist.
 
-- [ ] **Step 3: Add migration 3 and transaction methods**
+- [x] **Step 3: Add migration 3 and transaction methods**
 
 Create `deployments`, `audit_traces`, `audit_events`, and `execution_outbox` tables. Enforce unique `(trace_id, sequence)`, unique `idempotency_key`, immutable strategy binding, and checked lifecycle states. `proposeLiveAction` must insert proposed/risk events and the pending outbox row in one `better-sqlite3` transaction.
 
-- [ ] **Step 4: Run migration, rollback, deduplication, and redaction tests**
+- [x] **Step 4: Run migration, rollback, deduplication, and redaction tests**
 
-Run: `pnpm --filter @catbots/desktop exec vitest run tests/migrations.test.ts tests/execution-repository.test.ts`
+Run: `pnpm --filter @catbots/desktop exec vitest run tests/database.test.ts tests/execution-repository.test.ts`
 
 Expected: PASS; forced transaction failure leaves no audit or outbox row.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add apps/desktop/src/main/storage apps/desktop/src/main/execution apps/desktop/tests
