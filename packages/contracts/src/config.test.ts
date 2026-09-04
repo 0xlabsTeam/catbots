@@ -69,6 +69,13 @@ describe('LocalConfigSchema', () => {
     }
   });
 
+  it('keeps Hyperliquid mainnet disabled in local configuration', () => {
+    expect(LocalConfigSchema.safeParse({
+      ...valid,
+      exchanges: { hyperliquid: { ...validHyperliquid, network: 'mainnet' } },
+    }).success).toBe(false);
+  });
+
   it('accepts a typed settings patch that omits the already-stored API key', () => {
     expect(LocalSettingsPatchSchema.parse({
       profile: { name: 'Renamed profile', telemetry: true },

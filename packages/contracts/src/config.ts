@@ -66,7 +66,7 @@ export const LocalConfigSchema = z.object({
   llm: LlmProviderSchema,
   exchanges: z.object({
     hyperliquid: z.object({
-      network: z.enum(['testnet', 'mainnet']),
+      network: z.literal('testnet'),
       accountAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
       agentPrivateKey: StoredSecretSchema,
     }).strict().optional(),
