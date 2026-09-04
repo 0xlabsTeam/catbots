@@ -4,12 +4,16 @@ import {
   AgentToolActivitySchema,
   ApproveStrategyRevisionInputSchema,
   GetTraceInputSchema,
+  GetActiveDeploymentInputSchema,
   GetDeploymentInputSchema,
   GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
   RunWorkbenchBacktestInputSchema,
   PaperDeploymentViewSchema,
   PauseDeploymentInputSchema,
+  PrepareLiveInputSchema,
+  StartLiveInputSchema,
+  DeploymentSchema,
   RuntimeStatusSchema,
   SendWorkbenchMessageInputSchema,
   StartPaperInputSchema,
@@ -25,6 +29,7 @@ import { BotRepository } from '../bots/bot-repository';
 import {
   ConfigParseError,
   ConfigRepository,
+  HyperliquidCredentialReplacementRequiredError,
   LlmCredentialReplacementRequiredError,
 } from '../config/config-repository';
 import { assertTrustedAppSenderUrl } from '../ipc-security';
@@ -60,7 +65,7 @@ export type IpcHandlerDependencies = {
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
   botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
   workbenchService: Pick<WorkbenchService, 'get' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'>;
-  deploymentService: Pick<DeploymentService, 'startPaper' | 'getPaperDeployment' | 'pause' | 'stop'>;
+  deploymentService: Pick<DeploymentService, 'startPaper' | 'getPaperDeployment' | 'pause' | 'stop' | 'prepareLive' | 'startLive' | 'getLiveDeployment' | 'getActiveDeployment'>;
   runtime: RuntimePort;
   testLlmConnection?: (provider: LocalConfig['llm']) => Promise<ConnectionTestResult>;
 };
@@ -130,6 +135,9 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       } catch (error) {
         if (error instanceof LlmCredentialReplacementRequiredError) {
           throw new IpcRequestError('LLM_CREDENTIAL_REPLACEMENT_REQUIRED');
+        }
+        if (error instanceof HyperliquidCredentialReplacementRequiredError) {
+          throw new IpcRequestError('HYPERLIQUID_CREDENTIAL_REPLACEMENT_REQUIRED');
         }
         if (error instanceof ConfigParseError) throw new IpcRequestError('INVALID_REQUEST');
         throw new IpcRequestError('CONFIG_SAVE_FAILED');
@@ -296,6 +304,66 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       }
     },
 
+    prepareLiveDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(PrepareLiveInputSchema, input);
+      try {
+        return await dependencies.deploymentService.prepareLive(request, new AbortController().signal);
+      } catch {
+        throw new IpcRequestError('LIVE_PREFLIGHT_FAILED');
+      }
+    },
+
+    startLiveDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(StartLiveInputSchema, input);
+      let deploymentId: string | undefined;
+      try {
+        const deployment = await dependencies.deploymentService.startLive(request);
+        deploymentId = deployment.id;
+        dependencies.runtime.startDeployment(deployment.id);
+        return DeploymentSchema.parse(deployment);
+      } catch {
+        if (deploymentId !== undefined) {
+          try { dependencies.deploymentService.stop(deploymentId); } catch { /* Startup failure remains authoritative. */ }
+        }
+        throw new IpcRequestError('LIVE_DEPLOYMENT_START_FAILED');
+      }
+    },
+
+    getLiveDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(GetDeploymentInputSchema, input);
+      try {
+        return DeploymentSchema.parse(dependencies.deploymentService.getLiveDeployment(request.deploymentId));
+      } catch {
+        throw new IpcRequestError('LIVE_DEPLOYMENT_GET_FAILED');
+      }
+    },
+
+    stopLiveDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(StopDeploymentInputSchema, input);
+      try {
+        dependencies.deploymentService.stop(request.deploymentId);
+        dependencies.runtime.stopDeployment(request.deploymentId);
+        return DeploymentSchema.parse(dependencies.deploymentService.getLiveDeployment(request.deploymentId));
+      } catch {
+        throw new IpcRequestError('LIVE_DEPLOYMENT_STOP_FAILED');
+      }
+    },
+
+    getActiveDeployment: async (event: IpcMainInvokeEvent, input: unknown) => {
+      assertSender(event);
+      const request = parseRequest(GetActiveDeploymentInputSchema, input);
+      try {
+        const deployment = dependencies.deploymentService.getActiveDeployment(request.botId);
+        return deployment === null ? null : DeploymentSchema.parse(deployment);
+      } catch {
+        throw new IpcRequestError('ACTIVE_DEPLOYMENT_GET_FAILED');
+      }
+    },
+
     getRuntimeStatus: async (event: IpcMainInvokeEvent): Promise<RuntimeStatus> => {
       assertSender(event);
       try {
@@ -360,6 +428,11 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['deployments:get-paper', handlers.getPaperDeployment],
     ['deployments:pause-paper', handlers.pausePaperDeployment],
     ['deployments:stop-paper', handlers.stopPaperDeployment],
+    ['deployments:prepare-live', handlers.prepareLiveDeployment],
+    ['deployments:start-live', handlers.startLiveDeployment],
+    ['deployments:get-live', handlers.getLiveDeployment],
+    ['deployments:stop-live', handlers.stopLiveDeployment],
+    ['deployments:get-active', handlers.getActiveDeployment],
     ['runtime:get-status', handlers.getRuntimeStatus],
   ];
   const registeredChannels: string[] = [];

@@ -199,6 +199,25 @@ describe('ConfigRepository', () => {
     });
   });
 
+  it('lets the Settings form configure Hyperliquid testnet while preserving its stored Agent key', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+    await repository.save(validConfig);
+
+    await repository.patchSettings({
+      profile: validConfig.profile,
+      llm: { provider: 'openai-compatible', baseUrl: validConfig.llm.baseUrl, model: validConfig.llm.model },
+      exchanges: {
+        hyperliquid: {
+          network: 'testnet',
+          accountAddress: validConfig.exchanges.hyperliquid!.accountAddress,
+        },
+      },
+    });
+
+    await expect(repository.load()).resolves.toEqual(validConfig);
+  });
+
   it.each([
     ['provider', { provider: 'anthropic-compatible' as const, baseUrl: validConfig.llm.baseUrl }],
     ['base origin', { provider: validConfig.llm.provider, baseUrl: 'https://other.example/v1' }],

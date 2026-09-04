@@ -6,6 +6,8 @@ import {
   LocalConfigSchema,
   REDACTED_SECRET,
   type AgentToolActivity,
+  type Deployment,
+  type LivePreflightView,
   type PaperDeploymentView,
   type RiskLimits,
   type RuntimeStatus,
@@ -132,6 +134,16 @@ const paperView: PaperDeploymentView = {
   state: { equityUsd: '10000', positions: [], orders: [] },
   auditEvents: [],
 };
+const livePreflight: LivePreflightView = {
+  id: '038f3f75-89ab-7def-8123-456789abcdef', botId, strategyVersion: 1, network: 'testnet',
+  maskedAccount: '0x0123…4567', checkedAt: '2026-09-05T00:00:00.000Z', ready: true,
+  checks: [{ id: 'connection', label: 'Connection', ok: true, message: 'Connected.' }],
+};
+const liveDeployment: Deployment = {
+  id: deploymentId, botId, strategyId: 'btc-paper', strategyVersion: 1,
+  mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: '0x0123…4567', marketBindings: ['BTC-PERP'],
+  riskLimits, status: 'running', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
+};
 
 function createDependencies() {
   return {
@@ -163,6 +175,10 @@ function createDependencies() {
       getPaperDeployment: vi.fn(() => paperView),
       pause: vi.fn(() => ({ ...paperView.deployment, status: 'paused' as const })),
       stop: vi.fn(() => ({ ...paperView.deployment, status: 'stopped' as const })),
+      prepareLive: vi.fn().mockResolvedValue(livePreflight),
+      startLive: vi.fn().mockResolvedValue(liveDeployment),
+      getLiveDeployment: vi.fn(() => liveDeployment),
+      getActiveDeployment: vi.fn(() => liveDeployment),
     },
     runtime: {
       getStatus: vi.fn(() => ({ state: 'stopped' as const, activeBots: 0 })),
@@ -291,6 +307,25 @@ describe('validated IPC handlers', () => {
     expect(error).toMatchObject({ code: 'PAPER_DEPLOYMENT_START_FAILED' });
     expect(String(error)).not.toContain('worker secret');
     expect(dependencies.deploymentService.stop).toHaveBeenCalledWith(deploymentId);
+  });
+
+  it('validates and gates Live preflight, start, read, and Stop through typed IPC', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+    const prepare = { botId, strategyVersion: 1, riskLimits, network: 'testnet' as const };
+    const start = { ...prepare, preflightId: livePreflight.id, confirmationBotName: 'BTC Live' };
+
+    await expect(handlers.prepareLiveDeployment(localEvent, prepare)).resolves.toEqual(livePreflight);
+    await expect(handlers.startLiveDeployment(localEvent, start)).resolves.toEqual(liveDeployment);
+    await expect(handlers.getLiveDeployment(localEvent, { deploymentId })).resolves.toEqual(liveDeployment);
+    await expect(handlers.stopLiveDeployment(localEvent, { deploymentId })).resolves.toEqual(liveDeployment);
+    await expect(handlers.getActiveDeployment(localEvent, { botId })).resolves.toEqual(liveDeployment);
+    await expect(handlers.startLiveDeployment(localEvent, { ...start, network: 'mainnet' })).rejects.toThrow('INVALID_REQUEST');
+
+    expect(dependencies.deploymentService.prepareLive).toHaveBeenCalledWith(prepare, expect.any(AbortSignal));
+    expect(dependencies.deploymentService.startLive).toHaveBeenCalledWith(start);
+    expect(dependencies.runtime.startDeployment).toHaveBeenCalledWith(deploymentId);
+    expect(dependencies.runtime.stopDeployment).toHaveBeenCalledWith(deploymentId);
   });
 
   it('rejects malformed configuration before repository access without exposing its secret', async () => {
@@ -496,11 +531,16 @@ describe('validated IPC handlers', () => {
       'deployments:get-paper',
       'deployments:pause-paper',
       'deployments:stop-paper',
+      'deployments:prepare-live',
+      'deployments:start-live',
+      'deployments:get-live',
+      'deployments:stop-live',
+      'deployments:get-active',
       'runtime:get-status',
     ]);
 
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
   });
 
   it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
@@ -577,9 +617,9 @@ describe('validated IPC handlers', () => {
     removeFirst();
 
     expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
   });
 
   it('restores the previous owned registration after a replacement failure', () => {
@@ -610,11 +650,11 @@ describe('validated IPC handlers', () => {
     const removeFirst = registerIpcHandlers(firstDependencies);
 
     expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
 
     const removeSecond = registerIpcHandlers(secondDependencies);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
   });
 
   it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
@@ -625,9 +665,9 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
 
     const removeReplacement = registerIpcHandlers(createDependencies());
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
     removeReplacement();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
   });
 
   it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
@@ -635,11 +675,11 @@ describe('validated IPC handlers', () => {
     invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
 
     expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
 
     const remove = registerIpcHandlers(createDependencies());
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(36);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
   });
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {

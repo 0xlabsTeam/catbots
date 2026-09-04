@@ -85,6 +85,15 @@ export class ExecutionRepository {
     return toDeployment(row);
   }
 
+  getActiveDeploymentForBot(botId: string): Deployment | null {
+    const row = this.database.prepare(`
+      SELECT * FROM deployments
+      WHERE bot_id = ? AND status IN ('preflight', 'running', 'paused', 'stopping', 'recovering', 'suspended', 'error')
+      ORDER BY created_at DESC, rowid DESC LIMIT 1
+    `).get(botId) as DeploymentRow | undefined;
+    return row === undefined ? null : toDeployment(row);
+  }
+
   proposeLiveAction(input: LiveActionProposal): ExecutionOutboxItem {
     const existing = this.getOutboxItem(input.outbox.idempotencyKey);
     if (existing !== null) {
@@ -275,6 +284,11 @@ export class ExecutionRepository {
       .get(traceId) as { sequence: number } | undefined;
     if (row === undefined) throw new Error('Audit trace not found');
     return row.sequence + 1;
+  }
+
+  isWritable(): boolean {
+    const row = this.database.prepare('PRAGMA query_only').get() as { query_only?: unknown } | undefined;
+    return row?.query_only === 0;
   }
 
   listAuditEvents(traceId: string): AuditEventView[] {

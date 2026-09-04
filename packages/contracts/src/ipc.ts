@@ -1,9 +1,14 @@
 import type { BotSummary } from './bots';
 import type { LocalSettingsPatch, RedactedLocalConfig } from './config';
 import type {
+  Deployment,
+  GetActiveDeploymentInput,
   GetDeploymentInput,
+  LivePreflightView,
   PaperDeploymentView,
   PauseDeploymentInput,
+  PrepareLiveInput,
+  StartLiveInput,
   StartPaperInput,
   StopDeploymentInput,
 } from './execution';
@@ -65,6 +70,11 @@ export interface CatbotsDesktopApi {
     getPaper(input: GetDeploymentInput): Promise<PaperDeploymentView>;
     pausePaper(input: PauseDeploymentInput): Promise<PaperDeploymentView>;
     stopPaper(input: StopDeploymentInput): Promise<PaperDeploymentView>;
+    prepareLive(input: PrepareLiveInput): Promise<LivePreflightView>;
+    startLive(input: StartLiveInput): Promise<Deployment>;
+    getLive(input: GetDeploymentInput): Promise<Deployment>;
+    stopLive(input: StopDeploymentInput): Promise<Deployment>;
+    getActive(input: GetActiveDeploymentInput): Promise<Deployment | null>;
   };
   runtime: {
     getStatus(): Promise<RuntimeStatus>;

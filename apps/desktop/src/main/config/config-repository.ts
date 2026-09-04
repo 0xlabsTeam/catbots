@@ -46,6 +46,15 @@ export class LlmCredentialReplacementRequiredError extends Error {
   }
 }
 
+export class HyperliquidCredentialReplacementRequiredError extends Error {
+  readonly code = 'HYPERLIQUID_CREDENTIAL_REPLACEMENT_REQUIRED' as const;
+
+  constructor() {
+    super('A new Agent private key is required for this Hyperliquid account');
+    this.name = 'HyperliquidCredentialReplacementRequiredError';
+  }
+}
+
 const YamlLocalConfigSchema = z.object({
   profile: z.object({
     name: z.unknown().optional(),
@@ -296,14 +305,27 @@ function validateSettingsPatch(input: unknown): LocalSettingsPatch {
 
 function mergeSettingsPatch(existing: LocalConfig | null, patch: LocalSettingsPatch): LocalConfig {
   const apiKey = patch.llm.apiKey ?? reusableApiKey(existing, patch);
+  const exchanges = mergeExchangeSettings(existing, patch);
   return validateConfig({
     profile: patch.profile,
     llm: {
       ...patch.llm,
       apiKey,
     },
-    exchanges: existing?.exchanges ?? {},
+    exchanges,
   });
+}
+
+function mergeExchangeSettings(existing: LocalConfig | null, patch: LocalSettingsPatch): LocalConfig['exchanges'] {
+  if (patch.exchanges === undefined) return existing?.exchanges ?? {};
+  const hyperliquid = patch.exchanges.hyperliquid;
+  if (hyperliquid === null) return {};
+  const existingHyperliquid = existing?.exchanges.hyperliquid;
+  const sameScope = existingHyperliquid?.network === hyperliquid.network
+    && existingHyperliquid.accountAddress.toLowerCase() === hyperliquid.accountAddress.toLowerCase();
+  const agentPrivateKey = hyperliquid.agentPrivateKey ?? (sameScope ? existingHyperliquid.agentPrivateKey : undefined);
+  if (agentPrivateKey === undefined) throw new HyperliquidCredentialReplacementRequiredError();
+  return { hyperliquid: { ...hyperliquid, agentPrivateKey } };
 }
 
 function reusableApiKey(existing: LocalConfig | null, patch: LocalSettingsPatch): string {

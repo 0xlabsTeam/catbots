@@ -18,13 +18,23 @@ import { SecretField } from '../components/SecretField';
 type Provider = LocalConfig['llm']['provider'];
 type ReasoningEffortSetting = 'auto' | OpenAiReasoningEffort;
 type SettingsScreenProps = { api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; embedded?: boolean; onSaved?(config: RedactedLocalConfig): void };
-type FormState = { profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string; model: string; reasoningEffort: ReasoningEffortSetting };
+type FormState = {
+  profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string;
+  model: string; reasoningEffort: ReasoningEffortSetting;
+  hyperliquidEnabled: boolean; hyperliquidAccount: string; hyperliquidAgentKey: string;
+};
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
 const SAFE_REPAIR_PATHS = new Set(['profile.name', 'profile.telemetry', 'llm.provider', 'llm.baseUrl', 'llm.apiKey', 'llm.model', 'llm.reasoningEffort']);
 
 function formFromConfig(config?: RedactedLocalConfig): FormState {
-  return { profileName: config?.profile.name ?? '', telemetry: config?.profile.telemetry ?? false, provider: config?.llm.provider ?? 'openai-compatible', baseUrl: config?.llm.baseUrl ?? '', apiKey: '', model: config?.llm.model ?? '', reasoningEffort: config?.llm.provider === 'openai-compatible' ? config.llm.reasoningEffort ?? 'auto' : 'auto' };
+  return {
+    profileName: config?.profile.name ?? '', telemetry: config?.profile.telemetry ?? false,
+    provider: config?.llm.provider ?? 'openai-compatible', baseUrl: config?.llm.baseUrl ?? '', apiKey: '',
+    model: config?.llm.model ?? '', reasoningEffort: config?.llm.provider === 'openai-compatible' ? config.llm.reasoningEffort ?? 'auto' : 'auto',
+    hyperliquidEnabled: config?.exchanges.hyperliquid !== undefined,
+    hyperliquidAccount: config?.exchanges.hyperliquid?.accountAddress ?? '', hyperliquidAgentKey: '',
+  };
 }
 
 function isPermittedProviderUrl(value: string): boolean {
@@ -59,10 +69,16 @@ function validate(state: FormState, requiresApiKey: boolean): FormErrors {
   if (requiresApiKey && state.apiKey.length === 0) errors.apiKey = 'Enter the API key to test and save this provider.';
   if (state.apiKey === REDACTED_SECRET) errors.apiKey = 'Enter a real API key, not the stored-key mask.';
   if (state.model.trim().length === 0) errors.model = 'Enter a model identifier.';
+  if (state.hyperliquidEnabled) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(state.hyperliquidAccount.trim())) errors.hyperliquidAccount = 'Enter a valid 0x account address.';
+    if (state.hyperliquidAgentKey.length === 0 && requiresApiKey) errors.hyperliquidAgentKey = 'Enter the Agent/API Wallet private key.';
+    else if (state.hyperliquidAgentKey.length > 0 && !/^0x[0-9a-fA-F]{64}$/.test(state.hyperliquidAgentKey)) errors.hyperliquidAgentKey = 'Enter a 32-byte 0x private key.';
+    if (state.hyperliquidAgentKey === REDACTED_SECRET) errors.hyperliquidAgentKey = 'Enter a real key, not the stored-key mask.';
+  }
   return errors;
 }
 
-function toSettingsPatch(state: FormState): LocalSettingsPatch {
+function toSettingsPatch(state: FormState, config?: RedactedLocalConfig): LocalSettingsPatch {
   return {
     profile: { name: state.profileName.trim(), telemetry: state.telemetry },
     llm: {
@@ -74,6 +90,13 @@ function toSettingsPatch(state: FormState): LocalSettingsPatch {
         : {}),
       ...(state.apiKey.length === 0 ? {} : { apiKey: state.apiKey }),
     },
+    ...(state.hyperliquidEnabled ? { exchanges: {
+      hyperliquid: {
+        network: 'testnet',
+        accountAddress: state.hyperliquidAccount.trim(),
+        ...(state.hyperliquidAgentKey.length === 0 ? {} : { agentPrivateKey: state.hyperliquidAgentKey }),
+      },
+    } } : config?.exchanges.hyperliquid === undefined ? {} : { exchanges: { hyperliquid: null } }),
   };
 }
 
@@ -98,6 +121,10 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   const safeRepairPaths = useMemo(() => getSafeRepairPaths(repairIssues), [repairIssues]);
   const credentialScopeChanged = hasChangedStoredCredentialScope(form, config);
   const requiresApiKey = config === undefined || credentialScopeChanged;
+  const requiresHyperliquidKey = form.hyperliquidEnabled && (
+    config?.exchanges.hyperliquid === undefined
+    || config.exchanges.hyperliquid.accountAddress.toLowerCase() !== form.hyperliquidAccount.trim().toLowerCase()
+  );
   const isRequiredApiKeyMissing = requiresApiKey && form.apiKey.length === 0;
   const currentConnectionBinding = connectionApprovalBinding(form, replacementKeyRevision);
   const hasPassedCurrentTest = testedConnectionBinding !== null
@@ -130,7 +157,12 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       setConnection({ state: 'idle' });
     }
   };
-  const validateForm = (): boolean => { const nextErrors = validate(form, requiresApiKey); setErrors(nextErrors); return Object.keys(nextErrors).length === 0; };
+  const validateForm = (): boolean => {
+    const nextErrors = validate(form, requiresApiKey || requiresHyperliquidKey);
+    if (!requiresApiKey) delete nextErrors.apiKey;
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
   const testConnection = async (): Promise<boolean> => {
     if (isTestingRef.current || isSavingRef.current) return false;
     if (!validateForm()) return false;
@@ -139,7 +171,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     const submittedProviderRevision = providerRevisionRef.current;
     const submittedConnectionBinding = connectionApprovalBinding(form, replacementKeyRevisionRef.current);
     if (submittedConnectionBinding === null) return false;
-    const submittedPatch = toSettingsPatch(form);
+    const submittedPatch = toSettingsPatch(form, config);
     isTestingRef.current = true;
     setTestedConnectionBinding(null);
     setIsTesting(true);
@@ -164,13 +196,13 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     const token = saveRequestTokenRef.current + 1;
     saveRequestTokenRef.current = token;
     const submittedRevision = formRevisionRef.current;
-    const submittedPatch = toSettingsPatch(form);
+    const submittedPatch = toSettingsPatch(form, config);
     isSavingRef.current = true;
     setIsSaving(true);
     try {
       const savedConfig = await api.patchSettings(submittedPatch);
       if (!mountedRef.current || token !== saveRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return;
-      setForm((previous) => ({ ...previous, apiKey: '' }));
+      setForm((previous) => ({ ...previous, apiKey: '', hyperliquidAgentKey: '' }));
       setTestedConnectionBinding(null);
       setConnection({ state: 'saved' });
       onSaved?.(savedConfig);
@@ -216,6 +248,15 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
           <Input id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
           {form.provider === 'openai-compatible' ? <Select<ReasoningEffortSetting> label="Reasoning effort" value={form.reasoningEffort} onValueChange={(value) => updateForm('reasoningEffort', value as ReasoningEffortSetting)} disabled={isSaving}><Select.Option value="auto">Auto</Select.Option><Select.Option value="none">Off</Select.Option><Select.Option value="low">Low</Select.Option><Select.Option value="medium">Medium</Select.Option><Select.Option value="high">High</Select.Option></Select> : null}
+          <section className="exchange-settings" aria-labelledby="hyperliquid-settings-title">
+            <div><p className="eyebrow">LIVE EXECUTION</p><h3 id="hyperliquid-settings-title">Hyperliquid testnet</h3><p>Optional. Use a dedicated Agent/API Wallet. Mainnet is disabled.</p></div>
+            <Switch label="Enable Hyperliquid testnet" checked={form.hyperliquidEnabled} onCheckedChange={(value) => updateForm('hyperliquidEnabled', value)} required={false} disabled={isSaving} />
+            {form.hyperliquidEnabled ? <>
+              <Input id="hyperliquid-account" label="Master account address" value={form.hyperliquidAccount} onChange={(event) => updateForm('hyperliquidAccount', event.currentTarget.value)} variant={errors.hyperliquidAccount === undefined ? 'default' : 'error'} aria-invalid={errors.hyperliquidAccount === undefined ? undefined : true} aria-describedby={errors.hyperliquidAccount === undefined ? undefined : 'hyperliquid-account-error'} autoComplete="off" spellCheck={false} placeholder="0x…" disabled={isSaving} />
+              {errors.hyperliquidAccount === undefined ? null : <p id="hyperliquid-account-error" role="alert">{errors.hyperliquidAccount}</p>}
+              <SecretField id="hyperliquid-agent-key" label="Agent/API Wallet private key" value={form.hyperliquidAgentKey} onValueChange={(value) => updateForm('hyperliquidAgentKey', value)} error={errors.hyperliquidAgentKey} storedMask={config?.exchanges.hyperliquid?.agentPrivateKey} requiresReplacement={requiresHyperliquidKey} disabled={isSaving} />
+            </> : null}
+          </section>
           <ConnectionTestStatus value={connection} />
           <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
           <p className="form-footnote"><InfoIcon aria-hidden="true" /> Catbots has no in-app YAML editor. This form is the only way to save local configuration.</p>

@@ -70,6 +70,7 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
       getPaper: vi.fn(),
       pausePaper: vi.fn(),
       stopPaper: vi.fn(),
+      prepareLive: vi.fn(), startLive: vi.fn(), getLive: vi.fn(), stopLive: vi.fn(), getActive: vi.fn().mockResolvedValue(null),
     },
     runtime: { getStatus: vi.fn(), subscribeStatus: vi.fn(() => () => undefined) },
   };

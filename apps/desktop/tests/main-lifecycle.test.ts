@@ -339,7 +339,7 @@ describe('main window lifecycle', () => {
     expect(runtime.stop).toHaveBeenCalledOnce();
     expect(tray.dispose).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
-    expect(electron.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electron.removeHandler).toHaveBeenCalledTimes(23);
     expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(electron.removeHandler.mock.invocationCallOrder[0]);
     expect(runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(tray.dispose.mock.invocationCallOrder[0]);
     expect(tray.dispose.mock.invocationCallOrder[0]).toBeLessThan(electron.removeHandler.mock.invocationCallOrder[0]);
@@ -398,7 +398,7 @@ describe('main window lifecycle', () => {
 
     expect(runtime.stop).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
-    expect(electron.removeHandler).toHaveBeenCalledTimes(18);
+    expect(electron.removeHandler).toHaveBeenCalledTimes(23);
     expect(electron.app.quit).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith('Catbots IPC shutdown failed');
     expect(report).toHaveBeenCalledWith('Catbots database shutdown failed');

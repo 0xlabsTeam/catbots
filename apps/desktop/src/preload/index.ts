@@ -43,6 +43,11 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     getPaper: (input) => ipcRenderer.invoke('deployments:get-paper', input),
     pausePaper: (input) => ipcRenderer.invoke('deployments:pause-paper', input),
     stopPaper: (input) => ipcRenderer.invoke('deployments:stop-paper', input),
+    prepareLive: (input) => ipcRenderer.invoke('deployments:prepare-live', input),
+    startLive: (input) => ipcRenderer.invoke('deployments:start-live', input),
+    getLive: (input) => ipcRenderer.invoke('deployments:get-live', input),
+    stopLive: (input) => ipcRenderer.invoke('deployments:stop-live', input),
+    getActive: (input) => ipcRenderer.invoke('deployments:get-active', input),
   },
   runtime: {
     getStatus: () => ipcRenderer.invoke('runtime:get-status'),

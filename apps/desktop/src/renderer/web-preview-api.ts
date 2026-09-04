@@ -2,10 +2,13 @@ import {
   CreateDraftBotInputSchema,
   ApproveStrategyRevisionInputSchema,
   GetTraceInputSchema,
+  GetActiveDeploymentInputSchema,
   GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
   GetDeploymentInputSchema,
   PauseDeploymentInputSchema,
+  PrepareLiveInputSchema,
+  StartLiveInputSchema,
   REDACTED_SECRET,
   RunWorkbenchBacktestInputSchema,
   SendWorkbenchMessageInputSchema,
@@ -18,6 +21,8 @@ import {
   type ChatMessage,
   type RedactedLocalConfig,
   type PaperDeploymentView,
+  type Deployment,
+  type LivePreflightView,
   type StrategyRevision,
   type TraceDetail,
   type WorkbenchState,
@@ -36,6 +41,8 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
   const workbenches = new Map<string, PreviewWorkbench>();
   const activityListeners = new Set<(activity: AgentToolActivity) => void>();
   const deployments = new Map<string, PaperDeploymentView>();
+  const liveDeployments = new Map<string, Deployment>();
+  const livePreflights = new Map<string, LivePreflightView>();
 
   const getWorkbench = (botId: string, version?: number): WorkbenchState => {
     const bot = bots.find(({ id }) => id === botId);
@@ -78,7 +85,13 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
             model: parsed.llm.model,
             apiKey: REDACTED_SECRET,
           },
-          exchanges: {},
+          exchanges: parsed.exchanges?.hyperliquid == null ? {} : {
+            hyperliquid: {
+              network: 'testnet',
+              accountAddress: parsed.exchanges.hyperliquid.accountAddress,
+              agentPrivateKey: REDACTED_SECRET,
+            },
+          },
         };
         return config;
       },
@@ -200,6 +213,71 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
       stopPaper: async (input) => {
         const request = StopDeploymentInputSchema.parse(input);
         return updatePreviewDeployment(deployments, request.deploymentId, 'stopped');
+      },
+      prepareLive: async (input) => {
+        const request = PrepareLiveInputSchema.parse(input);
+        const connected = config?.exchanges.hyperliquid !== undefined;
+        const timestamp = new Date().toISOString();
+        const makeCheck = (id: LivePreflightView['checks'][number]['id'], label: string, ok: boolean, message: string, repairTarget?: LivePreflightView['checks'][number]['repairTarget']) => ({
+          id, label, ok, message, ...(!ok && repairTarget !== undefined ? { repairTarget } : {}),
+        });
+        const checks: LivePreflightView['checks'] = [
+          makeCheck('connection', 'Connection', connected, connected ? 'Simulated testnet connection is ready.' : 'Configure Hyperliquid testnet first.', 'settings'),
+          makeCheck('network', 'Network', true, 'Hyperliquid testnet selected.'),
+          makeCheck('agent-wallet', 'Agent wallet', connected, connected ? 'Simulated Agent wallet is approved.' : 'Use an approved Agent/API Wallet.', 'settings'),
+          makeCheck('account-balance', 'Account balance', connected, connected ? 'Simulated balance is available.' : 'Connect a testnet account.', 'settings'),
+          makeCheck('risk-limits', 'Risk limits', true, 'Risk limits are valid.'),
+          makeCheck('strategy', 'Strategy', true, 'Strategy revision is approved.'),
+          makeCheck('backtest', 'Backtest', true, 'A completed Backtest is available.'),
+          makeCheck('data-freshness', 'Data freshness', true, 'Preview data is fresh.'),
+          makeCheck('audit-storage', 'Audit storage', true, 'Preview audit storage is writable.'),
+          makeCheck('runtime', 'Runtime', true, 'Preview runtime is ready.'),
+          makeCheck('reconciliation', 'Reconciliation', true, 'Reconciliation is healthy.'),
+        ];
+        const view: LivePreflightView = {
+          id: crypto.randomUUID(), botId: request.botId, strategyVersion: request.strategyVersion,
+          network: 'testnet', maskedAccount: config?.exchanges.hyperliquid?.accountAddress ?? 'Not configured',
+          checkedAt: timestamp, ready: checks.every(({ ok }) => ok), checks,
+        };
+        livePreflights.set(view.id, view);
+        return structuredClone(view);
+      },
+      startLive: async (input) => {
+        const request = StartLiveInputSchema.parse(input);
+        const preflight = livePreflights.get(request.preflightId);
+        const bot = bots.find(({ id }) => id === request.botId);
+        const revision = workbenches.get(request.botId)?.revisions.find(({ version }) => version === request.strategyVersion);
+        if (preflight?.ready !== true || bot === undefined || revision?.status !== 'approved' || request.confirmationBotName !== bot.name) throw new Error('Preview Live gate blocked');
+        const timestamp = new Date().toISOString();
+        const deployment: Deployment = {
+          id: crypto.randomUUID(), botId: bot.id, strategyId: revision.strategyId, strategyVersion: revision.version,
+          mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: preflight.maskedAccount,
+          marketBindings: [bot.market], riskLimits: request.riskLimits, status: 'running', createdAt: timestamp, updatedAt: timestamp,
+        };
+        liveDeployments.set(deployment.id, deployment);
+        return structuredClone(deployment);
+      },
+      getLive: async (input) => {
+        const request = GetDeploymentInputSchema.parse(input);
+        const deployment = liveDeployments.get(request.deploymentId);
+        if (deployment === undefined) throw new Error('Preview Live deployment not found');
+        return structuredClone(deployment);
+      },
+      stopLive: async (input) => {
+        const request = StopDeploymentInputSchema.parse(input);
+        const deployment = liveDeployments.get(request.deploymentId);
+        if (deployment === undefined || deployment.mode !== 'live') throw new Error('Preview Live deployment not found');
+        const stopped: Deployment = { ...deployment, status: 'stopped', updatedAt: new Date().toISOString() };
+        liveDeployments.set(stopped.id, stopped);
+        return structuredClone(stopped);
+      },
+      getActive: async (input) => {
+        const request = GetActiveDeploymentInputSchema.parse(input);
+        const candidates = [
+          ...[...deployments.values()].map(({ deployment }) => deployment),
+          ...liveDeployments.values(),
+        ].filter((deployment) => deployment.botId === request.botId && deployment.status !== 'stopped');
+        return structuredClone(candidates.at(-1) ?? null);
       },
     },
     runtime: {

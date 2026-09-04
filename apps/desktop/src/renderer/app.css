@@ -148,6 +148,27 @@ h2 {
   padding-top: 1.5rem;
 }
 
+.exchange-settings {
+  display: grid;
+  gap: 1rem;
+  margin-top: .5rem;
+  padding-block: 1.25rem;
+  border-block: 1px solid var(--color-kumo-line);
+}
+
+.exchange-settings h3 {
+  margin-top: .2rem;
+  color: var(--text-color-kumo-strong);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.exchange-settings > div > p:not(.eyebrow) {
+  margin-top: .25rem;
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
 .settings-form > p[role="alert"],
 .draft-form > p[role="alert"] {
   margin-top: -.75rem;
@@ -742,6 +763,32 @@ h2 {
   border-bottom: 1px solid var(--color-kumo-line);
 }
 
+.live-review { width: min(100%, 76rem); margin-inline: auto; padding: clamp(1.5rem, 4vw, 3.5rem); }
+.live-review-header { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--color-kumo-line); }
+.live-review-header h1 { margin-top: .35rem; }
+.live-review-header p:not(.eyebrow) { max-width: 44rem; margin-top: .55rem; color: var(--text-color-kumo-subtle); line-height: 1.5; }
+.live-review-heading-actions, .live-confirm-actions, .preflight-card-heading { display: flex; align-items: center; gap: .75rem; }
+.live-review-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(20rem, .85fr); gap: 1rem; margin-top: 1rem; }
+.live-review-main, .live-review-side { display: grid; align-content: start; gap: 1rem; }
+.live-review-section, .preflight-card, .live-confirm-card { padding: 1.25rem; }
+.live-review-section h2, .preflight-card h2, .live-confirm-card h2 { margin-top: .25rem; font-size: 1.125rem; }
+.live-definition-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+.live-definition-list > div { display: grid; gap: .25rem; padding: .75rem; border: 1px solid var(--color-kumo-line); border-radius: .5rem; background: var(--color-kumo-canvas); }
+.live-definition-list dt, .preflight-checks span, .live-confirm-card > p:not(.eyebrow), .live-blocked-note, .preflight-loading { color: var(--text-color-kumo-subtle); font-size: .75rem; line-height: 1.45; }
+.live-definition-list dd { color: var(--text-color-kumo-strong); font-size: .875rem; font-weight: 600; }
+.preflight-card-heading { justify-content: space-between; padding-bottom: .75rem; border-bottom: 1px solid var(--color-kumo-line); }
+.preflight-loading { padding-block: 1rem; }
+.preflight-checks { display: grid; list-style: none; }
+.preflight-checks li { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: .6rem; padding-block: .7rem; border-bottom: 1px solid var(--color-kumo-line); }
+.preflight-checks li:last-child { border-bottom: 0; }
+.preflight-checks li > div { display: grid; gap: .15rem; }
+.preflight-checks .passed > svg { color: var(--text-color-kumo-success); }
+.preflight-checks .failed > svg { color: var(--text-color-kumo-danger); }
+.preflight-checks a { color: var(--text-color-kumo-brand); font-size: .75rem; }
+.live-confirm-card { display: grid; gap: .8rem; border-color: color-mix(in srgb, var(--text-color-kumo-danger) 30%, var(--color-kumo-line)); }
+.live-confirm-actions { justify-content: space-between; padding-top: .25rem; }
+.live-blocked-note { color: var(--text-color-kumo-danger); }
+
 .workbench-empty {
   display: grid;
   min-height: 32rem;
@@ -846,6 +893,9 @@ h2 {
   .workbench-grid {
     grid-template-columns: 1fr;
   }
+
+  .live-review-grid { grid-template-columns: 1fr; }
+  .live-review-header { align-items: start; flex-direction: column; }
 
   .workbench-header {
     grid-template-columns: 1fr;

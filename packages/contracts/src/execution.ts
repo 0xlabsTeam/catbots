@@ -86,6 +86,7 @@ export const StopDeploymentInputSchema = z.object({
 
 export const GetDeploymentInputSchema = StopDeploymentInputSchema;
 export const PauseDeploymentInputSchema = StopDeploymentInputSchema;
+export const GetActiveDeploymentInputSchema = z.object({ botId: BotIdSchema }).strict();
 
 export type StartPaperInput = z.infer<typeof StartPaperInputSchema>;
 export type PrepareLiveInput = z.infer<typeof PrepareLiveInputSchema>;
@@ -93,6 +94,7 @@ export type StartLiveInput = z.infer<typeof StartLiveInputSchema>;
 export type StopDeploymentInput = z.infer<typeof StopDeploymentInputSchema>;
 export type GetDeploymentInput = z.infer<typeof GetDeploymentInputSchema>;
 export type PauseDeploymentInput = z.infer<typeof PauseDeploymentInputSchema>;
+export type GetActiveDeploymentInput = z.infer<typeof GetActiveDeploymentInputSchema>;
 
 export const LivePreflightCheckIdSchema = z.enum([
   'connection',

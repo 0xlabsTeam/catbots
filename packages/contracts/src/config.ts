@@ -89,9 +89,18 @@ const LlmSettingsPatchSchema = z.discriminatedUnion('provider', [
   }).strict(),
 ]);
 
+const HyperliquidSettingsPatchSchema = z.object({
+  network: z.literal('testnet'),
+  accountAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  agentPrivateKey: StoredSecretSchema.optional(),
+}).strict();
+
 export const LocalSettingsPatchSchema = z.object({
   profile: LocalProfileSchema,
   llm: LlmSettingsPatchSchema,
+  exchanges: z.object({
+    hyperliquid: HyperliquidSettingsPatchSchema.nullable(),
+  }).strict().optional(),
 }).strict();
 
 export type LocalSettingsPatch = z.infer<typeof LocalSettingsPatchSchema>;

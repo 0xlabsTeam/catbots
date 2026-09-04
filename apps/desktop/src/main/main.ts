@@ -65,6 +65,8 @@ void app.whenReady()
     const deploymentService = new DeploymentService({
       executionRepository: new ExecutionRepository(connection),
       workbenchRepository,
+      configRepository,
+      runtimeReady: () => runtime.getStatus().state === 'ready',
     });
     runtime.start();
     disposeIpcHandlers = registerIpcHandlers({

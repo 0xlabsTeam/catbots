@@ -71,6 +71,7 @@ function deploymentApi(): CatbotsDesktopApi['deployments'] {
     getPaper: vi.fn().mockResolvedValue(paperView),
     pausePaper: vi.fn().mockResolvedValue({ ...paperView, deployment: { ...paperView.deployment, status: 'paused' } }),
     stopPaper: vi.fn().mockResolvedValue({ ...paperView, deployment: { ...paperView.deployment, status: 'stopped' } }),
+    prepareLive: vi.fn(), startLive: vi.fn(), getLive: vi.fn(), stopLive: vi.fn(), getActive: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -163,5 +164,28 @@ describe('BotWorkbenchScreen', () => {
     expect(screen.getByText('$10,000.00')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Logs' }));
     expect(screen.getByText('Waiting for the first trigger.')).toBeTruthy();
+  });
+
+  it('restores an active Live deployment and keeps the emergency Stop visible', async () => {
+    const workbenchApi = api();
+    workbenchApi.get = vi.fn().mockResolvedValue({
+      ...state,
+      currentRevision: { ...state.currentRevision!, status: 'approved', approvedAt: '2026-09-05T00:00:00.000Z' },
+    });
+    const liveApi = deploymentApi();
+    const liveDeployment = {
+      id: '038f3f75-89ab-7def-8123-456789abcdef', botId: state.bot.id, strategyId: 'strategy', strategyVersion: 1,
+      mode: 'live' as const, venue: 'hyperliquid' as const, network: 'testnet' as const, maskedAccount: '0x0123…4567',
+      marketBindings: ['BTC-PERP'], riskLimits: paperView.deployment.riskLimits, status: 'running' as const,
+      createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
+    };
+    vi.mocked(liveApi.getActive).mockResolvedValue(liveDeployment);
+    vi.mocked(liveApi.stopLive).mockResolvedValue({ ...liveDeployment, status: 'stopped' });
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={liveApi} onBack={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Stop Live' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Stop Live' }));
+    expect(liveApi.stopLive).toHaveBeenCalledWith({ deploymentId: liveDeployment.id });
   });
 });

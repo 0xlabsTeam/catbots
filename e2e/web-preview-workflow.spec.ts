@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('web preview completes Create → Chat → Flow → Backtest → Approve → Paper', async ({ page }) => {
+test('web preview completes Create → Chat → Flow → Backtest → Paper → Live safety review', async ({ page }) => {
   await page.goto('http://127.0.0.1:4176/web-preview.html');
   await expect(page.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
 
@@ -43,4 +43,27 @@ test('web preview completes Create → Chat → Flow → Backtest → Approve �
   await expect(page.getByText('Waiting for the first trigger.')).toBeVisible();
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.getByText('Paper deployment is stopped')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Review Live' }).click();
+  await expect(page.getByRole('heading', { name: 'Review Live deployment' })).toBeVisible();
+  await expect(page.getByText('Use an approved Agent/API Wallet.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start Live' })).toBeDisabled();
+  await page.getByRole('link', { name: 'Open settings' }).first().click();
+
+  await page.getByRole('switch', { name: /Enable Hyperliquid testnet/ }).click();
+  await page.getByLabel('Master account address').fill('0x0123456789abcdef0123456789abcdef01234567');
+  await page.getByLabel('Agent/API Wallet private key').fill(`0x${'a'.repeat(64)}`);
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  await expect(page.getByText('Connection successful')).toBeVisible();
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Bots' }).click();
+  await page.getByRole('button', { name: 'Review Live' }).click();
+  await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+  await page.getByLabel('Type bot name to confirm').fill('BTC Flow Preview');
+  await expect(page.getByRole('button', { name: 'Start Live' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Start Live' }).click();
+  await expect(page.getByText('Live · Hyperliquid testnet')).toBeVisible();
+  await page.getByRole('button', { name: 'Stop Live' }).click();
 });

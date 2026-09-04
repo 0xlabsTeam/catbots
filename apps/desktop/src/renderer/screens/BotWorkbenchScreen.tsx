@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Badge, Banner, Button, LayerCard, Tabs } from '@cloudflare/kumo';
-import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, PaperDeploymentView, RiskLimits, StrategyRevision, WorkbenchState } from '@catbots/contracts';
+import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, Deployment, PaperDeploymentView, RiskLimits, StrategyRevision, WorkbenchState } from '@catbots/contracts';
 
 import { ChatPanel } from '../workbench/ChatPanel';
 import { BacktestPanel } from '../workbench/BacktestPanel';
 import { InspectorPanel } from '../workbench/InspectorPanel';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
+import { LiveReviewScreen } from './LiveReviewScreen';
 
 export type BotWorkbenchScreenProps = Readonly<{
   bot: BotSummary;
   api: CatbotsDesktopApi['workbench'];
   deploymentApi: CatbotsDesktopApi['deployments'];
   onBack(): void;
+  onOpenSettings?(): void;
 }>;
 
-export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkbenchScreenProps) {
+export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSettings }: BotWorkbenchScreenProps) {
   const [state, setState] = useState<WorkbenchState | null>(null);
   const [selectedNode, setSelectedNode] = useState<StrategyRevision['nodes'][number] | null>(null);
   const [activity, setActivity] = useState<AgentToolActivity | null>(null);
@@ -23,6 +25,8 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkb
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
   const [deployment, setDeployment] = useState<PaperDeploymentView | null>(null);
+  const [liveDeployment, setLiveDeployment] = useState<Deployment | null>(null);
+  const [reviewingLive, setReviewingLive] = useState(false);
   const [changingDeployment, setChangingDeployment] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +39,24 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkb
     });
     return () => { active = false; unsubscribe(); };
   }, [api, bot.id]);
+
+  useEffect(() => {
+    let active = true;
+    void deploymentApi.getActive({ botId: bot.id }).then(async (current) => {
+      if (!active || current === null) return;
+      if (current.mode === 'live') {
+        setLiveDeployment(current);
+        return;
+      }
+      try {
+        const paper = await deploymentApi.getPaper({ deploymentId: current.id });
+        if (active) setDeployment(paper);
+      } catch {
+        // A recovered runtime may still be restoring its in-memory Paper view.
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [bot.id, deploymentApi]);
 
   useEffect(() => {
     if (deployment?.deployment.status !== 'running') return;
@@ -116,9 +138,33 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkb
       setChangingDeployment(false);
     }
   };
+  const stopLive = async () => {
+    if (liveDeployment?.mode !== 'live') return;
+    setChangingDeployment(true);
+    setError(null);
+    try {
+      setLiveDeployment(await deploymentApi.stopLive({ deploymentId: liveDeployment.id }));
+    } catch {
+      setError('Live deployment could not stop. Check runtime status immediately.');
+    } finally {
+      setChangingDeployment(false);
+    }
+  };
 
   if (state === null) {
     return <section className="workbench-loading" role="status">{error ?? 'Loading bot workspace…'}</section>;
+  }
+  if (reviewingLive && state.currentRevision !== null) {
+    return <LiveReviewScreen
+      bot={bot}
+      revision={state.currentRevision}
+      riskLimits={defaultRiskLimits(bot.market)}
+      api={deploymentApi}
+      onBack={() => setReviewingLive(false)}
+      onRunPaper={() => { setReviewingLive(false); void startPaper(); }}
+      onStarted={(next) => { setLiveDeployment(next); setReviewingLive(false); }}
+      onOpenSettings={onOpenSettings}
+    />;
   }
   return (
     <section className="bot-workbench" aria-labelledby="bot-workbench-title">
@@ -127,13 +173,16 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkb
       <div className="workbench-grid">
         <ChatPanel messages={state.messages} activity={activity} sending={sending} onSend={send} />
         <section className="workbench-canvas" aria-label="Strategy workspace">
-          <PaperControls
+          <ExecutionControls
             revision={state.currentRevision}
             deployment={deployment}
+            liveDeployment={liveDeployment}
             changing={changingDeployment}
             onStart={startPaper}
             onPause={() => void changePaperStatus('pause')}
             onStop={() => void changePaperStatus('stop')}
+            onReviewLive={() => setReviewingLive(true)}
+            onStopLive={() => void stopLive()}
           />
           <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
           {tab === 'performance' ? <PaperPerformance deployment={deployment} />
@@ -159,30 +208,41 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack }: BotWorkb
   );
 }
 
-function PaperControls({ revision, deployment, changing, onStart, onPause, onStop }: Readonly<{
+function ExecutionControls({ revision, deployment, liveDeployment, changing, onStart, onPause, onStop, onReviewLive, onStopLive }: Readonly<{
   revision: StrategyRevision | null;
   deployment: PaperDeploymentView | null;
+  liveDeployment: Deployment | null;
   changing: boolean;
   onStart(): void;
   onPause(): void;
   onStop(): void;
+  onReviewLive(): void;
+  onStopLive(): void;
 }>) {
   const status = deployment?.deployment.status;
+  const liveStatus = liveDeployment?.mode === 'live' ? liveDeployment.status : undefined;
   return (
     <LayerCard className="paper-controls">
       <div>
         <p className="eyebrow">EXECUTION</p>
-        <strong>{status === undefined ? 'Paper is stopped' : `Paper deployment is ${status}`}</strong>
-        <p>Local simulation · risk checks and every flow event are logged.</p>
+        <strong>{liveStatus === 'running' ? 'Live deployment is running' : status === undefined ? 'Paper is stopped' : `Paper deployment is ${status}`}</strong>
+        <p>{liveStatus === 'running' ? 'Hyperliquid testnet · risk checks and every flow event are logged.' : 'Local simulation · risk checks and every flow event are logged.'}</p>
       </div>
       <div className="paper-control-actions">
         {status === 'running' ? <Badge variant="success">Paper running</Badge> : null}
+        {liveStatus === 'running' ? <Badge variant="error">Live · Hyperliquid testnet</Badge> : null}
         {(status === undefined || status === 'stopped') && revision?.status === 'approved'
           ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
           : null}
         {status === 'running' ? <Button type="button" variant="secondary" disabled={changing} onClick={onPause}>Pause</Button> : null}
         {status === 'running' || status === 'paused'
           ? <Button type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
+          : null}
+        {revision?.status === 'approved' && liveStatus !== 'running'
+          ? <Button type="button" variant="secondary" disabled={changing || status === 'running'} onClick={onReviewLive}>Review Live</Button>
+          : null}
+        {liveStatus === 'running'
+          ? <Button type="button" variant="destructive" disabled={changing} onClick={onStopLive}>Stop Live</Button>
           : null}
       </div>
     </LayerCard>
