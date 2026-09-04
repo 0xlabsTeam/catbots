@@ -104,3 +104,7 @@ function sortJson(value: JsonValue): JsonValue {
 export function serializeStrategyDocument(document: StrategyDocument): string {
   return JSON.stringify(sortJson(document));
 }
+
+export function serializeCanonicalJson(value: JsonValue): string {
+  return JSON.stringify(sortJson(value));
+}

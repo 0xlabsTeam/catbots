@@ -400,25 +400,25 @@ git commit -m "feat: simulate deterministic order execution"
 - Produces return, maximum drawdown, Sharpe-like metric, win rate, trade count, fees, funding, equity curve, and warnings.
 - Produces `runBacktest(request): BacktestResult` with manifest, strategy/input/assumption hashes, metrics, trades, and complete traces.
 
-- [ ] **Step 1: Write failing metric tests with hand-calculated ledgers**
+- [x] **Step 1: Write failing metric tests with hand-calculated ledgers**
 
 Cover empty runs, flat equity, gains/losses, drawdown recovery, zero variance, closed versus open trades, fees, funding, and non-finite-number rejection.
 
-- [ ] **Step 2: Implement pure metric reducers and verify**
+- [x] **Step 2: Implement pure metric reducers and verify**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- metrics.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing Backtest orchestration tests**
+- [x] **Step 3: Write failing Backtest orchestration tests**
 
 Assert point-in-time context resolution, stable event ordering, cancellation, progress phases, reproducible result hashes, changed hashes when strategy/input/assumptions change, and warnings for sparse or stale data.
 
-- [ ] **Step 4: Implement orchestration and artifact manifest**
+- [x] **Step 4: Implement orchestration and artifact manifest**
 
 Hash canonical UTF-8 JSON with SHA-256. The package returns artifact bytes and metadata but does not write files; Electron utility-process persistence is integrated in M2.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run: `pnpm --filter @catbots/strategy-runtime test -- metrics.test.ts backtest.test.ts`
 
