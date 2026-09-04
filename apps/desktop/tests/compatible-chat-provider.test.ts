@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LocalConfig } from '@catbots/contracts';
 
 import { CompatibleChatProviderError, type AgentCompletionRequest } from '../src/main/llm/compatible-chat-provider';
@@ -53,6 +53,47 @@ afterEach(async () => {
 });
 
 describe('compatible Agent chat providers', () => {
+  it('allows a slow local generation for three minutes by default', async () => {
+    vi.useFakeTimers();
+    try {
+      let providerSignal: AbortSignal | undefined;
+      const hangingFetch: typeof fetch = vi.fn(async (_input, init) => {
+        providerSignal = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          providerSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        });
+      });
+      const provider = new OpenAiCompatibleChatProvider(
+        config('openai-compatible', 'http://127.0.0.1:1234/v1'),
+        { fetch: hangingFetch },
+      );
+      const failure = provider.complete(request, new AbortController().signal).catch((error: unknown) => error);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(providerSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(120_000);
+      await expect(failure).resolves.toMatchObject({ code: 'PROVIDER_TIMEOUT' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends an explicit reasoning effort only for an OpenAI-compatible provider configured to use it', async () => {
+    let receivedBody: Record<string, unknown> = {};
+    const server = await startServer((incoming, response) => {
+      void readBody(incoming).then((body) => {
+        receivedBody = body;
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }));
+      });
+    });
+    const providerConfig = { ...config('openai-compatible', server.baseUrl), reasoningEffort: 'none' as const };
+
+    await new OpenAiCompatibleChatProvider(providerConfig).complete(request, new AbortController().signal);
+
+    expect(receivedBody.reasoning_effort).toBe('none');
+  });
+
   it('normalizes OpenAI-compatible messages, tools, and multiple tool calls', async () => {
     let received: { path?: string; authorization?: string; xApiKey?: string; body?: Record<string, unknown> } = {};
     const server = await startServer((incoming, response) => {

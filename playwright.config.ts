@@ -5,6 +5,11 @@ export default defineConfig({
   timeout: 30_000,
   fullyParallel: false,
   reporter: 'list',
+  webServer: {
+    command: 'pnpm --filter @catbots/desktop exec vite --config vite.renderer.config.ts --host 127.0.0.1 --port 4176',
+    url: 'http://127.0.0.1:4176/web-preview.html',
+    reuseExistingServer: true,
+  },
   use: {
     trace: 'retain-on-failure',
   },

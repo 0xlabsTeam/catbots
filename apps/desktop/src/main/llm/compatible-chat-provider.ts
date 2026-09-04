@@ -70,7 +70,8 @@ export type CompatibleChatProviderOptions = Readonly<{
   maxResponseBytes?: number;
 }>;
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+// Local tool-capable models can take well over a minute for a single generation.
+const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 3;
 

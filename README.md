@@ -1,12 +1,12 @@
 # Catbots
 
-Catbots is a local-first Electron desktop application. The current foundation includes local-profile onboarding, local Settings stored in `local.env.yaml`, local SQLite Draft Bot records, a tray-managed runtime skeleton, and an M1 TypeScript strategy/backtest core. It has no Catbots cloud account or telemetry.
+Catbots is a local-first Electron desktop application. It includes local-profile onboarding, local Settings stored in `local.env.yaml`, local SQLite bot records, compatible LLM providers, a constrained strategy-design Agent, versioned Trigger–Condition–Action graphs, deterministic Backtests, React Flow visualization, and execution traces. It has no Catbots cloud account or telemetry.
 
 The M0 release is macOS-only. The implementation keeps portable boundaries where practical, but Windows and Linux packages are not built, tested, or supported in this milestone.
 
 ## Current safety boundary
 
-The Strategy Runtime validates and evaluates versioned Trigger–Condition–Action JSON and runs deterministic local Backtests. It is simulation-only: Paper, Hyperliquid Live execution, and AI strategy authoring are not enabled yet. Provider credentials are local configuration only; no master wallet private key is accepted or stored.
+The Strategy Runtime validates and evaluates versioned Trigger–Condition–Action JSON and runs deterministic local Backtests. AI strategy authoring and Backtests are enabled; Paper and Hyperliquid Live execution are not enabled yet. Provider credentials are local configuration only; no master wallet private key is accepted or stored.
 
 The renderer is sandboxed and accesses native capabilities only through a small validated preload API. Secrets are transient during form entry, written only to the local configuration file, masked when read back, and must never be committed.
 
@@ -44,6 +44,23 @@ console.log(result.metrics, result.manifest.artifactHash);
 ```
 
 The package records a complete audit trace for executed, skipped, unknown, rejected, and failed paths. Backtest output is historical simulation, not a promise of future returns.
+
+## LM Studio integration test
+
+Catbots supports LM Studio through its OpenAI-compatible endpoint. In Settings, use:
+
+- Base URL: `http://127.0.0.1:1234/v1`
+- API key: `lm-studio` (or the API token configured in LM Studio)
+- Model: the identifier returned by LM Studio, for example `qwen/qwen3.8-27b`
+- Reasoning effort: `Off` for Qwen tool workflows, so the output budget remains available for function calls
+
+With LM Studio running and the model loaded, run the repeatable real-model acceptance test:
+
+```sh
+pnpm test:lmstudio
+```
+
+Override the defaults with `CATBOTS_LMSTUDIO_URL` and `CATBOTS_LMSTUDIO_MODEL`. The test creates an isolated in-memory bot, asks the real model to build a combined-condition strategy, validates it, runs a bundled-data Backtest, and requires a completed trade plus an executed trace. It never reads or changes the desktop profile database.
 
 ## Release gates
 

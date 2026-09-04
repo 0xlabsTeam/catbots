@@ -45,6 +45,100 @@ describe('Agent tool catalog', () => {
     expect(catalog.definitions.every(({ inputSchema }) => inputSchema.additionalProperties === false)).toBe(true);
   });
 
+  it('describes the complete strategy document, node configs, and graph ports to the model', () => {
+    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const validateTool = catalog.definitions.find(({ name }) => name === 'validate_strategy');
+    const listed = catalog.execute('list_nodes', {});
+
+    expect(validateTool?.inputSchema).toMatchObject({
+      properties: {
+        strategy: {
+          type: 'object',
+          properties: {
+            schemaVersion: { const: '1.0' },
+            strategy: { type: 'object' },
+            nodes: { type: 'array', items: { oneOf: expect.any(Array) } },
+            edges: { type: 'array', items: { type: 'object' } },
+          },
+          required: ['schemaVersion', 'strategy', 'nodes', 'edges'],
+          additionalProperties: false,
+        },
+      },
+    });
+    expect(listed).toMatchObject({
+      ok: true,
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'trigger.interval',
+          configSchema: expect.objectContaining({ type: 'object' }),
+          inputs: [],
+          outputs: [{ id: 'activation', dataType: 'activation', cardinality: 'many' }],
+        }),
+      ]),
+    });
+  });
+
+  it('returns safe document issue paths so the model can repair malformed strategy JSON', () => {
+    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+
+    const result = catalog.execute('validate_strategy', {
+      strategy: { strategy: { id: 'broken' }, nodes: [], edges: [] },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_STRATEGY',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: 'schemaVersion' }),
+          expect.objectContaining({ path: 'strategy.name' }),
+        ]),
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('describes every bundled data field used by the sample backtest', () => {
+    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+
+    const result = catalog.execute('list_data_products', {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      products: expect.arrayContaining([
+        expect.objectContaining({ id: 'market.price', fields: { mark: 'number', bid: 'number', ask: 'number' } }),
+        expect.objectContaining({ id: 'market.funding', fields: { rate: 'number' } }),
+        expect.objectContaining({ id: 'indicator.rsi.14', fields: { value: 'number' } }),
+        expect.objectContaining({ id: 'data.etf_flow.btc.net_daily', fields: { usd: 'number' } }),
+      ]),
+    });
+  });
+
+  it('returns safe argument issue paths so the model can repair a backtest request', () => {
+    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+
+    const result = catalog.execute('backtest_strategy', {
+      revisionVersion: 1,
+      assumptions: {
+        from: '2026-08-01T00:00:00.000Z',
+        to: '2026-09-01T00:00:00.000Z',
+        startingCapital: 10_000,
+        feeRateBps: 5,
+        slippageBps: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_TOOL_ARGUMENTS',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: 'assumptions.startingCapital' }),
+        ]),
+      },
+    });
+  });
+
   it('validates and persists only structurally valid strategies', () => {
     const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
 

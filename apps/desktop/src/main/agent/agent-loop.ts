@@ -69,6 +69,7 @@ export async function runAgentTurn(input: RunAgentTurnInput, dependencies: RunAg
       if (toolRounds >= MAX_TOOL_ROUNDS) throw new AgentLoopError('AGENT_TOOL_ROUND_LIMIT');
       toolRounds += 1;
       conversation.push({ role: 'assistant', content: completion.text, toolCalls: completion.toolCalls });
+      let completedBacktest = false;
 
       for (const call of completion.toolCalls) {
         const knownTool = toolNames.has(call.name as AgentToolName) ? call.name as AgentToolName : undefined;
@@ -78,12 +79,22 @@ export async function runAgentTurn(input: RunAgentTurnInput, dependencies: RunAg
           message: knownTool === undefined ? 'Rejecting an unavailable tool.' : `Running ${knownTool}.`,
         });
         const result = dependencies.tools.execute(call.name, call.arguments);
+        if (knownTool === 'backtest_strategy' && result.ok === true) completedBacktest = true;
         conversation.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) });
         emit(dependencies, input.botId, {
           phase: 'tool_completed',
           ...(knownTool === undefined ? {} : { tool: knownTool }),
           message: knownTool === undefined ? 'Unavailable tool rejected.' : `${knownTool} completed.`,
         });
+      }
+      if (completedBacktest) {
+        dependencies.repository.appendChatMessage(
+          input.botId,
+          'assistant',
+          'Backtest completed. Review the performance, trades, warnings, and execution trace before approving this draft.',
+        );
+        emit(dependencies, input.botId, { phase: 'completed', message: 'Agent response completed.' });
+        return dependencies.repository.getState(input.botId);
       }
     }
   } catch (error) {

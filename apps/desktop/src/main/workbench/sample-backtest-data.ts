@@ -51,7 +51,7 @@ export function runBundledSampleBacktest(
     assumptions,
     metrics: result.metrics,
     equityCurve: result.equityCurve,
-    trades: [],
+    trades: toBacktestTrades(result.trades, result.traces),
     warnings: [
       'Bundled sample data is synthetic and is not live market data.',
       ...result.warnings,
@@ -154,4 +154,28 @@ function toTraceSummary(trace: readonly AuditEvent[]) {
     occurredAt: trace[0]?.evaluationTime ?? new Date(0).toISOString(),
     summary: last?.type.replaceAll('.', ' ') ?? 'No trace events',
   };
+}
+
+function toBacktestTrades(
+  trades: readonly Readonly<Record<string, JsonValue>>[],
+  traces: readonly (readonly AuditEvent[])[],
+) {
+  const closingTraces = traces.filter((trace) => trace.some((event) => (
+    event.type === 'execution.filled' && event.nodeType === 'execution.close_position'
+  )));
+  return trades.map((trade, index) => ({
+    traceId: closingTraces[index]?.[0]?.traceId ?? `trade:${index + 1}`,
+    market: requiredTradeString(trade.market),
+    side: trade.positionSide === 'short' ? 'short' as const : 'long' as const,
+    openedAt: requiredTradeString(trade.openedAt ?? trade.timestamp),
+    closedAt: requiredTradeString(trade.timestamp),
+    entryPrice: requiredTradeString(trade.entryPrice ?? trade.price),
+    exitPrice: requiredTradeString(trade.price),
+    realizedPnl: requiredTradeString(trade.realizedPnl ?? '0'),
+  }));
+}
+
+function requiredTradeString(value: JsonValue | undefined): string {
+  if (typeof value !== 'string' || value.length === 0) throw new Error('Backtest trade is missing a required value');
+  return value;
 }

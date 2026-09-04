@@ -12,6 +12,9 @@ const LocalProfileSchema = z.object({
   telemetry: z.boolean().default(false),
 }).strict();
 
+export const OpenAiReasoningEffortSchema = z.enum(['none', 'low', 'medium', 'high']);
+export type OpenAiReasoningEffort = z.infer<typeof OpenAiReasoningEffortSchema>;
+
 export const CompatibleProviderUrlSchema = z.string().url().superRefine((value, ctx) => {
   if (!URL.canParse(value)) return;
   const url = new URL(value);
@@ -29,6 +32,7 @@ export const LlmProviderSchema = z.discriminatedUnion('provider', [
     baseUrl: CompatibleProviderUrlSchema,
     apiKey: StoredSecretSchema,
     model: z.string().min(1),
+    reasoningEffort: OpenAiReasoningEffortSchema.optional(),
   }).strict(),
   z.object({
     provider: z.literal('anthropic-compatible'),
@@ -75,6 +79,7 @@ const LlmSettingsPatchSchema = z.discriminatedUnion('provider', [
     baseUrl: CompatibleProviderUrlSchema,
     apiKey: StoredSecretSchema.optional(),
     model: z.string().min(1),
+    reasoningEffort: OpenAiReasoningEffortSchema.optional(),
   }).strict(),
   z.object({
     provider: z.literal('anthropic-compatible'),
@@ -93,8 +98,12 @@ export type LocalSettingsPatch = z.infer<typeof LocalSettingsPatchSchema>;
 
 export type LocalConfig = z.infer<typeof LocalConfigSchema>;
 
+type RedactedLlmProvider<Provider> = Provider extends { apiKey: string }
+  ? Omit<Provider, 'apiKey'> & { apiKey: typeof REDACTED_SECRET }
+  : never;
+
 export type RedactedLocalConfig = Omit<LocalConfig, 'llm' | 'exchanges'> & {
-  llm: Omit<LocalConfig['llm'], 'apiKey'> & { apiKey: typeof REDACTED_SECRET };
+  llm: RedactedLlmProvider<LocalConfig['llm']>;
   exchanges: {
     hyperliquid?: Omit<NonNullable<LocalConfig['exchanges']['hyperliquid']>, 'agentPrivateKey'> & {
       agentPrivateKey: typeof REDACTED_SECRET;

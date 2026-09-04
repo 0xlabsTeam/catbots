@@ -25,6 +25,9 @@ export class OpenAiCompatibleChatProvider implements CompatibleChatProvider {
       model: this.provider.model,
       messages: request.messages.map(toOpenAiMessage),
       max_tokens: request.maxTokens ?? 2048,
+      ...(this.provider.provider === 'openai-compatible' && this.provider.reasoningEffort !== undefined
+        ? { reasoning_effort: this.provider.reasoningEffort }
+        : {}),
     };
     if (request.tools.length > 0) {
       body.tools = request.tools.map((tool) => ({

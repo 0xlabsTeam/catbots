@@ -92,6 +92,39 @@ describe('runAgentTurn', () => {
     expect(repository.getState(botId).revisions).toHaveLength(0);
   });
 
+  it('finishes the turn immediately after a successful backtest instead of allowing repeated runs', async () => {
+    const tools = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    tools.execute('validate_strategy', { strategy });
+    const provider = new FakeProvider([{
+      text: 'Running the requested backtest.',
+      toolCalls: [{
+        id: 'backtest-1',
+        name: 'backtest_strategy',
+        arguments: parseJsonValue({
+          revisionVersion: 1,
+          assumptions: {
+            from: '2026-08-01T00:00:00.000Z',
+            to: '2026-09-01T00:00:00.000Z',
+            startingCapital: '10000',
+            feeRateBps: 5,
+            slippageBps: 5,
+          },
+        }),
+      }],
+    }]);
+
+    const state = await runAgentTurn({ botId, message: 'Backtest it', signal: new AbortController().signal }, {
+      provider, repository, tools, requestId: randomUUID(),
+    });
+
+    expect(provider.requests).toHaveLength(1);
+    expect(state.backtests).toHaveLength(1);
+    expect(state.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: expect.stringContaining('Backtest completed'),
+    });
+  });
+
   it('stops after eight tool rounds', async () => {
     const completion = { text: '', toolCalls: [{ id: 'loop', name: 'list_nodes', arguments: {} }] } satisfies AgentCompletion;
     const provider = new FakeProvider(Array.from({ length: 9 }, () => completion));

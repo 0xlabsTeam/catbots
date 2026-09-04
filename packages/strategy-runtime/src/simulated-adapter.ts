@@ -17,6 +17,7 @@ type NumericPosition = {
   quantity: number;
   entryPrice: number;
   leverage: number;
+  openedAt: string;
 };
 
 type MarketPrice = { market: string; bid: number; ask: number; mark: number };
@@ -128,7 +129,7 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
         this.#ledger.push(Object.freeze({
           type: 'liquidation', timestamp: context.evaluatedAt, market: this.#market,
           side: position.side, quantity: decimal(position.quantity), price: decimal(price.mark),
-          realizedPnl: decimal(pnl),
+          realizedPnl: decimal(pnl), entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
         }));
         liquidated = true;
       }
@@ -182,10 +183,10 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     const fillPrice = side === 'long' ? price.ask * (1 + slip) : price.bid * (1 - slip);
     const quantity = notional / fillPrice;
     const fee = notional * this.#assumptions.feeRateBps / 10_000;
+    const filledAt = new Date(Date.parse(context.evaluatedAt) + this.#assumptions.latencyMs).toISOString();
     this.#cash -= fee;
     this.#totalFees += fee;
-    this.#positions.push({ market: this.#market, side, quantity, entryPrice: fillPrice, leverage });
-    const filledAt = new Date(Date.parse(context.evaluatedAt) + this.#assumptions.latencyMs).toISOString();
+    this.#positions.push({ market: this.#market, side, quantity, entryPrice: fillPrice, leverage, openedAt: filledAt });
     this.#ledger.push(Object.freeze({
       type: 'fill', timestamp: filledAt, market: this.#market, side,
       quantity: decimal(quantity), price: decimal(fillPrice), fee: decimal(fee), effectType: effect.type,
@@ -216,6 +217,7 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     this.#ledger.push(Object.freeze({
       type: 'fill', timestamp: filledAt, market: this.#market,
       side: position.side === 'long' ? 'short' : 'long', quantity: decimal(quantity),
+      positionSide: position.side, entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
       price: decimal(fillPrice), fee: decimal(fee), realizedPnl: decimal(pnl), effectType: effect.type,
     }));
     return { events: this.#fillEvents(effect, quantity, fillPrice, fee, filledAt) };

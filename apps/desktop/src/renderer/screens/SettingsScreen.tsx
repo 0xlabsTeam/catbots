@@ -9,20 +9,22 @@ import {
   type CatbotsDesktopApi,
   type LocalConfig,
   type LocalSettingsPatch,
+  type OpenAiReasoningEffort,
   type RedactedLocalConfig,
 } from '@catbots/contracts';
 import { ConnectionTestStatus, mapExternalConnectionErrorCode, type ConnectionTestState } from '../components/ConnectionTestStatus';
 import { SecretField } from '../components/SecretField';
 
 type Provider = LocalConfig['llm']['provider'];
+type ReasoningEffortSetting = 'auto' | OpenAiReasoningEffort;
 type SettingsScreenProps = { api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; embedded?: boolean; onSaved?(config: RedactedLocalConfig): void };
-type FormState = { profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string; model: string };
+type FormState = { profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string; model: string; reasoningEffort: ReasoningEffortSetting };
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
-const SAFE_REPAIR_PATHS = new Set(['profile.name', 'profile.telemetry', 'llm.provider', 'llm.baseUrl', 'llm.apiKey', 'llm.model']);
+const SAFE_REPAIR_PATHS = new Set(['profile.name', 'profile.telemetry', 'llm.provider', 'llm.baseUrl', 'llm.apiKey', 'llm.model', 'llm.reasoningEffort']);
 
 function formFromConfig(config?: RedactedLocalConfig): FormState {
-  return { profileName: config?.profile.name ?? '', telemetry: config?.profile.telemetry ?? false, provider: config?.llm.provider ?? 'openai-compatible', baseUrl: config?.llm.baseUrl ?? '', apiKey: '', model: config?.llm.model ?? '' };
+  return { profileName: config?.profile.name ?? '', telemetry: config?.profile.telemetry ?? false, provider: config?.llm.provider ?? 'openai-compatible', baseUrl: config?.llm.baseUrl ?? '', apiKey: '', model: config?.llm.model ?? '', reasoningEffort: config?.llm.provider === 'openai-compatible' ? config.llm.reasoningEffort ?? 'auto' : 'auto' };
 }
 
 function isPermittedProviderUrl(value: string): boolean {
@@ -43,6 +45,7 @@ function connectionApprovalBinding(state: FormState, replacementKeyRevision: num
     provider: state.provider,
     baseUrl: normalizeLlmProviderBaseUrl(baseUrl),
     model: state.model.trim(),
+    reasoningEffort: state.provider === 'openai-compatible' ? state.reasoningEffort : 'auto',
     credential: state.apiKey.length === 0 ? 'existing' : `replacement:${replacementKeyRevision}`,
   });
 }
@@ -66,6 +69,9 @@ function toSettingsPatch(state: FormState): LocalSettingsPatch {
       provider: state.provider,
       baseUrl: state.baseUrl.trim(),
       model: state.model.trim(),
+      ...(state.provider === 'openai-compatible' && state.reasoningEffort !== 'auto'
+        ? { reasoningEffort: state.reasoningEffort }
+        : {}),
       ...(state.apiKey.length === 0 ? {} : { apiKey: state.apiKey }),
     },
   };
@@ -110,7 +116,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     setForm((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
     formRevisionRef.current += 1;
-    if (key === 'provider' || key === 'baseUrl' || key === 'apiKey' || key === 'model') {
+    if (key === 'provider' || key === 'baseUrl' || key === 'apiKey' || key === 'model' || key === 'reasoningEffort') {
       const nextProviderRevision = providerRevisionRef.current + 1;
       providerRevisionRef.current = nextProviderRevision;
       if (key === 'apiKey') {
@@ -209,6 +215,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
           <SecretField value={form.apiKey} onValueChange={(value) => updateForm('apiKey', value)} error={errors.apiKey} storedMask={config?.llm.apiKey} requiresReplacement={credentialScopeChanged} disabled={isSaving} />
           <Input id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
+          {form.provider === 'openai-compatible' ? <Select<ReasoningEffortSetting> label="Reasoning effort" value={form.reasoningEffort} onValueChange={(value) => updateForm('reasoningEffort', value as ReasoningEffortSetting)} disabled={isSaving}><Select.Option value="auto">Auto</Select.Option><Select.Option value="none">Off</Select.Option><Select.Option value="low">Low</Select.Option><Select.Option value="medium">Medium</Select.Option><Select.Option value="high">High</Select.Option></Select> : null}
           <ConnectionTestStatus value={connection} />
           <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
           <p className="form-footnote"><InfoIcon aria-hidden="true" /> Catbots has no in-app YAML editor. This form is the only way to save local configuration.</p>

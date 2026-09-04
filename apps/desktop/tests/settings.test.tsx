@@ -37,6 +37,25 @@ function deferred<T>() {
 describe('SettingsScreen', () => {
   afterEach(cleanup);
 
+  it('saves an explicit reasoning effort as part of the tested provider configuration', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<SettingsScreen api={api} config={redactedConfig} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
+    await user.click(screen.getByRole('option', { name: 'Off' }));
+    await user.type(screen.getByLabelText('API key'), 'replacement-secret');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(api.testLlmConnection).toHaveBeenCalledWith(expect.objectContaining({
+      llm: expect.objectContaining({ reasoningEffort: 'none' }),
+    }));
+    expect(api.patchSettings).toHaveBeenCalledWith(expect.objectContaining({
+      llm: expect.objectContaining({ reasoningEffort: 'none' }),
+    }));
+  });
+
   it('shows accessible settings fields and never submits the redacted key mask', async () => {
     const user = userEvent.setup();
     const api = makeApi();

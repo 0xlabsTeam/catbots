@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { BacktestAssumptionsViewSchema } from '@catbots/contracts';
 import { createBuiltinRegistry, parseStrategyDocument, validateStrategy } from '@catbots/strategy-runtime';
 
-import type { AgentToolDefinition, JsonValue } from '../llm/compatible-chat-provider';
+import { parseJsonValue, type AgentToolDefinition, type JsonValue } from '../llm/compatible-chat-provider';
 import { runBundledSampleBacktest } from '../workbench/sample-backtest-data';
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 
@@ -45,15 +45,68 @@ const compareArguments = z.object({
   rightVersion: z.number().int().positive(),
 }).strict();
 
+const registry = createBuiltinRegistry();
+const strategyDocumentJsonSchema: JsonValue = {
+  type: 'object',
+  properties: {
+    schemaVersion: { type: 'string', const: '1.0' },
+    strategy: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', minLength: 1, maxLength: 120 },
+        name: { type: 'string', minLength: 1, maxLength: 120 },
+        version: { type: 'integer', minimum: 1 },
+      },
+      required: ['id', 'name', 'version'],
+      additionalProperties: false,
+    },
+    nodes: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        oneOf: registry.list().map((node) => ({
+          type: 'object',
+          properties: {
+            id: { type: 'string', minLength: 1, maxLength: 120 },
+            kind: { type: 'string', const: node.kind },
+            type: { type: 'string', const: node.type },
+            version: { type: 'integer', const: node.version },
+            config: jsonSchemaFor(node.configSchema),
+          },
+          required: ['id', 'kind', 'type', 'version', 'config'],
+          additionalProperties: false,
+        })),
+      },
+    },
+    edges: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', minLength: 1, maxLength: 120 },
+          source: { type: 'string', minLength: 1, maxLength: 120 },
+          sourcePort: { type: 'string', minLength: 1, maxLength: 120 },
+          target: { type: 'string', minLength: 1, maxLength: 120 },
+          targetPort: { type: 'string', minLength: 1, maxLength: 120 },
+        },
+        required: ['id', 'source', 'sourcePort', 'target', 'targetPort'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['schemaVersion', 'strategy', 'nodes', 'edges'],
+  additionalProperties: false,
+};
+
 const definitions: readonly AgentToolDefinition[] = [
   definition('list_nodes', 'List the available trigger, condition, and action nodes.', {}),
   definition('list_data_products', 'List the data products available to this milestone.', {}),
   definition('validate_strategy', 'Validate a complete candidate strategy and save a draft revision only when valid.', {
-    strategy: { type: 'object' },
+    strategy: strategyDocumentJsonSchema,
   }, ['strategy']),
   definition('backtest_strategy', 'Run a saved revision against bundled sample data.', {
     revisionVersion: { type: 'integer', minimum: 1 },
-    assumptions: { type: 'object' },
+    assumptions: jsonSchemaFor(BacktestAssumptionsViewSchema),
   }, ['revisionVersion', 'assumptions']),
   definition('explain_strategy', 'Explain a saved strategy revision.', {
     revisionVersion: { type: 'integer', minimum: 1 },
@@ -65,7 +118,6 @@ const definitions: readonly AgentToolDefinition[] = [
 ];
 
 export function createAgentToolCatalog(dependencies: AgentToolDependencies): AgentToolCatalog {
-  const registry = createBuiltinRegistry();
   return {
     definitions,
     execute(name, argumentsValue) {
@@ -79,14 +131,18 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
             version: node.version,
             title: node.visualization.title,
             summary: node.visualization.summary({}),
+            configSchema: jsonSchemaFor(node.configSchema),
+            inputs: node.inputs.map(({ id, dataType, cardinality }) => ({ id, dataType, cardinality })),
+            outputs: node.outputs.map(({ id, dataType, cardinality }) => ({ id, dataType, cardinality })),
           })) } as AgentToolResult;
         }
         if (name === 'list_data_products') {
           noArguments.parse(argumentsValue);
           return { ok: true, products: [
-            { id: 'market.price', label: 'Market price', source: 'Bundled sample data' },
-            { id: 'indicator.rsi.14', label: 'RSI 14', source: 'Bundled sample data' },
-            { id: 'data.etf_flow.btc.net_daily', label: 'BTC ETF net daily flow', source: 'Bundled sample data' },
+            { id: 'market.price', label: 'Market price', source: 'Bundled sample data', fields: { mark: 'number', bid: 'number', ask: 'number' } },
+            { id: 'market.funding', label: 'Perpetual funding rate', source: 'Bundled sample data', fields: { rate: 'number' } },
+            { id: 'indicator.rsi.14', label: 'RSI 14', source: 'Bundled sample data', fields: { value: 'number' } },
+            { id: 'data.etf_flow.btc.net_daily', label: 'BTC ETF net daily flow', source: 'Bundled sample data', fields: { usd: 'number' } },
           ] } as AgentToolResult;
         }
         if (name === 'validate_strategy') {
@@ -94,7 +150,21 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
           let document;
           try {
             document = parseStrategyDocument(input.strategy);
-          } catch {
+          } catch (error) {
+            if (error instanceof z.ZodError) {
+              return {
+                ok: false,
+                error: {
+                  code: 'INVALID_STRATEGY',
+                  message: 'Strategy document is malformed.',
+                  issues: error.issues.map((issue) => ({
+                    code: issue.code,
+                    path: issue.path.length === 0 ? 'strategy' : issue.path.join('.'),
+                    message: 'Invalid or missing strategy field.',
+                  })),
+                },
+              } as AgentToolResult;
+            }
             return failure('INVALID_STRATEGY', 'Strategy document is malformed.');
           }
           const result = validateStrategy(document, registry);
@@ -139,7 +209,21 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
           ok: true,
           comparison: `${left.strategy.name} → ${right.strategy.name}; added: ${added.join(', ') || 'none'}; removed: ${removed.join(', ') || 'none'}`,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return {
+            ok: false,
+            error: {
+              code: 'INVALID_TOOL_ARGUMENTS',
+              message: 'Tool arguments are invalid.',
+              issues: error.issues.map((issue) => ({
+                code: issue.code,
+                path: issue.path.length === 0 ? 'arguments' : issue.path.join('.'),
+                message: 'Invalid or missing tool argument.',
+              })),
+            },
+          } as AgentToolResult;
+        }
         return failure('INVALID_TOOL_ARGUMENTS', 'Tool arguments are invalid.');
       }
     },
@@ -156,4 +240,9 @@ function definition(name: AgentToolName, description: string, properties: Record
 
 function failure(code: string, message: string): AgentToolResult {
   return { ok: false, error: { code, message } };
+}
+
+function jsonSchemaFor(schema: z.ZodType): JsonValue {
+  const { $schema: _schemaDialect, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
+  return parseJsonValue(jsonSchema);
 }

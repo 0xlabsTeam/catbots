@@ -152,6 +152,9 @@ function providerBody(provider: LocalConfig['llm']): Record<string, unknown> {
     model: provider.model,
     messages: [{ role: 'user', content: 'Reply with OK.' }],
     max_tokens: 1,
+    ...(provider.provider === 'openai-compatible' && provider.reasoningEffort !== undefined
+      ? { reasoning_effort: provider.reasoningEffort }
+      : {}),
   };
 }
 

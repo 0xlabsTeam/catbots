@@ -56,6 +56,7 @@ const YamlLocalConfigSchema = z.object({
     base_url: z.unknown().optional(),
     api_key: z.unknown().optional(),
     model: z.unknown().optional(),
+    reasoning_effort: z.unknown().optional(),
   }).strict().optional(),
   exchanges: z.object({
     hyperliquid: z.object({
@@ -206,6 +207,9 @@ function serializeLocalConfig(value: LocalConfig): string {
       base_url: value.llm.baseUrl,
       api_key: value.llm.apiKey,
       model: value.llm.model,
+      ...(value.llm.provider === 'openai-compatible' && value.llm.reasoningEffort !== undefined
+        ? { reasoning_effort: value.llm.reasoningEffort }
+        : {}),
     },
     exchanges: value.exchanges.hyperliquid === undefined
       ? {}
@@ -331,6 +335,7 @@ function fromYamlShape(value: YamlLocalConfig): unknown {
             baseUrl: value.llm.base_url,
             apiKey: value.llm.api_key,
             model: value.llm.model,
+            ...(value.llm.reasoning_effort === undefined ? {} : { reasoningEffort: value.llm.reasoning_effort }),
           },
         }),
     ...(value.exchanges === undefined

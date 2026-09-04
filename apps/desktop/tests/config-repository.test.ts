@@ -93,6 +93,25 @@ function failNextTemporaryFileOperation(operation: 'writeFile' | 'sync'): void {
 }
 
 describe('ConfigRepository', () => {
+  it('round-trips an explicit OpenAI-compatible reasoning effort through local YAML', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const repository = new ConfigRepository(dataDirectory);
+
+    await repository.save({
+      ...validConfig,
+      llm: {
+        provider: 'openai-compatible',
+        baseUrl: validConfig.llm.baseUrl,
+        apiKey: validConfig.llm.apiKey,
+        model: validConfig.llm.model,
+        reasoningEffort: 'none',
+      },
+    });
+
+    await expect(repository.load()).resolves.toMatchObject({ llm: { reasoningEffort: 'none' } });
+    await expect(readFile(join(dataDirectory, 'local.env.yaml'), 'utf8')).resolves.toContain('reasoning_effort: none');
+  });
+
   it('writes valid YAML atomically with private permissions and returns a redacted view', async () => {
     const dataDirectory = await createTemporaryDirectory();
     const repository = new ConfigRepository(dataDirectory);

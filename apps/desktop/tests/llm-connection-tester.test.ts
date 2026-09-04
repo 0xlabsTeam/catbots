@@ -55,7 +55,13 @@ describe('Main-process compatible provider connection testing', () => {
     });
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const result = await testLlmConnection(llm('openai-compatible', baseUrl, secret));
+    const result = await testLlmConnection({
+      provider: 'openai-compatible',
+      baseUrl,
+      apiKey: secret,
+      model: 'fixture-model',
+      reasoningEffort: 'none',
+    });
 
     expect(result).toEqual({ ok: true, model: 'fixture-model' });
     expect(received.path).toBe('/v1/chat/completions');
@@ -65,6 +71,7 @@ describe('Main-process compatible provider connection testing', () => {
       model: 'fixture-model',
       messages: [{ role: 'user', content: 'Reply with OK.' }],
       max_tokens: 1,
+      reasoning_effort: 'none',
     });
     expect(JSON.stringify(result)).not.toContain(secret);
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain(secret);

@@ -26,6 +26,18 @@ const validHyperliquid = {
 };
 
 describe('LocalConfigSchema', () => {
+  it('accepts an explicit OpenAI-compatible reasoning effort and rejects it for Anthropic-compatible providers', () => {
+    expect(LocalConfigSchema.parse({
+      ...valid,
+      llm: { ...valid.llm, reasoningEffort: 'none' },
+    }).llm).toMatchObject({ reasoningEffort: 'none' });
+
+    expect(LocalConfigSchema.safeParse({
+      ...valid,
+      llm: { ...valid.llm, provider: 'anthropic-compatible', reasoningEffort: 'none' },
+    }).success).toBe(false);
+  });
+
   it('accepts a compatible LLM and local profile', () => {
     expect(LocalConfigSchema.parse(valid).profile.telemetry).toBe(false);
   });
