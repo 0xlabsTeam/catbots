@@ -76,7 +76,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
 
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (nextOpen) onOpenChange(true); else close(); }}>
-      <Dialog className="create-draft-dialog" size="base">
+      <Dialog className="create-draft-dialog p-8" size="base">
         <Dialog.Title>Create a local draft</Dialog.Title>
         <Dialog.Description>Start with a name and market. Strategy, Backtest, and trading controls arrive in later milestones.</Dialog.Description>
         <form className="draft-form" onSubmit={submit}>
@@ -106,7 +106,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
           {error ? <Banner variant="error" role="alert" title="Draft not created" description="We could not create this draft. Review the local values and try again." /> : null}
           <div className="draft-form-actions">
             <Button type="button" variant="secondary" onClick={close} disabled={isCreating}>Cancel</Button>
-            <Button className="primary-action" type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
+            <Button type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
           </div>
         </form>
       </Dialog>

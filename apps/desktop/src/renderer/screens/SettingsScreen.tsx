@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Banner, Button, Dialog, Input, Select, Switch, Tooltip } from '@cloudflare/kumo';
-import { Progress } from '@cloudflare/kumo/primitives/progress';
+import { Banner, Button, Dialog, Input, LayerCard, Meter, Select, Switch, Tooltip } from '@cloudflare/kumo';
 import { CheckCircleIcon, DesktopTowerIcon, InfoIcon, LockKeyIcon } from '@phosphor-icons/react';
 import {
   CompatibleProviderUrlSchema,
@@ -194,10 +193,10 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
         <p className="eyebrow">LOCAL DESKTOP</p>
         <h1 id="settings-heading">{onboarding ? 'Create your local profile' : 'Settings'}</h1>
         <p className="lead">{onboarding ? 'Set up a profile and connect an AI provider. Catbots has no cloud account and keeps this configuration on this computer.' : 'Update the local profile and AI provider used by this Catbots installation.'}</p>
-        {onboarding ? <div className="setup-progress" aria-label="Setup progress"><Progress.Root value={2} max={2} aria-label="Setup progress: connect AI provider"><Progress.Label>Setup checkpoint</Progress.Label><Progress.Track><Progress.Indicator /></Progress.Track><Progress.Value /></Progress.Root><ol><li className="completed"><CheckCircleIcon aria-hidden="true" weight="fill" /> Local profile</li><li className="active">2 <span>Connect AI provider</span></li></ol></div> : null}
+        {onboarding ? <div className="setup-progress" aria-label="Setup progress"><Meter label="Setup checkpoint" value={2} max={2} customValue="2 / 2" /><ol><li className="completed"><CheckCircleIcon aria-hidden="true" weight="fill" /> Local profile</li><li className="active">2 <span>Connect AI provider</span></li></ol></div> : null}
         <Banner className="local-trust-callout" variant="secondary" icon={<LockKeyIcon aria-hidden="true" weight="duotone" />} title="Your provider key stays local" description="It is sent only to the configured provider when you test it. Catbots never shows it again after saving." />
       </section>
-      <section className="settings-card" aria-label={onboarding ? 'Local profile setup' : 'Local settings'}>
+      <LayerCard render={<section aria-label={onboarding ? 'Local profile setup' : 'Local settings'} />} className="settings-card">
         {repairIssues === undefined ? null : <Banner variant="alert" title="Configuration repair" description={safeRepairPaths.length === 0 ? 'Re-enter the local profile and provider values to repair this configuration.' : <>Review these safe settings fields: {safeRepairPaths.map((path) => <code key={path}>{path}</code>)}</>} />}
         <header className="form-heading"><p className="eyebrow">{onboarding ? 'STEP 2 OF 2' : 'AI PROVIDER'}</p><h2>{onboarding ? 'Connect your AI provider' : 'Provider connection'}</h2><p>A successful connection test is required before these provider values can be saved.</p></header>
         <form className="settings-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate>
@@ -211,11 +210,11 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
           <Input id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
           <ConnectionTestStatus value={connection} />
-          <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button className="primary-action" type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
+          <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
           <p className="form-footnote"><InfoIcon aria-hidden="true" /> Catbots has no in-app YAML editor. This form is the only way to save local configuration.</p>
         </form>
-        <Dialog.Root><Dialog.Trigger render={(props) => <Button {...props} className="privacy-dialog-trigger" variant="ghost" size="sm">How is my key handled?</Button>} /><Dialog><Dialog.Title>Local-only credentials</Dialog.Title><Dialog.Description>Your key is held only by this password field until a successful local save. The stored value is never rendered again.</Dialog.Description><Dialog.Close render={(props) => <Button {...props} variant="secondary">Close</Button>} /></Dialog></Dialog.Root>
-      </section>
+        <Dialog.Root><Dialog.Trigger render={(props) => <Button {...props} className="privacy-dialog-trigger" variant="ghost" size="sm">How is my key handled?</Button>} /><Dialog className="p-8"><Dialog.Title className="text-2xl font-semibold">Local-only credentials</Dialog.Title><Dialog.Description className="mt-2 text-kumo-subtle">Your key is held only by this password field until a successful local save. The stored value is never rendered again.</Dialog.Description><Dialog.Close render={(props) => <Button {...props} className="mt-6" variant="secondary">Close</Button>} /></Dialog></Dialog.Root>
+      </LayerCard>
     </Root>
   );
 }

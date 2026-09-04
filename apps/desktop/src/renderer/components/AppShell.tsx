@@ -31,8 +31,8 @@ export function AppShell({ destination, onNavigate, children }: AppShellProps) {
             <Button
               key={itemDestination}
               type="button"
-              variant="ghost"
-              className={`app-navigation-item${destination === itemDestination ? ' is-active' : ''}`}
+              variant={destination === itemDestination ? 'secondary' : 'ghost'}
+              className="app-navigation-item"
               aria-current={destination === itemDestination ? 'page' : undefined}
               onClick={() => onNavigate(itemDestination)}
               icon={icon}

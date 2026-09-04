@@ -8,6 +8,7 @@
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "dev": "pnpm --filter @catbots/desktop start",
+    "dev:web": "pnpm --filter @catbots/desktop dev:web",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "check:release-node": "node scripts/check-release-node.mjs",

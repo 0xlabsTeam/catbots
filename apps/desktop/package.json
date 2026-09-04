@@ -8,6 +8,7 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
+    "dev:web": "vite --config vite.renderer.config.ts --open /web-preview.html",
     "package": "node ../../scripts/package-desktop.mjs package",
     "make": "node ../../scripts/package-desktop.mjs make && node ../../scripts/verify-package-contents.mjs out",
     "typecheck": "tsc --noEmit",

@@ -172,30 +172,22 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     const profileInput = onboarding.getByLabel('Profile name');
     const submit = onboarding.getByRole('button', { name: 'Create local profile' });
     const styles = await onboarding.evaluate(() => {
-      const primary = document.querySelector<HTMLButtonElement>('.primary-action');
+      const primary = document.querySelector<HTMLButtonElement>('button[type="submit"]');
       const input = document.querySelector<HTMLInputElement>('#profile-name');
       const card = document.querySelector<HTMLElement>('.settings-card');
-      const probe = document.createElement('span');
-      probe.style.backgroundColor = 'var(--color-primary-bg)';
-      probe.style.color = 'var(--color-primary-text)';
-      document.body.append(probe);
-      const expected = getComputedStyle(probe);
-      const actual = primary === null ? undefined : getComputedStyle(primary);
-      const result = {
+      return {
         cardBackground: card === null ? undefined : getComputedStyle(card).backgroundColor,
+        cardUsesKumoSurface: card?.classList.contains('bg-kumo-base') ?? false,
         inputHeight: input === null ? 0 : input.getBoundingClientRect().height,
-        primaryBackground: actual?.backgroundColor,
-        primaryColor: actual?.color,
-        tokenBackground: expected.backgroundColor,
-        tokenColor: expected.color,
+        inputUsesKumoControl: input?.classList.contains('bg-kumo-control') ?? false,
+        primaryThemeBackground: primary === null ? '' : getComputedStyle(primary).getPropertyValue('--kumo-button-emphasis-bg'),
       };
-      probe.remove();
-      return result;
     });
-    expect(styles.inputHeight).toBeGreaterThanOrEqual(40);
+    expect(styles.inputHeight).toBe(36);
     expect(styles.cardBackground).not.toBe('rgba(0, 0, 0, 0)');
-    expect(styles.primaryBackground).toBe(styles.tokenBackground);
-    expect(styles.primaryColor).toBe(styles.tokenColor);
+    expect(styles.cardUsesKumoSurface).toBe(true);
+    expect(styles.inputUsesKumoControl).toBe(true);
+    expect(styles.primaryThemeBackground).not.toBe('');
 
     const keyHelpTrigger = onboarding.getByRole('button', { name: 'How is my key handled?' });
     await keyHelpTrigger.click();

@@ -21,6 +21,16 @@ pnpm dev
 
 On first launch, create a Local Profile. Settings writes `local.env.yaml` inside Catbots' Electron data directory; use [local.env.example.yaml](local.env.example.yaml) only as a non-secret reference. Keep that data directory private and back it up according to your own local-security policy.
 
+### Web preview
+
+To review the current UI in a browser without Electron, run:
+
+```sh
+pnpm dev:web
+```
+
+The browser preview uses a separate in-memory adapter. Provider connection tests are simulated, drafts and settings reset when the page reloads, API keys are not retained, and no YAML, SQLite, runtime, or exchange operation is performed. Use the Electron app for native integration testing.
+
 ## Release gates
 
 ```sh

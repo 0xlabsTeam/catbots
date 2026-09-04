@@ -89,6 +89,7 @@ describe('BotsHomeScreen', () => {
     expect(api.createDraft).toHaveBeenCalledWith({ name: 'BTC Flow', market: 'BTC-PERP' });
     expect(screen.getByText('PnL unavailable')).toBeTruthy();
     expect(screen.getByText('Drawdown unavailable')).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Local bots' }).parentElement?.className).toContain('ring-kumo-line');
   });
 
   it('renders an accessible loading state before the local list arrives', () => {
@@ -102,7 +103,8 @@ describe('BotsHomeScreen', () => {
     const user = userEvent.setup();
     const list = vi.fn().mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('database /Users/secret/db.sqlite')).mockResolvedValueOnce([]);
     const { rerender } = render(<BotsHomeScreen api={makeApi({ list })} />);
-    expect(await screen.findByRole('heading', { name: 'No bots yet' })).toBeTruthy();
+    const emptyHeading = await screen.findByRole('heading', { name: 'No bots yet' });
+    expect(emptyHeading.parentElement?.className).toContain('border-kumo-fill');
 
     rerender(<BotsHomeScreen api={makeApi({ list })} />);
     expect((await screen.findByRole('alert')).textContent).toContain('We could not load local bots. Try again.');
@@ -224,21 +226,31 @@ describe('AppShell', () => {
 describe('App', () => {
   afterEach(() => { cleanup(); delete (window as Partial<Window>).catbots; });
 
+  it('renders from an injected preview API without an Electron preload global', async () => {
+    delete (window as Partial<Window>).catbots;
+
+    render(<App api={makeDesktopApi({ state: 'ready', config: redactedConfig })} preview />);
+
+    expect(await screen.findByRole('heading', { name: 'Bots' })).toBeTruthy();
+    expect(screen.getByText('Web preview · simulated API · temporary data')).toBeTruthy();
+  });
+
   it('renders a ready profile in the shell and keeps one main landmark when Settings is selected', async () => {
     const user = userEvent.setup();
     window.catbots = makeDesktopApi({ state: 'ready', config: redactedConfig });
-    render(<App />);
+    render(<App api={window.catbots} />);
 
     await screen.findByRole('heading', { name: 'Bots' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await screen.findByRole('heading', { name: 'Settings' });
     expect(screen.getAllByRole('main').length).toBe(1);
+    expect(screen.getByRole('region', { name: 'Local settings' }).className).toContain('ring-kumo-line');
   });
 
   it('moves first launch into the shell after saving the local profile', async () => {
     const user = userEvent.setup();
     window.catbots = makeDesktopApi({ state: 'first-launch' });
-    render(<App />);
+    render(<App api={window.catbots} />);
 
     await screen.findByRole('heading', { name: 'Create your local profile' });
     await saveProviderSettings(user);
@@ -248,7 +260,7 @@ describe('App', () => {
   it('moves configuration repair into the shell after saving repaired settings', async () => {
     const user = userEvent.setup();
     window.catbots = makeDesktopApi({ state: 'repair', issues: [{ path: 'config', message: 'safe copy only' }] });
-    render(<App />);
+    render(<App api={window.catbots} />);
 
     await screen.findByText('Configuration repair');
     await saveProviderSettings(user);

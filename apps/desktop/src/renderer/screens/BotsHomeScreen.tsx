@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Banner, Button, Table } from '@cloudflare/kumo';
+import { Banner, Button, Empty, LayerCard, Table } from '@cloudflare/kumo';
 import { PlusIcon, RobotIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
 import { StatusBadge } from '../components/StatusBadge';
@@ -64,7 +64,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
           <h1 id="bots-home-title">Bots</h1>
           <p>Draft and inspect your local bot workspaces. No trading activity is available in M0.</p>
         </div>
-        <Button className="primary-action" type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
+        <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
       </header>
 
       {bots === null ? <div className="bots-state" role="status" aria-live="polite">Loading local bots…</div> : null}
@@ -84,20 +84,19 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
 
 function EmptyBots({ onCreate }: { onCreate(): void }) {
   return (
-    <div className="bots-empty-state">
-      <span className="bots-empty-icon" aria-hidden="true"><RobotIcon weight="duotone" /></span>
-      <div>
-        <h2>No bots yet</h2>
-        <p>Create a local draft with a name and market. You can shape its strategy in a later milestone.</p>
-        <Button type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>
-      </div>
-    </div>
+    <Empty
+      className="bots-empty-state"
+      icon={<RobotIcon aria-hidden="true" size={48} weight="duotone" />}
+      title="No bots yet"
+      description="Create a local draft with a name and market. You can shape its strategy in a later milestone."
+      contents={<Button type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>}
+    />
   );
 }
 
 function BotsTable({ bots }: { bots: readonly BotSummary[] }) {
   return (
-    <div className="bots-table-wrap">
+    <LayerCard className="bots-table-wrap">
       <Table aria-label="Local bots">
         <Table.Header>
           <Table.Row>
@@ -122,6 +121,6 @@ function BotsTable({ bots }: { bots: readonly BotSummary[] }) {
           ))}
         </Table.Body>
       </Table>
-    </div>
+    </LayerCard>
   );
 }
