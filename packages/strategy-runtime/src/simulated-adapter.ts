@@ -62,7 +62,11 @@ function validateAssumptions(assumptions: BacktestAssumptions): number {
 }
 
 function rejected(code: string): Readonly<{ events: readonly ExecutionTraceEvent[] }> {
-  return { events: [{ type: 'execution.rejected', metadata: { code } }] };
+  return { events: [
+    { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+    { type: 'execution.queued' },
+    { type: 'execution.rejected', metadata: { code } },
+  ] };
 }
 
 export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
@@ -231,6 +235,8 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     filledAt: string,
   ): readonly ExecutionTraceEvent[] {
     const events: ExecutionTraceEvent[] = [
+      { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+      { type: 'execution.queued', metadata: { effectIdempotencyKey: effect.idempotencyKey } },
       { type: 'execution.submitted', metadata: { clientOrderId: effect.idempotencyKey } },
       { type: 'execution.acknowledged', metadata: { latencyMs: this.#assumptions.latencyMs } },
     ];

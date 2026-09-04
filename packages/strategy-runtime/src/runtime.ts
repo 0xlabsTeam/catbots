@@ -22,6 +22,9 @@ export type ProposedEffect = Readonly<{
 
 export type ExecutionTraceEvent = Readonly<{
   type: Extract<AuditEventType,
+    | 'risk.approved'
+    | 'risk.rejected'
+    | 'execution.queued'
     | 'execution.submitted'
     | 'execution.acknowledged'
     | 'execution.rejected'
@@ -166,8 +169,6 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
     });
     effects.push(effect);
     trace.append('action.proposed', { effect }, nodeIdentity(node));
-    trace.append('risk.approved', { decision: 'approved', evaluator: `${deployment.mode}.simulation` }, nodeIdentity(node));
-    trace.append('execution.queued', { effectIdempotencyKey: effect.idempotencyKey }, nodeIdentity(node));
     try {
       const outcome = execution.execute(effect, context);
       for (const event of outcome.events) trace.append(event.type, event.metadata ?? {}, nodeIdentity(node));

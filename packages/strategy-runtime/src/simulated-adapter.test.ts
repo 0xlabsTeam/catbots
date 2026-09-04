@@ -43,7 +43,8 @@ describe('SimulatedExecutionAdapter', () => {
     const outcome = simulation.execute(openEffect(), marketContext(100));
 
     expect(outcome.events.map((event) => event.type)).toEqual([
-      'execution.submitted', 'execution.acknowledged', 'execution.partially_filled', 'execution.filled',
+      'risk.approved', 'execution.queued', 'execution.submitted', 'execution.acknowledged',
+      'execution.partially_filled', 'execution.filled',
     ]);
     expect(outcome.events.at(-1)?.metadata).toMatchObject({
       price: '101', quantity: '9.9009901', fee: '1', filledAt: '2026-09-03T08:15:00.250Z',
@@ -59,6 +60,8 @@ describe('SimulatedExecutionAdapter', () => {
     const context = createEvaluationContext({ evaluatedAt: '2026-09-03T08:15:00.000Z', values: {} });
 
     expect(simulation.execute(openEffect(), context).events).toEqual([
+      { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+      { type: 'execution.queued' },
       { type: 'execution.rejected', metadata: { code: 'MARKET_PRICE_UNAVAILABLE' } },
     ]);
     expect(simulation.snapshot().positions).toEqual([]);
@@ -68,6 +71,8 @@ describe('SimulatedExecutionAdapter', () => {
     const simulation = adapter({ slippageBps: 0, feeRateBps: 0 });
 
     expect(simulation.execute(openEffect({ size: { type: 'quote', value: 30_000 } }), marketContext(100)).events).toEqual([
+      { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+      { type: 'execution.queued' },
       { type: 'execution.rejected', metadata: { code: 'INSUFFICIENT_MARGIN' } },
     ]);
   });

@@ -56,6 +56,8 @@ function filledExecution(): RuntimeExecutionPort {
   return {
     execute: () => ({
       events: [
+        { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+        { type: 'execution.queued', metadata: { effectIdempotencyKey: 'effect-1' } },
         { type: 'execution.submitted', metadata: { clientOrderId: 'order-1', authorization: 'must-not-leak' } },
         { type: 'execution.acknowledged', metadata: { venueOrderId: 'venue-1' } },
         { type: 'execution.partially_filled', metadata: { quantity: '0.01' } },
@@ -132,12 +134,35 @@ describe('evaluateTrigger', () => {
     const result = evaluateTrigger({
       compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
       context: context(25), deployment: { id: 'backtest-1', mode: 'backtest' },
-      execution: { execute: () => ({ events: [{ type: 'execution.rejected', metadata: { code: 'NO_PRICE' } }] }) },
+      execution: { execute: () => ({ events: [
+        { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
+        { type: 'execution.queued', metadata: { effectIdempotencyKey: 'effect-1' } },
+        { type: 'execution.rejected', metadata: { code: 'NO_PRICE' } },
+      ] }) },
     });
 
     expect(result.trace.filter((event) => event.type.startsWith('flow.'))).toEqual([
       expect.objectContaining({ type: 'flow.failed' }),
     ]);
+  });
+
+  it('records a real risk rejection without inventing approval or queue events', () => {
+    const rejectingRiskPort: RuntimeExecutionPort = {
+      execute: () => ({
+        events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: ['max-order-usd'] } }],
+      }),
+    };
+
+    const result = evaluateTrigger({
+      compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
+      context: context(25), deployment: { id: 'paper-1', mode: 'paper' },
+      execution: rejectingRiskPort,
+    });
+
+    expect(result.trace.map(({ type }) => type)).toContain('risk.rejected');
+    expect(result.trace.map(({ type }) => type)).not.toContain('risk.approved');
+    expect(result.trace.map(({ type }) => type)).not.toContain('execution.queued');
+    expect(result.trace.at(-1)?.type).toBe('flow.failed');
   });
 
   it('rejects an interval activation that is not on the registered UTC cadence', () => {
