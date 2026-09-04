@@ -96,7 +96,7 @@ git commit -m "feat: define execution and deployment contracts"
 - Consumes: normalized `ProposedEffect` from `@catbots/strategy-runtime` and Task 1 risk limits.
 - Produces: `PerpDexAdapter`, normalized order/balance/position/event types, `evaluateRisk(input): RiskDecision`, `executionIdempotencyKey(input): string`, and `clientOrderId(input): string`.
 
-- [ ] **Step 1: Write risk-boundary and deterministic-ID tests**
+- [x] **Step 1: Write risk-boundary and deterministic-ID tests**
 
 ```ts
 expect(evaluateRisk({ ...fixture, proposedOrderUsd: '1001' })).toMatchObject({ approved: false, violatedRuleIds: ['max-order-usd'] });
@@ -104,13 +104,13 @@ expect(executionIdempotencyKey(fixture)).toBe(executionIdempotencyKey(structured
 expect(clientOrderId(fixture)).toMatch(/^cb_[a-f0-9]{28}$/);
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 Run: `pnpm --filter @catbots/execution-core test`
 
 Expected: FAIL because the package and functions do not exist.
 
-- [ ] **Step 3: Implement pure contracts and fail-closed risk evaluation**
+- [x] **Step 3: Implement pure contracts and fail-closed risk evaluation**
 
 ```ts
 export interface PerpDexAdapter {
@@ -127,7 +127,7 @@ export interface PerpDexAdapter {
 
 Use decimal strings at boundaries and return a rejected decision when account state, limits, or required valuation is unavailable.
 
-- [ ] **Step 4: Run execution-core tests and workspace typecheck**
+- [x] **Step 4: Run execution-core tests and workspace typecheck**
 
 Run: `pnpm --filter @catbots/execution-core test && pnpm typecheck`
 
