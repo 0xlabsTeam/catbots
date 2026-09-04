@@ -1,0 +1,159 @@
+import { z } from 'zod';
+import { BacktestAssumptionsViewSchema } from '@catbots/contracts';
+import { createBuiltinRegistry, parseStrategyDocument, validateStrategy } from '@catbots/strategy-runtime';
+
+import type { AgentToolDefinition, JsonValue } from '../llm/compatible-chat-provider';
+import { runBundledSampleBacktest } from '../workbench/sample-backtest-data';
+import type { WorkbenchRepository } from '../workbench/workbench-repository';
+
+const allowedToolNames = [
+  'list_nodes',
+  'list_data_products',
+  'validate_strategy',
+  'backtest_strategy',
+  'explain_strategy',
+  'compare_versions',
+] as const;
+
+export type AgentToolName = typeof allowedToolNames[number];
+export type AgentToolResult = Readonly<Record<string, JsonValue>>;
+
+export type AgentToolCatalog = Readonly<{
+  definitions: readonly AgentToolDefinition[];
+  execute(name: string, argumentsValue: unknown): AgentToolResult;
+}>;
+
+export type AgentToolDependencies = Readonly<{
+  botId: string;
+  market: string;
+  repository: WorkbenchRepository;
+  clock?: () => Date;
+  idFactory?: () => string;
+  shouldCancel?: () => boolean;
+  onBacktestProgress?: (completed: number, total: number) => void;
+}>;
+
+const noArguments = z.object({}).strict();
+const validateArguments = z.object({ strategy: z.unknown() }).strict();
+const backtestArguments = z.object({
+  revisionVersion: z.number().int().positive(),
+  assumptions: BacktestAssumptionsViewSchema,
+}).strict();
+const explainArguments = z.object({ revisionVersion: z.number().int().positive() }).strict();
+const compareArguments = z.object({
+  leftVersion: z.number().int().positive(),
+  rightVersion: z.number().int().positive(),
+}).strict();
+
+const definitions: readonly AgentToolDefinition[] = [
+  definition('list_nodes', 'List the available trigger, condition, and action nodes.', {}),
+  definition('list_data_products', 'List the data products available to this milestone.', {}),
+  definition('validate_strategy', 'Validate a complete candidate strategy and save a draft revision only when valid.', {
+    strategy: { type: 'object' },
+  }, ['strategy']),
+  definition('backtest_strategy', 'Run a saved revision against bundled sample data.', {
+    revisionVersion: { type: 'integer', minimum: 1 },
+    assumptions: { type: 'object' },
+  }, ['revisionVersion', 'assumptions']),
+  definition('explain_strategy', 'Explain a saved strategy revision.', {
+    revisionVersion: { type: 'integer', minimum: 1 },
+  }, ['revisionVersion']),
+  definition('compare_versions', 'Compare two saved strategy revisions.', {
+    leftVersion: { type: 'integer', minimum: 1 },
+    rightVersion: { type: 'integer', minimum: 1 },
+  }, ['leftVersion', 'rightVersion']),
+];
+
+export function createAgentToolCatalog(dependencies: AgentToolDependencies): AgentToolCatalog {
+  const registry = createBuiltinRegistry();
+  return {
+    definitions,
+    execute(name, argumentsValue) {
+      if (!allowedToolNames.includes(name as AgentToolName)) return failure('UNKNOWN_TOOL', 'Tool is not available.');
+      try {
+        if (name === 'list_nodes') {
+          noArguments.parse(argumentsValue);
+          return { ok: true, nodes: registry.list().map((node) => ({
+            kind: node.kind,
+            type: node.type,
+            version: node.version,
+            title: node.visualization.title,
+            summary: node.visualization.summary({}),
+          })) } as AgentToolResult;
+        }
+        if (name === 'list_data_products') {
+          noArguments.parse(argumentsValue);
+          return { ok: true, products: [
+            { id: 'market.price', label: 'Market price', source: 'Bundled sample data' },
+            { id: 'indicator.rsi.14', label: 'RSI 14', source: 'Bundled sample data' },
+            { id: 'data.etf_flow.btc.net_daily', label: 'BTC ETF net daily flow', source: 'Bundled sample data' },
+          ] } as AgentToolResult;
+        }
+        if (name === 'validate_strategy') {
+          const input = validateArguments.parse(argumentsValue);
+          let document;
+          try {
+            document = parseStrategyDocument(input.strategy);
+          } catch {
+            return failure('INVALID_STRATEGY', 'Strategy document is malformed.');
+          }
+          const result = validateStrategy(document, registry);
+          if (!result.valid) {
+            return { ok: false, error: { code: 'INVALID_STRATEGY', message: 'Strategy graph is invalid.', issues: result.errors.map(({ code, nodeId, edgeId }) => ({ code, nodeId: nodeId ?? null, edgeId: edgeId ?? null })) } } as AgentToolResult;
+          }
+          return { ok: true, revision: dependencies.repository.createValidatedRevision(dependencies.botId, document) } as unknown as AgentToolResult;
+        }
+        if (name === 'backtest_strategy') {
+          const input = backtestArguments.parse(argumentsValue);
+          const document = dependencies.repository.getStrategyDocument(dependencies.botId, input.revisionVersion);
+          const result = runBundledSampleBacktest(
+            dependencies.botId,
+            input.revisionVersion,
+            document,
+            dependencies.market,
+            input.assumptions,
+            {
+              clock: dependencies.clock,
+              idFactory: dependencies.idFactory,
+              shouldCancel: dependencies.shouldCancel,
+              onProgress: dependencies.onBacktestProgress,
+            },
+          );
+          dependencies.repository.createBacktestRun(result.summary, result.artifact);
+          return { ok: true, backtest: result.summary } as unknown as AgentToolResult;
+        }
+        if (name === 'explain_strategy') {
+          const input = explainArguments.parse(argumentsValue);
+          const document = dependencies.repository.getStrategyDocument(dependencies.botId, input.revisionVersion);
+          const labels = document.nodes.map((node) => registry.get(node.kind, node.type, node.version).visualization.title);
+          return { ok: true, explanation: `${document.strategy.name}: ${labels.join(' → ')}` };
+        }
+        const input = compareArguments.parse(argumentsValue);
+        const left = dependencies.repository.getStrategyDocument(dependencies.botId, input.leftVersion);
+        const right = dependencies.repository.getStrategyDocument(dependencies.botId, input.rightVersion);
+        const leftIds = new Set(left.nodes.map(({ id }) => id));
+        const rightIds = new Set(right.nodes.map(({ id }) => id));
+        const added = [...rightIds].filter((id) => !leftIds.has(id));
+        const removed = [...leftIds].filter((id) => !rightIds.has(id));
+        return {
+          ok: true,
+          comparison: `${left.strategy.name} → ${right.strategy.name}; added: ${added.join(', ') || 'none'}; removed: ${removed.join(', ') || 'none'}`,
+        };
+      } catch {
+        return failure('INVALID_TOOL_ARGUMENTS', 'Tool arguments are invalid.');
+      }
+    },
+  };
+}
+
+function definition(name: AgentToolName, description: string, properties: Record<string, JsonValue>, required: string[] = []): AgentToolDefinition {
+  return {
+    name,
+    description,
+    inputSchema: { type: 'object', properties, required, additionalProperties: false },
+  };
+}
+
+function failure(code: string, message: string): AgentToolResult {
+  return { ok: false, error: { code, message } };
+}
