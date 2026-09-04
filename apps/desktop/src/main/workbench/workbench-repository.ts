@@ -149,7 +149,7 @@ export class WorkbenchRepository {
     return row.artifact_json;
   }
 
-  getState(botId: string): WorkbenchState {
+  getState(botId: string, selectedVersion?: number): WorkbenchState {
     const bot = this.requireBot(botId);
     const revisions = this.database.prepare(`
       SELECT bot_id, version, strategy_id, name, document_json, status, created_at, approved_at
@@ -179,7 +179,9 @@ export class WorkbenchRepository {
 
     return WorkbenchStateSchema.parse({
       bot,
-      currentRevision: revisions[0] ?? null,
+      currentRevision: selectedVersion === undefined
+        ? revisions[0] ?? null
+        : revisions.find(({ version }) => version === selectedVersion) ?? (() => { throw new Error('Strategy revision not found'); })(),
       revisions: revisions.map(({ version, status, createdAt, approvedAt }) => ({ version, status, createdAt, approvedAt })),
       messages,
       backtests,

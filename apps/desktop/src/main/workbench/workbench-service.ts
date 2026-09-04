@@ -46,7 +46,7 @@ export class WorkbenchService {
 
   async get(input: GetWorkbenchInput): Promise<WorkbenchState> {
     const request = GetWorkbenchInputSchema.parse(input);
-    return this.dependencies.repository.getState(request.botId);
+    return this.dependencies.repository.getState(request.botId, request.version);
   }
 
   async sendMessage(input: SendWorkbenchMessageInput): Promise<WorkbenchState> {

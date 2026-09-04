@@ -348,6 +348,202 @@ h2 {
   min-width: 47rem;
 }
 
+.bot-name-button {
+  justify-content: flex-start;
+  padding-inline: 0;
+  color: var(--text-color-kumo-strong);
+  font-weight: 600;
+}
+
+.bot-workbench {
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.workbench-loading {
+  display: grid;
+  min-height: 70vh;
+  place-content: center;
+  color: var(--text-color-kumo-subtle);
+}
+
+.workbench-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem;
+  padding: .75rem 1rem 1rem;
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+.workbench-title,
+.workbench-header-actions,
+.inspector-heading,
+.workbench-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.workbench-title h1 {
+  margin-top: .2rem;
+  font-size: 1.75rem;
+}
+
+.workbench-header-actions {
+  align-items: end;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(17rem, 21rem) minmax(30rem, 1fr) minmax(14rem, 18rem);
+  gap: 1rem;
+  min-height: calc(100vh - 8rem);
+  padding-top: 1rem;
+}
+
+.chat-panel,
+.inspector-panel {
+  display: flex;
+  min-height: 34rem;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.chat-panel header,
+.inspector-panel > .eyebrow {
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+.chat-panel h2,
+.inspector-panel h2 {
+  margin-top: .2rem;
+  font-size: 1.125rem;
+}
+
+.chat-messages {
+  display: flex;
+  min-height: 15rem;
+  flex: 1;
+  flex-direction: column;
+  gap: .75rem;
+  overflow-y: auto;
+  padding-block: 1rem;
+}
+
+.chat-empty,
+.agent-activity,
+.inspector-empty,
+.inspector-note {
+  color: var(--text-color-kumo-subtle);
+  font-size: .8125rem;
+  line-height: 1.5;
+}
+
+.chat-message {
+  max-width: 92%;
+  padding: .75rem;
+  border: 1px solid var(--color-kumo-line);
+  border-radius: .625rem;
+  background: var(--color-kumo-canvas);
+}
+
+.chat-message-user {
+  align-self: flex-end;
+  background: var(--color-kumo-tint);
+}
+
+.chat-message > span {
+  color: var(--text-color-kumo-subtle);
+  font-size: .6875rem;
+  font-weight: 600;
+}
+
+.chat-message p {
+  margin-top: .3rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.agent-activity {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.chat-composer {
+  display: grid;
+  gap: .75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-kumo-line);
+}
+
+.chat-composer button {
+  justify-self: end;
+}
+
+.workbench-canvas {
+  min-width: 0;
+}
+
+.workbench-canvas > [role="tablist"] {
+  margin-bottom: .75rem;
+}
+
+.workbench-empty {
+  display: grid;
+  min-height: 32rem;
+  place-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.workbench-empty p {
+  max-width: 28rem;
+  margin-top: .5rem;
+  color: var(--text-color-kumo-subtle);
+}
+
+.inspector-heading {
+  justify-content: space-between;
+  padding-top: .75rem;
+}
+
+.inspector-panel dl {
+  display: grid;
+  gap: 1rem;
+  padding-block: 1.25rem;
+}
+
+.inspector-panel dt {
+  color: var(--text-color-kumo-subtle);
+  font-size: .75rem;
+}
+
+.inspector-panel dd {
+  margin-top: .25rem;
+  overflow-wrap: anywhere;
+}
+
+.inspector-note {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-kumo-line);
+}
+
+.workbench-approval-dialog {
+  display: grid;
+  max-width: 30rem;
+  gap: .75rem;
+  padding: 1.5rem;
+}
+
+.workbench-dialog-actions {
+  justify-content: flex-end;
+  padding-top: .75rem;
+}
+
 .metric-heading,
 .unavailable-metric {
   text-align: right;
@@ -394,6 +590,19 @@ h2 {
   .settings-card {
     width: auto;
     margin: 1rem;
+  }
+
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-header {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .workbench-header-actions {
+    flex-wrap: wrap;
   }
 }
 

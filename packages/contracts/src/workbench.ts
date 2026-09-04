@@ -177,7 +177,10 @@ export const WorkbenchStateSchema = z.object({
 
 export type WorkbenchState = z.infer<typeof WorkbenchStateSchema>;
 
-export const GetWorkbenchInputSchema = z.object({ botId: BotIdSchema }).strict();
+export const GetWorkbenchInputSchema = z.object({
+  botId: BotIdSchema,
+  version: z.number().int().positive().optional(),
+}).strict();
 export const SendWorkbenchMessageInputSchema = z.object({
   botId: BotIdSchema,
   message: z.string().trim().min(1).max(20_000),

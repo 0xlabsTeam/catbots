@@ -92,6 +92,8 @@ describe('WorkbenchRepository', () => {
       expect.objectContaining({ id: 'buy', title: 'Open position' }),
     ]);
     expect(repository.getStrategyDocument(botId, 1).strategy.version).toBe(1);
+    expect(repository.getState(botId).currentRevision?.version).toBe(2);
+    expect(repository.getState(botId, 1).currentRevision?.version).toBe(1);
     expect(() => database.prepare('UPDATE strategy_revisions SET document_json = ? WHERE bot_id = ? AND version = 1').run('{}', botId))
       .toThrow(/immutable/i);
   });

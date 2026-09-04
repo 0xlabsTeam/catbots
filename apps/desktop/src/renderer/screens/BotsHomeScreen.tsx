@@ -5,7 +5,7 @@ import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
 import { StatusBadge } from '../components/StatusBadge';
 import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
-type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots'] };
+type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots']; onOpenBot?(bot: BotSummary): void };
 
 export function formatUpdatedAt(value: string, locale = 'en-US', timeZone = 'UTC'): string {
   const timestamp = new Date(value);
@@ -19,7 +19,7 @@ function mergeBots(listedBots: readonly BotSummary[], locallyCreatedBots: Readon
   return [...merged.values()];
 }
 
-export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
+export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
   const [bots, setBots] = useState<BotSummary[] | null>(null);
   const [hasListError, setHasListError] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -54,6 +54,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
     locallyCreatedBotsRef.current.set(created.id, created);
     setHasListError(false);
     setBots((previous) => previous === null ? [...locallyCreatedBotsRef.current.values()] : mergeBots(previous, locallyCreatedBotsRef.current));
+    onOpenBot?.(created);
   };
 
   return (
@@ -75,7 +76,7 @@ export function BotsHomeScreen({ api }: BotsHomeScreenProps) {
         </div>
       ) : null}
       {bots !== null && !hasListError && bots.length === 0 ? <EmptyBots onCreate={() => setIsCreateOpen(true)} /> : null}
-      {bots !== null && bots.length > 0 ? <BotsTable bots={bots} /> : null}
+      {bots !== null && bots.length > 0 ? <BotsTable bots={bots} onOpenBot={onOpenBot} /> : null}
 
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
     </section>
@@ -94,7 +95,7 @@ function EmptyBots({ onCreate }: { onCreate(): void }) {
   );
 }
 
-function BotsTable({ bots }: { bots: readonly BotSummary[] }) {
+function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot?(bot: BotSummary): void }) {
   return (
     <LayerCard className="bots-table-wrap">
       <Table aria-label="Local bots">
@@ -111,7 +112,7 @@ function BotsTable({ bots }: { bots: readonly BotSummary[] }) {
         <Table.Body>
           {bots.map((bot) => (
             <Table.Row key={bot.id}>
-              <Table.Cell><strong>{bot.name}</strong></Table.Cell>
+              <Table.Cell><Button type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
               <Table.Cell>{bot.market}</Table.Cell>
               <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
               <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>

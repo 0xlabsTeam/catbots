@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@cloudflare/kumo';
-import type { BootstrapState, CatbotsDesktopApi } from '@catbots/contracts';
+import type { BootstrapState, BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
 import { FirstLaunchScreen } from './screens/FirstLaunchScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { AppShell, type AppDestination } from './components/AppShell';
 import { BotsHomeScreen } from './screens/BotsHomeScreen';
+import { BotWorkbenchScreen } from './screens/BotWorkbenchScreen';
 
 type AppProps = {
   api: CatbotsDesktopApi;
@@ -14,6 +15,7 @@ type AppProps = {
 export default function App({ api, preview = false }: AppProps) {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
   const [destination, setDestination] = useState<AppDestination>('bots');
+  const [selectedBot, setSelectedBot] = useState<BotSummary | null>(null);
   useEffect(() => {
     let active = true;
     void api.config.getBootstrapState().then((state) => { if (active) setBootstrap(state); }).catch(() => { if (active) setBootstrap({ state: 'repair', issues: [{ path: 'config', message: 'Configuration requires repair' }] }); });
@@ -26,7 +28,8 @@ export default function App({ api, preview = false }: AppProps) {
   else if (bootstrap.state === 'repair') screen = <SettingsScreen api={api.config} repairIssues={bootstrap.issues} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
   else screen = (
     <AppShell destination={destination} onNavigate={setDestination}>
-      {destination === 'bots' ? <BotsHomeScreen api={api.bots} /> : null}
+      {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
+      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} onBack={() => setSelectedBot(null)} /> : null}
       {destination === 'settings' ? <SettingsScreen api={api.config} config={bootstrap.config} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'data' ? <PlaceholderScreen title="Data" description="Installed indicators and local data products will appear here in a later milestone." /> : null}
       {destination === 'activity' ? <PlaceholderScreen title="Activity" description="Local alerts and execution traces will appear here in a later milestone." /> : null}
