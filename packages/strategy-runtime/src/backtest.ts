@@ -151,7 +151,7 @@ export function adaptSingleMarketBacktestRequest(
         : input.triggerInput,
       universe: {
         dex: 'hyperliquid', revision: `legacy:${index}:${input.stableId}`, observedAt: input.occurredAt,
-        markets: [{ symbol: market, active: true, sizeDecimals: 8, maximumLeverage: 1 }],
+        markets: [{ symbol: market, active: true, sizeDecimals: 8, maximumLeverage: 50 }],
       },
       marketValues: { [market]: input.values },
       ...(input.fundingRate === undefined ? {} : { fundingRates: { [market]: input.fundingRate } }),

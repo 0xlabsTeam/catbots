@@ -122,7 +122,7 @@ describe('coordinateEvaluation', () => {
     expect(JSON.stringify(coordinateEvaluation(request))).toBe(JSON.stringify(result));
   });
 
-  it('changes the parent and child trace IDs when the universe revision changes', () => {
+  it('keeps occurrence identity stable while recording each resolved universe as evidence', () => {
     const baseRequest = {
       compiled: compiledStrategy(),
       triggerNodeId: 't-15m',
@@ -148,10 +148,12 @@ describe('coordinateEvaluation', () => {
       ...baseRequest, universe: snapshot('universe:43', ['BTC-PERP']),
     });
 
-    expect(revision42.parentTraceId).not.toBe(revision43.parentTraceId);
-    expect(revision42.children[0]?.evaluation.traceId).not.toBe(
+    expect(revision42.parentTraceId).toBe(revision43.parentTraceId);
+    expect(revision42.children[0]?.evaluation.traceId).toBe(
       revision43.children[0]?.evaluation.traceId,
     );
+    expect(revision42.parentTrace.find(({ type }) => type === 'universe.resolved')?.details.revision).toBe('universe:42');
+    expect(revision43.parentTrace.find(({ type }) => type === 'universe.resolved')?.details.revision).toBe('universe:43');
   });
 
   it('scopes parent and child trace IDs to the deployment', () => {

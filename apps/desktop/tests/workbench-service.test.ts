@@ -102,7 +102,7 @@ describe('WorkbenchService', () => {
     const trace = await service.getTrace({ botId, traceId: backtest.traces[0]?.traceId ?? '' });
 
     expect(backtest.dataSource).toBe('Bundled sample data');
-    expect(backtest.datasetCoverage.markets).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(backtest.datasetCoverage?.markets).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(backtest.perMarket.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(trace).toMatchObject({ traceId: backtest.traces[0]?.traceId, events: expect.any(Array) });
     expect(repository.getState(botId).currentRevision?.status).toBe('draft');

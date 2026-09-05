@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatbotsDesktopApi, PaperDeploymentView, RiskLimits, WorkbenchState } from '@catbots/contracts';
+import type { AuditEventView, CatbotsDesktopApi, PaperDeploymentView, RiskLimits, WorkbenchState } from '@catbots/contracts';
 
 vi.mock('../src/renderer/workbench/StrategyGraph', () => ({
   StrategyGraph: ({ revision, onSelectNode }: { revision: WorkbenchState['currentRevision']; onSelectNode(node: NonNullable<WorkbenchState['currentRevision']>['nodes'][number]): void }) => (
@@ -88,6 +88,52 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('BotWorkbenchScreen', () => {
+  it('groups Paper Logs by trigger parent and market child with bounded decision evidence', async () => {
+    const parent = 'paper:interval:one';
+    const event = (market: string, sequence: number, type: AuditEventView['type']): AuditEventView => ({
+      id: `${market}:${sequence}`, traceId: `${parent}:${market}`, parentTraceId: parent, market,
+      dex: 'hyperliquid', universeRevision: 'universe:paper', sequence, type, occurredAt: state.bot.createdAt,
+      strategyId: 'strategy', strategyVersion: 1, deploymentId: paperView.deployment.id, mode: 'paper',
+      summary: type.replaceAll('.', ' '), riskRuleIds: [],
+    });
+    const view: PaperDeploymentView = { ...paperView, auditEvents: ['BTC-PERP', 'ETH-PERP'].flatMap((market) => [
+      event(market, 1, 'trigger.received'),
+      { ...event(market, 2, 'condition.evaluated'), condition: { result: true, reason: 'predicate.matched' } },
+      { ...event(market, 3, 'action.proposed'), effect: { type: 'execution.open_position', market,
+        nodeId: 'order', version: 1, idempotencyKey: `effect:${market}`,
+        config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } } },
+      event(market, 4, 'risk.approved'), event(market, 5, 'execution.filled'), event(market, 6, 'flow.completed'),
+    ]) };
+    const paperApi = deploymentApi();
+    vi.mocked(paperApi.getActive).mockResolvedValue(view.deployment);
+    vi.mocked(paperApi.getPaper).mockResolvedValue(view);
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={paperApi} onBack={vi.fn()} />);
+    await screen.findByText('Paper running');
+    await user.click(screen.getByRole('tab', { name: 'Logs' }));
+    await user.click(screen.getByRole('button', { name: /Interval run/ }));
+    expect(screen.getByRole('button', { name: /BTC-PERP/ })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /ETH-PERP/ }));
+    expect(await screen.findByText('ETH-PERP evaluation')).toBeTruthy();
+    for (const text of ['universe:paper', 'True', 'predicate.matched', 'Open position', '$500 quote', '2×', 'Approved', 'Filled']) {
+      expect(screen.getByText(text)).toBeTruthy();
+    }
+  });
+  it('shows unavailable Paper runtime truthfully after restart and keeps Stop usable', async () => {
+    const paperApi = deploymentApi();
+    vi.mocked(paperApi.getActive).mockResolvedValue(paperView.deployment);
+    vi.mocked(paperApi.getPaper).mockResolvedValue({ ...paperView, state: null });
+    vi.mocked(paperApi.stopPaper).mockResolvedValue({ ...paperView, state: null, deployment: { ...paperView.deployment, status: 'stopped' } });
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={paperApi} onBack={vi.fn()} />);
+    expect(await screen.findByText('Paper runtime unavailable')).toBeTruthy();
+    expect(screen.queryByText('Paper running')).toBeNull();
+    await user.click(screen.getByRole('tab', { name: 'Performance' }));
+    expect(screen.getByText('Positions and orders were not restored. Durable deployment records and logs remain available.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(paperApi.stopPaper).toHaveBeenCalledWith({ deploymentId: paperView.deployment.id });
+    expect(await screen.findByText('Paper deployment is stopped')).toBeTruthy();
+  });
   it('loads chat and a visual flow without rendering canonical JSON', async () => {
     render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
 

@@ -43,6 +43,7 @@ export type HyperliquidOrderRequest = Readonly<{
 
 export type HyperliquidActionResult = Readonly<{
   status: 'ok' | 'error' | 'unknown';
+  filled?: boolean;
   venueOrderId?: string;
   errorCode?: string;
 }>;
@@ -73,6 +74,7 @@ type InfoFacade = {
   allMids(signal?: AbortSignal): Promise<unknown>;
   userRole(input: { user: `0x${string}` }, signal?: AbortSignal): Promise<unknown>;
   userFills(input: { user: `0x${string}`; aggregateByTime?: boolean }, signal?: AbortSignal): Promise<unknown>;
+  orderStatus(input: { user: `0x${string}`; oid: number }, signal?: AbortSignal): Promise<unknown>;
 };
 
 type ExchangeFacade = {
@@ -286,20 +288,28 @@ class SdkHyperliquidClient implements HyperliquidClientPort {
   async getUserFills(account: string, signal: AbortSignal): Promise<readonly HyperliquidFill[]> {
     const response = await safeInfo(() => this.info.userFills({ user: address(account), aggregateByTime: true }, signal));
     if (!Array.isArray(response)) throw fixedError('HYPERLIQUID_RESPONSE_INVALID');
-    return response.flatMap((item) => {
+    const statuses = new Map<number, Promise<Record<string, unknown>>>();
+    return (await Promise.all(response.map(async (item): Promise<HyperliquidFill[]> => {
       const fill = asRecord(item);
-      const cloid = typeof fill.cloid === 'string' ? fill.cloid : undefined;
+      const oid = nonnegativeInteger(fill.oid);
+      if (!statuses.has(oid)) {
+        statuses.set(oid, safeInfo(() => this.info.orderStatus({ user: address(account), oid }, signal)).then(asRecord));
+      }
+      const status = await statuses.get(oid)!;
+      const order = status.status === 'order' ? asRecord(status.order) : {};
+      const detail = typeof order.order === 'object' && order.order !== null ? asRecord(order.order) : {};
+      const cloid = typeof fill.cloid === 'string' ? fill.cloid : typeof detail.cloid === 'string' ? detail.cloid : undefined;
       if (cloid === undefined) return [];
       const occurredAt = new Date(nonnegativeInteger(fill.time)).toISOString();
       return [{
         id: `${requiredText(fill.hash)}:${nonnegativeInteger(fill.tid)}`,
         clientOrderId: cloid,
-        type: 'filled' as const,
+        type: order.status === 'filled' ? 'filled' : 'partially_filled',
         occurredAt,
         filledQuantity: decimalText(fill.sz, false),
         averagePrice: decimalText(fill.px, false),
       }];
-    });
+    }))).flat();
   }
 }
 
@@ -321,7 +331,7 @@ function normalizeActionResponse(source: unknown): HyperliquidActionResult {
   if (typeof row.error === 'string') return { status: 'error', errorCode: 'HYPERLIQUID_REJECTED' };
   const acknowledged = row.filled ?? row.resting;
   const detail = asRecord(acknowledged);
-  return { status: 'ok', venueOrderId: String(nonnegativeInteger(detail.oid)) };
+  return { status: 'ok', ...(row.filled === undefined ? {} : { filled: true }), venueOrderId: String(nonnegativeInteger(detail.oid)) };
 }
 
 function rejectedOrUnknown(error: unknown): HyperliquidActionResult {

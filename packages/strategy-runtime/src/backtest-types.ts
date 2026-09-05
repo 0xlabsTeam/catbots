@@ -1,4 +1,5 @@
 import type { JsonValue } from './strategy-schema';
+import type { RiskLimits } from '@catbots/contracts';
 import type { EvaluationValue } from './evaluation-context';
 import type { MarketUniverseSnapshot } from './market-universe';
 import type { TimedSimulationInput } from './simulation-clock';
@@ -10,6 +11,7 @@ export type BacktestAssumptions = Readonly<{
   latencyMs: number;
   partialFillRatio: number;
   maintenanceMarginRate: number;
+  riskLimits?: RiskLimits;
 }>;
 
 export type SimulatedPosition = Readonly<{

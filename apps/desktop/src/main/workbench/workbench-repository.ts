@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { z } from 'zod';
 import {
   BacktestSummarySchema,
+  BacktestMetricsSchema,
+  TraceSummarySchema,
   BotSummarySchema,
   ChatMessageSchema,
   StrategyRevisionSchema,
@@ -40,6 +43,22 @@ export type StoredBotIdentity = Readonly<{
 }>;
 
 const registry = createBuiltinRegistry();
+const LegacyStoredBacktestSchema = BacktestSummarySchema.omit({ datasetCoverage: true, perMarket: true, legacyProjection: true }).extend({
+  metrics: BacktestMetricsSchema.omit({ endingEquity: true, realizedPnl: true }),
+  traces: z.array(TraceSummarySchema.omit({ parentTraceId: true, market: true, universeRevision: true })),
+});
+
+function projectStoredBacktest(source: unknown, legacyMarketHint: string | null): BacktestSummary {
+  const current = BacktestSummarySchema.safeParse(source);
+  if (current.success) return current.data;
+  const legacy = LegacyStoredBacktestSchema.parse(source);
+  return BacktestSummarySchema.parse({
+    ...legacy, legacyProjection: true, datasetCoverage: null, perMarket: [],
+    metrics: { ...legacy.metrics, endingEquity: legacy.equityCurve.at(-1)?.equity ?? null, realizedPnl: null },
+    traces: legacy.traces.map((trace) => ({ ...trace, parentTraceId: null, market: legacyMarketHint })),
+    warnings: [...legacy.warnings, 'Legacy Backtest: dataset coverage, per-market attribution, and realized PnL were not recorded.'],
+  });
+}
 
 export class WorkbenchRepository {
   constructor(
@@ -181,7 +200,7 @@ export class WorkbenchRepository {
     `).all(botId).map((row) => {
       const serialized = (row as { summary_json: unknown }).summary_json;
       if (typeof serialized !== 'string') throw new Error('Stored backtest summary is invalid');
-      return BacktestSummarySchema.parse(JSON.parse(serialized));
+      return projectStoredBacktest(JSON.parse(serialized), identity.legacyMarketHint);
     });
 
     return WorkbenchStateSchema.parse({

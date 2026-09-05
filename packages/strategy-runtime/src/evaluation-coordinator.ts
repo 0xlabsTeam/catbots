@@ -3,6 +3,7 @@ import { createEvaluationContext, type EvaluationContext } from './evaluation-co
 import type { CompiledStrategy } from './graph-validator';
 import {
   orderedActiveMarkets,
+  orderedMarkets,
   type MarketUniverseMarket,
   type MarketUniverseSnapshot,
 } from './market-universe';
@@ -31,6 +32,7 @@ export type CoordinateEvaluationRequest = Readonly<{
   triggerInput: TriggerInput;
   universe: MarketUniverseSnapshot;
   contextFactory: EvaluationContextFactory;
+  isHeldMarket?: (market: string, metadata: MarketUniverseMarket) => boolean;
   deployment: Readonly<{ id: string; mode: 'backtest' | 'paper' | 'live' }>;
   execution: RuntimeExecutionPort;
 }>;
@@ -86,7 +88,7 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
     'deployment', traceComponent(deployment.id),
     triggerKey,
     'dex', traceComponent(universe.dex),
-    'universe', traceComponent(universe.revision),
+    'strategy', traceComponent(compiled.document.strategy.id), `v${compiled.document.strategy.version}`,
   ].join(':');
   const parentTraceId = [
     'trace', traceComponent(compiled.document.strategy.id),
@@ -112,11 +114,16 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
   });
 
   const activeMarkets = orderedActiveMarkets(universe);
+  const hasCloseFlow = compiled.document.nodes.some((node) => node.type === 'execution.close_position'
+    && compiled.triggerOwners.get(node.id)?.includes(triggerNodeId));
+  const candidates = hasCloseFlow && request.isHeldMarket !== undefined
+    ? orderedMarkets(universe).filter((metadata) => metadata.active || request.isHeldMarket!(metadata.symbol, metadata))
+    : activeMarkets;
   const isMarketScopedEvent = triggerInput.kind === 'event'
     && ((trigger.config as EventTriggerConfig).scope ?? 'market') === 'market';
   const markets = isMarketScopedEvent
-    ? activeMarkets.filter(({ symbol }) => symbol === triggerInput.event.market)
-    : activeMarkets;
+    ? candidates.filter(({ symbol }) => symbol === triggerInput.event.market)
+    : candidates;
   trace.append('universe.resolved', {
     dex: universe.dex,
     revision: universe.revision,

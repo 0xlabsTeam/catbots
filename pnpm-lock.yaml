@@ -131,6 +131,12 @@ importers:
 
   packages/strategy-runtime:
     dependencies:
+      '@catbots/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@catbots/execution-core':
+        specifier: workspace:*
+        version: link:../execution-core
       zod:
         specifier: ^4.3.6
         version: 4.5.4

@@ -44,7 +44,8 @@ export class OutboxExecutor {
       receipt = sanitizeReceipt(receipt);
     }
 
-    const auditType = receipt.status === 'acknowledged' ? 'execution.acknowledged'
+    const auditType = receipt.status === 'filled' ? 'execution.filled'
+      : receipt.status === 'acknowledged' ? 'execution.acknowledged'
       : receipt.status === 'rejected' ? 'execution.rejected' : 'execution.unknown';
     const outcome = this.event(
       claimed,
@@ -52,7 +53,8 @@ export class OutboxExecutor {
       receipt.status === 'unknown' ? 'Order outcome is unknown; reconciliation is required.' : `Order ${receipt.status}.`,
       receipt,
     );
-    const recorded = this.dependencies.repository.recordAdapterOutcome(idempotencyKey, outcome, receipt.status);
+    const recorded = this.dependencies.repository.recordAdapterOutcome(idempotencyKey, outcome,
+      receipt.status === 'filled' ? 'acknowledged' : receipt.status);
     if (receipt.status === 'unknown') throw executionError('EXECUTION_OUTCOME_UNKNOWN');
 
     this.finalizeTraceIfReady(recorded);

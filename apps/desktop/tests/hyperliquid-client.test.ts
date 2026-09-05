@@ -10,11 +10,27 @@ import {
 const signal = new AbortController().signal;
 
 describe('createHyperliquidClient', () => {
+  it('requires terminal order-status evidence before treating a trade fragment as a full fill', async () => {
+    const cloid = '0x0123456789abcdef0123456789abcdef';
+    const info = {
+      meta: vi.fn(), clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(),
+      userFills: vi.fn().mockResolvedValue([{ cloid, oid: 42, hash: 'trade', tid: 1, time: 1000, sz: '0.1', px: '100' }]),
+      orderStatus: vi.fn().mockResolvedValue({ status: 'order', order: { status: 'open', order: { cloid } } }),
+    };
+    const client = createHyperliquidPublicClient({}, {
+      createTransport: () => ({}), createInfo: () => info, createExchange: vi.fn(),
+    });
+    expect((await client.getUserFills(`0x${'1'.repeat(40)}`, signal))[0]?.type).toBe('partially_filled');
+    info.orderStatus.mockResolvedValue({ status: 'order', order: { status: 'filled', order: { cloid } } });
+    expect((await client.getUserFills(`0x${'1'.repeat(40)}`, signal))[0]?.type).toBe('filled');
+    expect(info.orderStatus).toHaveBeenCalledWith({ user: `0x${'1'.repeat(40)}`, oid: 42 }, signal);
+  });
+
   it('creates a public metadata client without constructing an exchange signer', async () => {
     const transport = {};
     const info = {
       meta: vi.fn().mockResolvedValue({ universe: [], marginTables: [], collateralToken: 0 }),
-      clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(),
+      clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(), orderStatus: vi.fn(),
     };
     const sdk = {
       createTransport: vi.fn(() => transport),
@@ -65,7 +81,7 @@ describe('createHyperliquidClient', () => {
     const transport = {};
     const info = {
       meta: vi.fn().mockResolvedValue({ universe: [], marginTables: [], collateralToken: 0 }),
-      clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(),
+      clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(), orderStatus: vi.fn(),
     };
     const exchange = { order: vi.fn(), cancelByCloid: vi.fn(), updateLeverage: vi.fn() };
     const sdk = {
@@ -95,14 +111,14 @@ describe('createHyperliquidClient', () => {
       agentPrivateKey: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     }, {
       createTransport: () => ({}),
-      createInfo: () => ({ meta: vi.fn(), clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn() }),
+      createInfo: () => ({ meta: vi.fn(), clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(), orderStatus: vi.fn() }),
       createExchange: () => exchange,
     });
 
     await expect(client.placeOrder({
       asset: 0, isBuy: true, price: '101000', size: '0.005', reduceOnly: false,
       cloid: '0x0123456789abcdef0123456789abcdef',
-    }, signal)).resolves.toEqual({ status: 'ok', venueOrderId: '42' });
+    }, signal)).resolves.toEqual({ status: 'ok', filled: true, venueOrderId: '42' });
     expect(exchange.order).toHaveBeenCalledWith({
       orders: [{ a: 0, b: true, p: '101000', s: '0.005', r: false, t: { limit: { tif: 'Ioc' } }, c: '0x0123456789abcdef0123456789abcdef' }],
       grouping: 'na',
@@ -118,7 +134,7 @@ describe('createHyperliquidClient', () => {
       agentPrivateKey: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     }, {
       createTransport: () => ({}),
-      createInfo: () => ({ meta: vi.fn(), clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn() }),
+      createInfo: () => ({ meta: vi.fn(), clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(), orderStatus: vi.fn() }),
       createExchange: () => exchange,
     });
 

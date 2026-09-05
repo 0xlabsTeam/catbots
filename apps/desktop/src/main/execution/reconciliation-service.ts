@@ -27,6 +27,8 @@ export class ReconciliationService {
     const uncertain = [
       ...this.dependencies.repository.listOutboxItems(deploymentId, 'claimed'),
       ...this.dependencies.repository.listOutboxItems(deploymentId, 'unknown'),
+      ...this.dependencies.repository.listOutboxItems(deploymentId, 'acknowledged')
+        .filter((item) => !this.dependencies.repository.hasConfirmedFill(item)),
     ];
     if (uncertain.length === 0) return;
 
@@ -45,7 +47,7 @@ export class ReconciliationService {
         this.complete(item, venueEvent, 'rejected', `execution.${venueEvent.type}`, 'Reconciliation confirmed the order did not execute.');
         continue;
       }
-      if (this.dependencies.repository.getDeployment(deploymentId).status !== 'suspended') {
+      if (item.status !== 'acknowledged' && this.dependencies.repository.getDeployment(deploymentId).status !== 'suspended') {
         this.dependencies.repository.suspendDeployment(deploymentId, this.now());
       }
     }

@@ -54,6 +54,17 @@ const validStrategy = {
 };
 
 describe('parseStrategyDocument', () => {
+  it('requires current-market position predicates in Strategy 2.0', () => {
+    const candidate = {
+      ...validStrategy, schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
+      nodes: validStrategy.nodes.map((node) => node.kind === 'condition'
+        ? { ...node, type: 'predicate.position_state', version: 1, config: { state: 'flat', market: 'BTC-PERP' } }
+        : node),
+    };
+    expect(() => parseStrategyDocument(candidate)).toThrow(/position/i);
+    expect(parseStrategyDocument({ ...candidate, nodes: candidate.nodes.map((node) => node.kind === 'condition'
+      ? { ...node, version: 2, config: { state: 'flat' } } : node) }).schemaVersion).toBe('2.0');
+  });
   it('accepts a strict canonical TCA document', () => {
     const parsed = parseStrategyDocument(validStrategy);
 

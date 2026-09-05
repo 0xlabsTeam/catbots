@@ -287,6 +287,10 @@ export class ExecutionRepository {
       );
       const created = this.getOutboxItem(input.outbox.idempotencyKey);
       if (created === null) throw new Error('Created outbox item could not be loaded');
+      this.insertAuditEvent({
+        ...input.events[1], id: `${input.outbox.id}:queued`, sequence: this.nextAuditSequence(input.trace.id),
+        type: 'execution.queued', summary: 'Order intent durably queued.',
+      });
       return created;
     }).immediate();
   }
@@ -395,19 +399,38 @@ export class ExecutionRepository {
     return rows.map((row) => toOutboxItem(row as OutboxRow));
   }
 
+  withLiveRiskReservations<T>(deploymentId: string, evaluateAndPersist: (reservations: Readonly<{
+    positions: readonly { market: string; side: 'long' | 'short'; notionalUsd: string }[];
+    recentOrderTimestamps: readonly string[];
+  }>) => T): T {
+    return this.database.transaction(() => {
+      const items = this.listOutboxItems(deploymentId);
+      return evaluateAndPersist({
+        positions: items.flatMap((item) => item.intent.type === 'open_position' && item.status !== 'rejected'
+          && !this.hasConfirmedFill(item)
+          ? [{ market: item.intent.market, side: item.intent.side, notionalUsd: item.intent.notionalUsd }] : []),
+        recentOrderTimestamps: items.map((item) => item.createdAt),
+      });
+    }).immediate();
+  }
+
+  hasConfirmedFill(item: ExecutionOutboxItem): boolean {
+    return this.listAuditEvents(item.traceId).some((event) => event.type === 'execution.filled' && event.nodeId === item.actionNodeId);
+  }
+
   liveTraceTerminalStatus(traceId: string): 'completed' | 'failed' | null {
     const trace = this.database.prepare('SELECT status FROM audit_traces WHERE id = ?')
       .get(traceId) as { status: unknown } | undefined;
     if (trace?.status !== 'open') return null;
-    const statuses = this.database.prepare('SELECT status FROM execution_outbox WHERE trace_id = ? ORDER BY rowid')
-      .all(traceId).map((row) => (row as { status: ExecutionOutboxItem['status'] }).status);
-    if (statuses.length === 0 || statuses.some((status) => (
-      status === 'pending' || status === 'claimed' || status === 'unknown'
+    const items = this.database.prepare('SELECT * FROM execution_outbox WHERE trace_id = ? ORDER BY rowid')
+      .all(traceId).map((row) => toOutboxItem(row as OutboxRow));
+    if (items.length === 0 || items.some((item) => (
+      item.status !== 'rejected' && !this.hasConfirmedFill(item)
     ))) return null;
     const rejectedRisk = this.database.prepare(`
       SELECT 1 FROM audit_events WHERE trace_id = ? AND type = 'risk.rejected' LIMIT 1
     `).get(traceId);
-    return rejectedRisk !== undefined || statuses.some((status) => status === 'rejected') ? 'failed' : 'completed';
+    return rejectedRisk !== undefined || items.some((item) => item.status === 'rejected') ? 'failed' : 'completed';
   }
 
   recordReconciledOutcome(
@@ -417,12 +440,13 @@ export class ExecutionRepository {
   ): ExecutionOutboxItem {
     return this.database.transaction(() => {
       const item = this.getOutboxItem(idempotencyKey);
-      if (item === null || (item.status !== 'unknown' && item.status !== 'claimed')) throw new Error('Uncertain outbox item not found');
+      if (item === null || !['unknown', 'claimed', 'acknowledged'].includes(item.status)) throw new Error('Unsettled outbox item not found');
+      if (this.hasConfirmedFill(item)) return item;
       const event = AuditEventViewSchema.parse(source);
       this.requireNextAuditEvent(item.traceId, event);
       const result = this.database.prepare(`
         UPDATE execution_outbox SET status = ?, updated_at = ?
-        WHERE idempotency_key = ? AND status IN ('unknown', 'claimed')
+        WHERE idempotency_key = ? AND status IN ('unknown', 'claimed', 'acknowledged')
       `).run(status, event.occurredAt, idempotencyKey);
       if (result.changes !== 1) throw new Error('Reconciled outbox outcome could not be recorded');
       this.insertAuditEvent(event);

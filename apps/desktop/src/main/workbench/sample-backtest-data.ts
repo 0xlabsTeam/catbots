@@ -114,6 +114,7 @@ function toRuntimeAssumptions(input: PublicAssumptions): BacktestAssumptions {
     latencyMs: 100,
     partialFillRatio: 1,
     maintenanceMarginRate: 0.05,
+    riskLimits: input.riskLimits,
   };
 }
 
@@ -129,6 +130,7 @@ function toTraceSummary(trace: readonly AuditEvent[], parentTraceId: string, mar
     traceId: trace[0]?.traceId ?? 'unknown-trace',
     parentTraceId,
     market,
+    universeRevision: trace[0]?.universeRevision,
     outcome,
     occurredAt: trace[0]?.evaluationTime ?? new Date(0).toISOString(),
     summary: last?.type.replaceAll('.', ' ') ?? 'No trace events',

@@ -1,3 +1,4 @@
+import { toRendererSafeTraceDetails } from '../shared/trace-projection';
 import {
   CreateDraftBotInputSchema,
   ApproveStrategyRevisionInputSchema,
@@ -386,6 +387,7 @@ function previewBacktest(
       latencyMs: 100,
       partialFillRatio: 1,
       maintenanceMarginRate: 0.05,
+      riskLimits: assumptions.riskLimits,
     },
     inputs: buildBundledSampleInputs(strategy, assumptions, (identity) => `preview:${identity}`),
   }, (identity) => `preview:${identity}`);
@@ -419,6 +421,7 @@ function previewBacktest(
         parentTraceId: parentId,
         market,
         outcome,
+        universeRevision: childTraces.find((trace) => trace[0]?.traceId === traceId)?.[0]?.universeRevision,
         occurredAt: events[0]?.occurredAt ?? assumptions.from,
         summary: events.at(-1)?.summary ?? 'flow completed',
       })),
@@ -480,15 +483,9 @@ function toPreviewTraceDetail(trace: readonly AuditEvent[], parentTraceId: strin
       occurredAt: event.createdAt,
       ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
       summary: event.type.replaceAll('.', ' '),
-      details: safePreviewTraceDetails(event),
+      details: toRendererSafeTraceDetails(event.type, event.details),
     })),
   };
-}
-
-function safePreviewTraceDetails(event: AuditEvent): Record<string, unknown> {
-  if (event.type !== 'condition.evaluated') return {};
-  const result = event.details.result;
-  return result === true || result === false || result === 'unknown' ? { result } : {};
 }
 
 function toPreviewBacktestTrades(

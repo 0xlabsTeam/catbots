@@ -22,6 +22,22 @@ const settings = {
 };
 
 describe('web preview API', () => {
+  it('shows bounded condition, action, and risk evidence from the actual Preview replay', async () => {
+    const api = createWebPreviewApi();
+    const bot = await api.bots.createDraft({ name: 'Trace parity', dex: 'hyperliquid' });
+    await api.workbench.sendMessage({ botId: bot.id, message: 'Trade ETH RSI' });
+    const backtest = await api.workbench.runBacktest({ botId: bot.id, revisionVersion: 1, marketUniverse: { mode: 'all_available' },
+      assumptions: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1 } });
+    const selected = backtest.traces.find(({ market, outcome }) => market === 'ETH-PERP' && outcome === 'executed')!;
+    const trace = await api.workbench.getTrace({ botId: bot.id, traceId: selected.traceId });
+    expect(trace.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'condition.evaluated', details: { result: true, reason: 'predicate.matched', inputs: [{ ref: 'market.symbol' }] } }),
+      expect.objectContaining({ type: 'action.proposed', details: { effect: { type: 'execution.open_position', market: 'ETH-PERP', config: { side: 'long', size: { type: 'equity_percent', value: 10 } } } } }),
+      expect.objectContaining({ type: 'risk.approved' }),
+      expect.objectContaining({ type: 'execution.filled' }),
+    ]));
+    expect(JSON.stringify(trace)).not.toMatch(/integrityHash|effectIdempotencyKey|provider|apiKey/);
+  });
   it('starts at first launch and keeps only redacted provider settings after save', async () => {
     const api = createWebPreviewApi();
 
@@ -179,7 +195,7 @@ describe('web preview API', () => {
       assumptions,
     });
 
-    expect(included.datasetCoverage.markets).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(included.datasetCoverage?.markets).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(included.perMarket.map(({ market }) => market)).toEqual(['ETH-PERP']);
     expect(included.traces.length).toBeGreaterThan(0);
     expect(included.traces.every(({ market }) => market === 'ETH-PERP')).toBe(true);
@@ -213,7 +229,7 @@ describe('web preview API', () => {
     expect(new Set(result.traces.map(({ market }) => market))).toEqual(new Set(['BTC-PERP']));
     expect(result.traces.every(({ outcome }) => outcome === 'skipped')).toBe(true);
     expect(result.traces.every(({ occurredAt }) => occurredAt === '2026-08-10T00:00:00.000Z')).toBe(true);
-    expect(result.traces.every(({ parentTraceId }) => parentTraceId.includes('bundled%3Abefore-eth-listing'))).toBe(true);
+    expect(result.traces.every(({ universeRevision }) => universeRevision === 'bundled:before-eth-listing')).toBe(true);
     expect(result.perMarket.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(result.metrics.tradeCount).toBe(0);
   });
@@ -241,8 +257,8 @@ describe('web preview API', () => {
       .map(({ market }) => market));
     expect(marketsAt('2026-08-20T00:00:00.000Z')).toEqual(new Set(['BTC-PERP', 'ETH-PERP']));
     expect(new Set(result.traces.map(({ occurredAt }) => occurredAt))).toEqual(new Set(['2026-08-20T00:00:00.000Z']));
-    expect(result.traces.some(({ parentTraceId }) => parentTraceId.includes('bundled%3Aeth-listed'))).toBe(true);
-    expect(result.traces.some(({ parentTraceId }) => parentTraceId.includes('bundled%3Aeth-overbought'))).toBe(false);
+    expect(result.traces.some(({ universeRevision }) => universeRevision === 'bundled:eth-listed')).toBe(true);
+    expect(result.traces.some(({ universeRevision }) => universeRevision === 'bundled:eth-overbought')).toBe(false);
     expect(result.traces.filter(({ market }) => market === 'ETH-PERP').map(({ outcome }) => outcome))
       .toEqual(['executed', 'skipped']);
     expect(result.metrics.tradeCount).toBe(0);

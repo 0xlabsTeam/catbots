@@ -308,9 +308,10 @@ describe('ExecutionRepository', () => {
     expect(repository.listAuditEvents(traceId).map(({ sequence, type }) => ({ sequence, type }))).toEqual([
       { sequence: 1, type: 'action.proposed' },
       { sequence: 2, type: 'risk.approved' },
+      { sequence: 3, type: 'execution.queued' },
     ]);
     expect(repository.listDeploymentAuditEvents(deploymentId, 10).map(({ type }) => type)).toEqual([
-      'action.proposed', 'risk.approved',
+      'action.proposed', 'risk.approved', 'execution.queued',
     ]);
     expect(repository.claimOutboxItem('sha256:action-1', '2026-09-05T00:00:01.000Z')).toMatchObject({
       status: 'claimed', attempts: 1,
@@ -326,7 +327,7 @@ describe('ExecutionRepository', () => {
 
     expect(second).toEqual(first);
     expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 1 });
-    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_events').get()).toEqual({ count: 2 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_events').get()).toEqual({ count: 3 });
   });
 
   it('rejects an idempotency collision whose persisted action identity differs', () => {
@@ -365,20 +366,21 @@ describe('ExecutionRepository', () => {
     repository.claimOutboxItem('sha256:action-1', '2026-09-05T00:00:01.000Z');
     repository.recordAdapterOutcome(
       'sha256:action-1',
-      event('068f3f75-89ab-7def-8123-456789abcdef', 3, 'execution.acknowledged'),
+      event('068f3f75-89ab-7def-8123-456789abcdef', 4, 'execution.acknowledged'),
       'acknowledged',
     );
     repository.appendTerminalTrace(traceId, [
-      event('078f3f75-89ab-7def-8123-456789abcdef', 4, 'execution.filled'),
-      { ...event('088f3f75-89ab-7def-8123-456789abcdef', 5, 'flow.completed'), nodeId: undefined, nodeType: undefined },
+      event('078f3f75-89ab-7def-8123-456789abcdef', 5, 'execution.filled'),
+      { ...event('088f3f75-89ab-7def-8123-456789abcdef', 6, 'flow.completed'), nodeId: undefined, nodeType: undefined },
     ]);
 
     expect(repository.listAuditEvents(traceId).map(({ sequence, type }) => ({ sequence, type }))).toEqual([
       { sequence: 1, type: 'action.proposed' },
       { sequence: 2, type: 'risk.approved' },
-      { sequence: 3, type: 'execution.acknowledged' },
-      { sequence: 4, type: 'execution.filled' },
-      { sequence: 5, type: 'flow.completed' },
+      { sequence: 3, type: 'execution.queued' },
+      { sequence: 4, type: 'execution.acknowledged' },
+      { sequence: 5, type: 'execution.filled' },
+      { sequence: 6, type: 'flow.completed' },
     ]);
     expect(database.prepare('SELECT status FROM audit_traces WHERE id = ?').get(traceId)).toEqual({ status: 'completed' });
     expect(() => database.prepare('DELETE FROM audit_events WHERE trace_id = ?').run(traceId)).toThrow(/append-only/i);
@@ -395,7 +397,7 @@ describe('ExecutionRepository', () => {
 
     expect(() => repository.recordAdapterOutcome(
       'sha256:action-1',
-      event('068f3f75-89ab-7def-8123-456789abcdef', 3, 'execution.acknowledged'),
+      event('068f3f75-89ab-7def-8123-456789abcdef', 4, 'execution.acknowledged'),
       'acknowledged',
     )).toThrow(/forced outcome audit failure/i);
     expect(database.prepare('SELECT status FROM execution_outbox WHERE idempotency_key = ?').get('sha256:action-1'))

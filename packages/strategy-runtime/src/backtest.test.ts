@@ -135,7 +135,11 @@ function portfolioRoundTripRequest(): BacktestRequest {
     quality: { status: 'verified' as const, freshnessSeconds: 0 },
   });
   return {
-    strategy: btcEtfRsiBacktestRequest().strategy,
+    strategy: parseStrategyDocument({
+      ...btcEtfRsiBacktestRequest().strategy, schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
+      nodes: btcEtfRsiBacktestRequest().strategy.nodes.map((node) => node.type === 'predicate.position_state'
+        ? { ...node, version: 2, config: { state: node.config.state } } : node),
+    }),
     marketUniverse: { mode: 'all_available' },
     datasetCoverage: {
       markets: ['BTC-PERP', 'ETH-PERP'],
@@ -181,6 +185,48 @@ function portfolioRoundTripRequest(): BacktestRequest {
 }
 
 describe('runBacktest', () => {
+  it.each([
+    ['portfolio', { maxTotalExposureUsd: '1500' }, 'max-total-exposure-usd'],
+    ['order rate', { maxOrdersPerMinute: 1 }, 'max-orders-per-minute'],
+    ['order size', { maxOrderUsd: '500' }, 'max-order-usd'],
+  ])('applies explicit shared %s limits before fills', (_label, overrides, rule) => {
+    const base = twoMarketRequest();
+    const frame = base.inputs[1]!;
+    const result = runBacktest({ ...base, assumptions: { ...base.assumptions, riskLimits: {
+      maxOrderUsd: '2000', maxPositionUsd: '5000', maxTotalExposureUsd: '5000', maxLeverage: 3,
+      maxDailyLossUsd: '1000', maxDrawdownPercent: 50, allowedSides: ['long', 'short'], maxOrdersPerMinute: 10,
+      ...overrides,
+    } }, inputs: [{ ...frame, marketValues: {
+      'BTC-PERP': marketValues('BTC-PERP', 100, 25, frame.occurredAt),
+      'ETH-PERP': marketValues('ETH-PERP', 200, 25, frame.occurredAt),
+    } }] });
+    expect(result.snapshot.ledger.filter(({ type }) => type === 'fill')).toHaveLength(rule === 'max-order-usd' ? 0 : 1);
+    expect(result.traces[0]?.children.flatMap(({ evaluation }) => evaluation.trace)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'risk.rejected', details: { violatedRuleIds: [rule] } }),
+    ]));
+  });
+  it('rejects leverage above the historical market maximum before any simulated fill', () => {
+    const base = twoMarketRequest();
+    const result = runBacktest({ ...base, inputs: base.inputs.map((input) => ({ ...input,
+      universe: { ...input.universe, markets: input.universe.markets.map((market) => ({ ...market, maximumLeverage: 1 })) },
+    })) });
+    expect(result.snapshot.ledger.filter(({ type }) => type === 'fill')).toEqual([]);
+    expect(result.traces[0]?.children[0]?.evaluation.trace).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'risk.rejected', details: { violatedRuleIds: ['max-leverage'] } }),
+    ]));
+  });
+  it('charges one funding occurrence per market and timestamp despite a second no-op flow', () => {
+    const base = twoMarketRequest();
+    const fundingFrame = { ...base.inputs[1]!, fundingRates: { 'BTC-PERP': 0.001 } };
+    const withNoop = parseStrategyDocument({ ...base.strategy, nodes: [...base.strategy.nodes,
+      { id: 'noop', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+      { id: 'false', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { literal: 0 }, operator: 'eq', right: { literal: 1 } } },
+    ], edges: [...base.strategy.edges, { id: 'noop-false', source: 'noop', sourcePort: 'activation', target: 'false', targetPort: 'activation' }] });
+    const result = runBacktest({ ...base, strategy: withNoop, inputs: [base.inputs[0]!, fundingFrame,
+      { ...fundingFrame, stableId: 'second-flow', triggerNodeId: 'noop' }] });
+    expect(result.snapshot.totalFunding).toBe('1.1');
+    expect(result.snapshot.ledger.filter(({ type }) => type === 'funding')).toHaveLength(1);
+  });
   it.each([
     ['non-parseable', 'not-a-timestamp'],
     ['future-dated', '2026-09-03T08:31:00.000Z'],

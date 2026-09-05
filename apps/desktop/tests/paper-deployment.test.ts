@@ -172,6 +172,49 @@ function executeDynamic(
 }
 
 describe('Paper deployment', () => {
+  it('loads and stops durable Paper recovery state after its in-memory adapter is lost', async () => {
+    const dynamicBotId = createDynamicBot();
+    const first = dynamicService().deployments;
+    const deployment = await first.startPaper({ botId: dynamicBotId, strategyVersion: 1, riskLimits: limits });
+    await first.ingest({ deploymentId: deployment.id, triggerNodeId: 'clock',
+      triggerInput: { kind: 'interval', occurredAt: now }, contextFactory: (market) => dynamicContext(market) });
+    const before = first.getPaperDeployment(deployment.id);
+    const restarted = dynamicService().deployments;
+    const recovered = restarted.getPaperDeployment(deployment.id);
+    expect(recovered).toMatchObject({ deployment: { id: deployment.id, status: 'running' }, state: null });
+    expect(recovered.auditEvents).toEqual(before.auditEvents);
+    expect(restarted.stop(deployment.id).status).toBe('stopped');
+    expect(restarted.getPaperDeployment(deployment.id)).toMatchObject({ deployment: { status: 'stopped' }, state: null, auditEvents: before.auditEvents });
+  });
+  it('ingests an inactive held market through a close flow without permitting an increase', async () => {
+    const dynamicBotId = createDynamicBot(false);
+    const base = workbench.getStrategyDocument(dynamicBotId, 1);
+    workbench.createValidatedRevision(dynamicBotId, parseStrategyDocument({
+      ...base,
+      nodes: [...base.nodes,
+        { id: 'held', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'long' } },
+        { id: 'close', kind: 'action', type: 'execution.close_position', version: 1, config: {} },
+        { id: 'increase', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+      ],
+      edges: [...base.edges,
+        { id: 'e3', source: 'clock', sourcePort: 'activation', target: 'held', targetPort: 'activation' },
+        { id: 'e4', source: 'held', sourcePort: 'result', target: 'close', targetPort: 'condition' },
+        { id: 'e5', source: 'held', sourcePort: 'result', target: 'increase', targetPort: 'condition' },
+      ],
+    }));
+    workbench.approveRevision(dynamicBotId, 2);
+    const { deployments, refresh } = dynamicService();
+    const deployment = await deployments.startPaper({ botId: dynamicBotId, strategyVersion: 2, riskLimits: limits });
+    const request = (occurredAt: string) => ({ deploymentId: deployment.id, triggerNodeId: 'clock',
+      triggerInput: { kind: 'interval' as const, occurredAt }, contextFactory: (market: string) => dynamicContext(market, occurredAt) });
+    await deployments.ingest(request(now));
+    refresh.mockResolvedValue({ ...dynamicUniverse, revision: 'inactive', markets: dynamicUniverse.markets.map((market) => ({ ...market, active: false })) });
+    const closed = await deployments.ingest(request('2026-09-05T08:30:00.000Z'));
+    expect(closed.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(closed.state.positions).toEqual([]);
+    expect(closed.children.every(({ evaluation }) => evaluation.trace.some((event) => event.type === 'risk.rejected'
+      && JSON.stringify(event.details).includes('market-inactive')))).toBe(true);
+  });
   it('starts only an approved Strategy 2.0 deployment after refreshing its DEX universe', async () => {
     const dynamicBotId = new BotRepository(database, () => new Date(now))
       .createDraft({ name: 'Dynamic Paper', dex: 'hyperliquid' }).id;

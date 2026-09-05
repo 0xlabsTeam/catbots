@@ -19,6 +19,10 @@ export function normalizeMarketSymbol(symbol: string): string {
 }
 
 export function orderedActiveMarkets(universe: MarketUniverseSnapshot): readonly MarketUniverseMarket[] {
+  return orderedMarkets(universe).filter(({ active }) => active);
+}
+
+export function orderedMarkets(universe: MarketUniverseSnapshot): readonly MarketUniverseMarket[] {
   const normalized = universe.markets
     .map((market) => Object.freeze({ ...market, symbol: normalizeMarketSymbol(market.symbol) }));
   const symbols = new Set<string>();
@@ -27,6 +31,5 @@ export function orderedActiveMarkets(universe: MarketUniverseSnapshot): readonly
     symbols.add(symbol);
   }
   return Object.freeze(normalized
-    .filter(({ active }) => active)
     .sort((left, right) => left.symbol < right.symbol ? -1 : left.symbol > right.symbol ? 1 : 0));
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Badge, Banner, Button, LayerCard, Tabs } from '@cloudflare/kumo';
-import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, Deployment, PaperDeploymentView, RiskLimits, StrategyRevision, WorkbenchState } from '@catbots/contracts';
+import type { AgentToolActivity, AuditEventView, BotSummary, CatbotsDesktopApi, Deployment, PaperDeploymentView, RiskLimits, StrategyRevision, TraceDetail, TraceSummary, WorkbenchState } from '@catbots/contracts';
+import { toRendererSafeTraceDetails } from '../../shared/trace-projection';
 
 import { ChatPanel } from '../workbench/ChatPanel';
 import { BacktestPanel } from '../workbench/BacktestPanel';
+import { TraceTimeline } from '../workbench/TraceTimeline';
 import { InspectorPanel } from '../workbench/InspectorPanel';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
@@ -55,7 +57,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
         const paper = await deploymentApi.getPaper({ deploymentId: current.id });
         if (active) setDeployment(paper);
       } catch {
-        // A recovered runtime may still be restoring its in-memory Paper view.
+        if (active) setError('Paper deployment records could not be loaded.');
       }
     }).catch(() => undefined);
     return () => { active = false; };
@@ -241,12 +243,13 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
     <LayerCard className="paper-controls">
       <div>
         <p className="eyebrow">EXECUTION</p>
-        <strong>{liveStatus === 'running' ? 'Live deployment is running' : status === undefined ? 'Paper is stopped' : `Paper deployment is ${status}`}</strong>
+        <strong>{liveStatus === 'running' ? 'Live deployment is running' : status === undefined ? 'Paper is stopped'
+          : deployment?.state === null && status !== 'stopped' ? 'Paper runtime unavailable' : `Paper deployment is ${status}`}</strong>
         <p>{liveStatus === 'running' ? 'Hyperliquid testnet · risk checks and every flow event are logged.' : 'Local simulation · risk checks and every flow event are logged.'}</p>
       </div>
       <div className="paper-control-actions">
         {legacyApproved ? <div className="deployment-upgrade-note"><Badge variant="info">Upgrade required</Badge><span>Create and approve a Strategy 2.0 dynamic-market revision in Chat.</span></div> : null}
-        {status === 'running' ? <Badge variant="success">Paper running</Badge> : null}
+        {status === 'running' && deployment?.state !== null ? <Badge variant="success">Paper running</Badge> : null}
         {liveStatus === 'running' ? <Badge variant="error">Live · Hyperliquid testnet</Badge> : null}
         {(status === undefined || status === 'stopped') && canReviewDeployment
           ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
@@ -268,6 +271,7 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
 
 function PaperPerformance({ deployment }: { deployment: PaperDeploymentView | null }) {
   if (deployment === null) return <EmptyPaper title="No Paper run yet" description="Approve this strategy and run it in Paper mode to see execution performance." />;
+  if (deployment.state === null) return <EmptyPaper title="Paper runtime unavailable" description="Positions and orders were not restored. Durable deployment records and logs remain available." />;
   return (
     <LayerCard className="paper-performance">
       <p className="eyebrow">PAPER PERFORMANCE</p>
@@ -287,20 +291,40 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function PaperLogs({ deployment }: { deployment: PaperDeploymentView | null }) {
   if (deployment === null) return <EmptyPaper title="No execution logs" description="Paper flow events will appear here after a run starts." />;
-  if (deployment.auditEvents.length === 0) return <EmptyPaper title="Paper is ready" description="Waiting for the first trigger." />;
-  return (
-    <LayerCard className="paper-logs">
-      <ol>
-        {deployment.auditEvents.map((event) => (
-          <li key={event.id}>
-            <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
-            <strong>{event.type}</strong>
-            <span>{event.summary}</span>
-          </li>
-        ))}
-      </ol>
-    </LayerCard>
-  );
+  if (deployment.auditEvents.length === 0) return deployment.state === null
+    ? <EmptyPaper title="No recorded execution logs" description="The Paper runtime is unavailable after restart." />
+    : <EmptyPaper title="Paper is ready" description="Waiting for the first trigger." />;
+  const children = new Map<string, AuditEventView[]>();
+  for (const event of deployment.auditEvents) {
+    if (event.market === undefined && event.parentTraceId === undefined
+      && deployment.auditEvents.some((child) => child.parentTraceId === event.traceId)) continue;
+    children.set(event.traceId, [...(children.get(event.traceId) ?? []), event]);
+  }
+  const traces: TraceSummary[] = [...children].map(([traceId, events]) => {
+    const first = events[0]!;
+    const types = new Set(events.map(({ type }) => type));
+    return {
+      traceId, parentTraceId: first.parentTraceId ?? null, market: first.market ?? null,
+      ...(first.universeRevision === undefined ? {} : { universeRevision: first.universeRevision }),
+      occurredAt: first.occurredAt, summary: events.at(-1)!.type.replaceAll('.', ' '),
+      outcome: types.has('flow.failed') ? 'failed' : types.has('risk.rejected') ? 'rejected'
+        : types.has('flow.skipped') ? 'skipped' : types.has('execution.filled') ? 'executed' : 'unknown',
+    };
+  });
+  return <TraceTimeline backtestId={deployment.deployment.id} botId={deployment.deployment.botId}
+    revisionVersion={deployment.deployment.strategyVersion} traces={traces} api={{
+      getTrace: async ({ traceId }): Promise<TraceDetail> => {
+        const trace = traces.find((candidate) => candidate.traceId === traceId);
+        if (trace === undefined) throw new Error('Trace unavailable');
+        return { traceId, parentTraceId: trace.parentTraceId, market: trace.market, outcome: trace.outcome,
+          events: children.get(traceId)!.map((event) => ({
+            sequence: event.sequence, type: event.type, occurredAt: event.occurredAt,
+            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }), summary: event.type.replaceAll('.', ' '),
+            details: toRendererSafeTraceDetails(event.type, { ...event.condition, effect: event.effect, riskRuleIds: event.riskRuleIds }),
+          })),
+        };
+      },
+    }} />;
 }
 
 function EmptyPaper({ title, description }: { title: string; description: string }) {

@@ -216,7 +216,7 @@ describe('DeploymentService Live gate', () => {
       adapter: {
         getMarkets: vi.fn(), getBalances: vi.fn(), getPositions: vi.fn(),
         placeOrder: vi.fn(async (intent) => ({
-          status: 'acknowledged' as const, clientOrderId: intent.clientOrderId, venueOrderId: `venue:${intent.market}`,
+          status: 'filled' as const, clientOrderId: intent.clientOrderId, venueOrderId: `venue:${intent.market}`,
         })),
         cancelOrder: vi.fn(), updateLeverage: vi.fn(), closePosition: vi.fn(), getExecutionEvents: vi.fn(),
       },

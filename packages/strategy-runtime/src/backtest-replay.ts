@@ -3,6 +3,9 @@ import type {
   SimulationLedgerEntry,
   SimulationSnapshot,
 } from './backtest-types';
+import { defaultBacktestRiskLimits, RiskLimitsSchema } from '@catbots/contracts';
+import { evaluateRisk } from '@catbots/execution-core/risk-engine';
+import type { NormalizedOrderIntent } from '@catbots/execution-core';
 import type { BacktestRequest } from './backtest';
 import { createBuiltinRegistry } from './builtins';
 import { createEvaluationContext, type EvaluationValue } from './evaluation-context';
@@ -50,6 +53,9 @@ export function replayBacktest(
   const clock = new SimulationClock(request.range.from);
   const orderedInputs = clock.order(request.inputs);
   const adapter = new SimulatedExecutionAdapter({ assumptions: request.assumptions });
+  const riskLimits = RiskLimitsSchema.parse(request.assumptions.riskLimits ?? defaultBacktestRiskLimits(request.assumptions.startingCapital));
+  const orderTimes: string[] = [];
+  let peakEquity = Number(request.assumptions.startingCapital);
   const equityCurve: EquityPoint[] = [{ timestamp: clock.now(), equity: request.assumptions.startingCapital }];
   const marketContributionCurve: MarketContributionPoint[] = [{
     timestamp: clock.now(),
@@ -98,6 +104,7 @@ export function replayBacktest(
       triggerNodeId: input.triggerNodeId,
       triggerInput: input.triggerInput,
       universe,
+      isHeldMarket: (market) => adapter.riskPositions().some((position) => position.market === market),
       contextFactory: (market) => {
         const before = adapter.snapshot();
         const values = input.marketValues[market] ?? {};
@@ -124,7 +131,39 @@ export function replayBacktest(
         id: `backtest:${request.strategy.strategy.id}:v${request.strategy.strategy.version}`,
         mode: 'backtest',
       },
-      execution: adapter,
+      execution: {
+        execute: (effect, context) => {
+          const market = universe.markets.find(({ symbol }) => symbol === effect.market);
+          const snapshot = adapter.snapshot();
+          const equity = Number(snapshot.equity);
+          peakEquity = Math.max(peakEquity, equity);
+          const size = effect.config.size;
+          const intent: NormalizedOrderIntent | undefined = effect.type === 'execution.close_position'
+            ? { type: 'close_position', market: effect.market, percent: Number(effect.config.percent ?? 100), clientOrderId: effect.idempotencyKey }
+            : effect.type === 'execution.open_position' && (effect.config.side === 'long' || effect.config.side === 'short')
+              && size !== null && typeof size === 'object' && !Array.isArray(size)
+              ? { type: 'open_position', market: effect.market, side: effect.config.side, orderType: 'market',
+                notionalUsd: String(Number(size.value) * (size.type === 'equity_percent' ? equity / 100 : size.type === 'quote' ? 1 : Number.NaN)),
+                leverage: Number(effect.config.leverage ?? 1), clientOrderId: effect.idempotencyKey } : undefined;
+          const dailyPnl = snapshot.ledger.filter((entry) => entry.timestamp.slice(0, 10) === context.evaluatedAt.slice(0, 10))
+            .reduce((sum, entry) => sum + Number(entry.realizedPnl ?? 0) - Number(entry.fee ?? 0) - Number(entry.amount ?? 0), 0);
+          const decision = intent === undefined ? { approved: false, violatedRuleIds: ['risk-state-unavailable'] }
+            : evaluateRisk({ intent, limits: riskLimits, account: {
+              equityUsd: snapshot.equity, dailyRealizedPnlUsd: String(dailyPnl),
+              drawdownPercent: (peakEquity - equity) / peakEquity * 100,
+              positions: adapter.riskPositions(), recentOrderTimestamps: orderTimes,
+              accountKillSwitchActive: false, botKillSwitchActive: false,
+            }, botDex: universe.dex, deploymentDex: universe.dex, evaluationDex: universe.dex,
+            currentMarket: context.currentMarket, effectMarket: effect.market,
+            evaluationUniverseRevision: universe.revision, marketMetadataRevision: universe.revision, marketMetadataDex: universe.dex,
+            marketMetadata: market === undefined ? undefined : { market: market.symbol, active: market.active,
+              sizeDecimals: market.sizeDecimals, maximumLeverage: market.maximumLeverage },
+            universeFresh: true, evaluatedAt: context.evaluatedAt });
+          if (!decision.approved) return { events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } }] };
+          orderTimes.push(context.evaluatedAt);
+          return adapter.execute(effect, context);
+        },
+      },
     });
     traces.push(coordinated);
     equityCurve.push({ timestamp: clock.now(), equity: adapter.snapshot().equity });

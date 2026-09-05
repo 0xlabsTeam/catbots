@@ -169,8 +169,9 @@ export function evaluateConditionNode(
     const resolved = resolveOperand({ ref: 'account.positions' }, context);
     if (!resolved.known) return { value: 'unknown', reason: resolved.reason, inputs: [resolved.input] };
     if (!Array.isArray(resolved.value) || typeof expected !== 'string') return invalidCondition();
+    const market = node.version === 1 ? node.config.market : context.currentMarket;
     const positions = resolved.value.filter((position): position is Record<string, JsonValue> => (
-      isRecord(position) && position.market === context.currentMarket
+      isRecord(position) && (market === undefined || position.market === market)
     ));
     const matches = expected === 'flat'
       ? positions.length === 0

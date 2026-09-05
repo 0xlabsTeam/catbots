@@ -181,7 +181,7 @@ describe('evaluateConditionNode', () => {
     });
   });
 
-  it('uses currentMarket even when a legacy position predicate carries a fixed-market hint', () => {
+  it('preserves the explicit market of a legacy position predicate', () => {
     const node: StrategyNode = {
       id: 'c-position',
       kind: 'condition',
@@ -198,8 +198,8 @@ describe('evaluateConditionNode', () => {
     });
 
     expect(evaluateConditionNode(node, context)).toMatchObject({
-      value: true,
-      reason: 'predicate.matched',
+      value: false,
+      reason: 'predicate.not_matched',
     });
   });
 

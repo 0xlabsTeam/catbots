@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { BotSummarySchema } from './bots';
+import { RiskLimitsSchema } from './execution';
 
 const BotIdSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
@@ -100,8 +101,8 @@ export const BacktestMetricsSchema = z.object({
   tradeCount: z.number().int().nonnegative(),
   fees: z.string().trim().min(1),
   funding: z.string().trim().min(1),
-  endingEquity: z.string().trim().min(1),
-  realizedPnl: z.string().trim().min(1),
+  endingEquity: z.string().trim().min(1).nullable(),
+  realizedPnl: z.string().trim().min(1).nullable(),
 }).strict();
 
 const UniqueMarketsSchema = z.array(z.string().trim().min(1).max(40)).min(1).refine(
@@ -122,6 +123,7 @@ export const BacktestAssumptionsViewSchema = z.object({
   startingCapital: z.string().trim().min(1),
   feeRateBps: z.number().finite().nonnegative(),
   slippageBps: z.number().finite().nonnegative(),
+  riskLimits: RiskLimitsSchema.optional(),
 }).strict().refine((value) => Date.parse(value.from) < Date.parse(value.to), {
   message: 'Backtest start must be before end',
   path: ['to'],
@@ -147,8 +149,9 @@ export const TraceOutcomeSchema = z.enum(['executed', 'skipped', 'unknown', 'rej
 
 export const TraceSummarySchema = z.object({
   traceId: z.string().trim().min(1),
-  parentTraceId: z.string().trim().min(1),
-  market: z.string().trim().min(1).max(40),
+  parentTraceId: z.string().trim().min(1).nullable(),
+  market: z.string().trim().min(1).max(40).nullable(),
+  universeRevision: z.string().trim().min(1).optional(),
   outcome: TraceOutcomeSchema,
   occurredAt: TimestampSchema,
   summary: z.string().trim().min(1).max(500),
@@ -185,7 +188,8 @@ export const BacktestSummarySchema = z.object({
   completedAt: TimestampSchema.nullable(),
   assumptions: BacktestAssumptionsViewSchema,
   metrics: BacktestMetricsSchema,
-  datasetCoverage: DatasetCoverageSchema,
+  datasetCoverage: DatasetCoverageSchema.nullable(),
+  legacyProjection: z.literal(true).optional(),
   perMarket: z.array(PerMarketBacktestMetricsSchema),
   equityCurve: z.array(EquityPointSchema),
   trades: z.array(BacktestTradeSchema),
@@ -212,8 +216,8 @@ export const TraceEventViewSchema = z.object({
 
 export const TraceDetailSchema = z.object({
   traceId: z.string().trim().min(1),
-  parentTraceId: z.string().trim().min(1),
-  market: z.string().trim().min(1).max(40),
+  parentTraceId: z.string().trim().min(1).nullable(),
+  market: z.string().trim().min(1).max(40).nullable(),
   outcome: TraceOutcomeSchema,
   events: z.array(TraceEventViewSchema),
 }).strict();

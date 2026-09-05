@@ -83,6 +83,7 @@ export type LiveEvaluationResult = Readonly<{
 
 export class DeploymentService {
   private readonly active = new Map<string, ActivePaperDeployment>();
+  private readonly liveUniverses = new Map<string, MarketUniverseSnapshot>();
   private readonly livePreflights = new Map<string, Readonly<{
     input: PrepareLiveInput;
     view: LivePreflightView;
@@ -96,7 +97,7 @@ export class DeploymentService {
     executionRepository: ExecutionRepository;
     workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument' | 'getStoredIdentity'>;
     configRepository?: Readonly<{ load(): Promise<LocalConfig | null> }>;
-    marketUniverseCache?: Pick<MarketUniverseCache, 'refresh' | 'freshness'>;
+    marketUniverseCache?: Pick<MarketUniverseCache, 'refresh' | 'freshness'> & Partial<Pick<MarketUniverseCache, 'snapshot'>>;
     runtimeReady?: () => boolean;
     createHyperliquidClient?: (options: Readonly<{ agentPrivateKey: string }>) => HyperliquidClientPort;
     resolveSignerAddress?: (privateKey: string) => Promise<string>;
@@ -222,6 +223,7 @@ export class DeploymentService {
       status: 'running', createdAt: timestamp, updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
+    this.liveUniverses.set(persisted.id, prepared.universe);
     this.livePreflights.delete(input.preflightId);
     return persisted;
   }
@@ -330,6 +332,7 @@ export class DeploymentService {
         triggerNodeId: input.triggerNodeId,
         triggerInput: input.triggerInput,
         universe: runtime.universe,
+        isHeldMarket: (market) => paperState.positions.some((position) => position.market === market && Number(position.notionalUsd) > 0),
         contextFactory: (market, metadata) => {
           const supplied = input.contextFactory!(market, metadata);
           const context = createEvaluationContext({
@@ -409,99 +412,118 @@ export class DeploymentService {
     if (!validation.valid) throw new Error('Approved strategy is no longer valid');
     const cache = this.dependencies.marketUniverseCache;
     if (cache === undefined) throw new Error('DEX universe unavailable');
-    const universe = await cache.refresh(signal);
-    const universeFresh = cache.freshness().fresh;
-    if (universe.dex !== deployment.dex) throw new Error('DEX universe does not match deployment');
-
-    const contexts = new Map<string, EvaluationContext>();
-    const planned = new Map<string, Readonly<{ effect: ProposedEffect; account: RiskAccountState }>>();
-    const reservedPositions: Array<{ market: string; side: 'long' | 'short'; notionalUsd: string }> = [];
-    const reservedOrderTimestamps: string[] = [];
-    const coordinated = coordinateEvaluation({
-      compiled: validation.compiled,
-      triggerNodeId: input.triggerNodeId,
-      triggerInput: input.triggerInput,
-      universe,
-      contextFactory: (market, metadata) => {
-        const context = input.contextFactory(market, metadata);
-        contexts.set(market, context);
-        return context;
-      },
-      deployment: { id: deployment.id, mode: 'live' },
-      execution: {
-        execute: (effect, context) => {
-          let account: RiskAccountState | undefined;
-          try {
-            account = input.riskAccountFactory(context.currentMarket, context);
-          } catch {
-            account = undefined;
-          }
-          const riskAccount = account === undefined ? undefined : {
-            ...account,
-            positions: [...account.positions, ...reservedPositions],
-            recentOrderTimestamps: [...account.recentOrderTimestamps, ...reservedOrderTimestamps],
-          };
-          const provisionalIntent = toLiveIntent(effect, riskAccount?.equityUsd, 'cb_risk_evaluation');
-          const selected = universe.markets.find(({ symbol }) => symbol === effect.market);
-          const decision = provisionalIntent === undefined ? { approved: false, violatedRuleIds: ['risk-state-unavailable'] as const }
-            : evaluateRisk({
-              intent: provisionalIntent, limits: deployment.riskLimits, account: riskAccount,
-              botDex: deployment.dex, deploymentDex: deployment.dex, evaluationDex: universe.dex,
-              currentMarket: context.currentMarket, effectMarket: effect.market,
-              evaluationUniverseRevision: universe.revision, marketMetadataRevision: universe.revision,
-              marketMetadataDex: universe.dex,
-              marketMetadata: selected === undefined ? undefined : {
-                market: selected.symbol, active: selected.active,
-                sizeDecimals: selected.sizeDecimals, maximumLeverage: selected.maximumLeverage,
-              },
-              universeFresh, evaluatedAt: context.evaluatedAt,
-            });
-          if (!decision.approved || account === undefined || provisionalIntent === undefined) {
-            return { events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } }] };
-          }
-          planned.set(`${effect.market}\0${effect.nodeId}`, { effect, account });
-          if (provisionalIntent.type === 'open_position') {
-            reservedPositions.push({
-              market: provisionalIntent.market, side: provisionalIntent.side,
-              notionalUsd: provisionalIntent.notionalUsd,
-            });
-          }
-          reservedOrderTimestamps.push(context.evaluatedAt);
-          return { events: [
-            { type: 'risk.approved', metadata: { evaluator: 'live.risk-engine' } },
-            { type: 'execution.queued', metadata: { durable: true } },
-          ] };
-        },
-      },
-    });
-    if (this.dependencies.executionRepository.hasTrace(coordinated.parentTraceId)) {
-      return { parentTraceId: coordinated.parentTraceId, duplicate: true, children: coordinated.children, outboxCount: 0 };
+    let universe: MarketUniverseSnapshot;
+    let universeFresh = false;
+    try {
+      universe = await cache.refresh(signal);
+      universeFresh = cache.freshness().fresh;
+    } catch {
+      const previous = this.liveUniverses.get(deployment.id) ?? cache.snapshot?.();
+      if (previous === undefined) throw new Error('DEX universe unavailable');
+      universe = previous;
     }
-    const actions = coordinated.children.flatMap((child) => child.evaluation.effects.flatMap((effect) => {
-      const candidate = planned.get(`${effect.market}\0${effect.nodeId}`);
-      if (candidate === undefined) return [];
-      const identity = {
-        deploymentId: deployment.id, strategyId: deployment.strategyId,
-        strategyVersion: deployment.strategyVersion, parentTraceId: coordinated.parentTraceId,
-        childTraceId: child.evaluation.traceId, market: effect.market, actionNodeId: effect.nodeId,
-      } as const;
-      const idempotencyKey = executionIdempotencyKey(identity);
-      const orderId = clientOrderId(identity);
-      const intent = toLiveIntent(effect, candidate.account.equityUsd, orderId);
-      if (intent === undefined) return [];
-      return [{
-        childTraceId: child.evaluation.traceId, effect, intent,
-        outboxId: (this.dependencies.idFactory ?? randomUUID)(), idempotencyKey,
-        clientOrderId: orderId, createdAt: contexts.get(effect.market)?.evaluatedAt ?? universe.observedAt,
-      }];
-    }));
-    const persisted = this.dependencies.executionRepository.recordCoordinatedLiveRun(
-      deployment.id, coordinated, { universe, contexts }, actions,
-    );
-    return {
-      parentTraceId: coordinated.parentTraceId, duplicate: persisted.duplicate,
-      children: coordinated.children, outboxCount: persisted.outboxItems.length,
-    };
+    if (universe.dex !== deployment.dex) throw new Error('DEX universe does not match deployment');
+    this.liveUniverses.set(deployment.id, universe);
+
+    return this.dependencies.executionRepository.withLiveRiskReservations(deployment.id, (reservations) => {
+      const contexts = new Map<string, EvaluationContext>();
+      const planned = new Map<string, Readonly<{ effect: ProposedEffect; account: RiskAccountState }>>();
+      const reservedPositions = [...reservations.positions];
+      const reservedOrderTimestamps = [...reservations.recentOrderTimestamps];
+      const coordinated = coordinateEvaluation({
+        compiled: validation.compiled,
+        triggerNodeId: input.triggerNodeId,
+        triggerInput: input.triggerInput,
+        universe,
+        isHeldMarket: (market, metadata) => {
+          try {
+            const context = input.contextFactory(market, metadata);
+            const positions = input.riskAccountFactory(market, context)?.positions.filter((position) => position.market === market);
+            return positions?.length === 1 && Number(positions[0]!.notionalUsd) > 0
+              && (positions[0]!.side === 'long' || positions[0]!.side === 'short');
+          } catch { return false; }
+        },
+        contextFactory: (market, metadata) => {
+          const context = input.contextFactory(market, metadata);
+          contexts.set(market, context);
+          return context;
+        },
+        deployment: { id: deployment.id, mode: 'live' },
+        execution: {
+          execute: (effect, context) => {
+            let account: RiskAccountState | undefined;
+            try {
+              account = input.riskAccountFactory(context.currentMarket, context);
+            } catch {
+              account = undefined;
+            }
+            const riskAccount = account === undefined ? undefined : {
+              ...account,
+              positions: [...account.positions, ...reservedPositions],
+              recentOrderTimestamps: [...account.recentOrderTimestamps, ...reservedOrderTimestamps],
+            };
+            const provisionalIntent = toLiveIntent(effect, riskAccount?.equityUsd, 'cb_risk_evaluation');
+            const selected = universe.markets.find(({ symbol }) => symbol === effect.market);
+            const decision = provisionalIntent === undefined ? { approved: false, violatedRuleIds: ['risk-state-unavailable'] as const }
+              : evaluateRisk({
+                intent: provisionalIntent, limits: deployment.riskLimits, account: riskAccount,
+                botDex: deployment.dex, deploymentDex: deployment.dex, evaluationDex: universe.dex,
+                currentMarket: context.currentMarket, effectMarket: effect.market,
+                evaluationUniverseRevision: universe.revision, marketMetadataRevision: universe.revision,
+                marketMetadataDex: universe.dex,
+                marketMetadata: selected === undefined ? undefined : {
+                  market: selected.symbol, active: selected.active,
+                  sizeDecimals: selected.sizeDecimals, maximumLeverage: selected.maximumLeverage,
+                },
+                universeFresh, evaluatedAt: context.evaluatedAt,
+              });
+            if (!decision.approved || account === undefined || provisionalIntent === undefined) {
+              return { events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } }] };
+            }
+            planned.set(`${effect.market}\0${effect.nodeId}`, { effect, account });
+            if (provisionalIntent.type === 'open_position') {
+              reservedPositions.push({
+                market: provisionalIntent.market, side: provisionalIntent.side,
+                notionalUsd: provisionalIntent.notionalUsd,
+              });
+            }
+            reservedOrderTimestamps.push(context.evaluatedAt);
+            return { events: [
+              { type: 'risk.approved', metadata: { evaluator: 'live.risk-engine' } },
+              { type: 'execution.queued', metadata: { durable: true } },
+            ] };
+          },
+        },
+      });
+      if (this.dependencies.executionRepository.hasTrace(coordinated.parentTraceId)) {
+        return { parentTraceId: coordinated.parentTraceId, duplicate: true, children: coordinated.children, outboxCount: 0 };
+      }
+      const actions = coordinated.children.flatMap((child) => child.evaluation.effects.flatMap((effect) => {
+        const candidate = planned.get(`${effect.market}\0${effect.nodeId}`);
+        if (candidate === undefined) return [];
+        const identity = {
+          deploymentId: deployment.id, strategyId: deployment.strategyId,
+          strategyVersion: deployment.strategyVersion, parentTraceId: coordinated.parentTraceId,
+          childTraceId: child.evaluation.traceId, market: effect.market, actionNodeId: effect.nodeId,
+        } as const;
+        const idempotencyKey = executionIdempotencyKey(identity);
+        const orderId = clientOrderId(identity);
+        const intent = toLiveIntent(effect, candidate.account.equityUsd, orderId);
+        if (intent === undefined) return [];
+        return [{
+          childTraceId: child.evaluation.traceId, effect, intent,
+          outboxId: (this.dependencies.idFactory ?? randomUUID)(), idempotencyKey,
+          clientOrderId: orderId, createdAt: contexts.get(effect.market)?.evaluatedAt ?? universe.observedAt,
+        }];
+      }));
+      const persisted = this.dependencies.executionRepository.recordCoordinatedLiveRun(
+        deployment.id, coordinated, { universe, contexts }, actions,
+      );
+      return {
+        parentTraceId: coordinated.parentTraceId, duplicate: persisted.duplicate,
+        children: coordinated.children, outboxCount: persisted.outboxItems.length,
+      };
+    });
   }
 
   getPaperState(deploymentId: string): PaperState {
@@ -515,7 +537,7 @@ export class DeploymentService {
     if (deployment.mode !== 'paper') throw new Error('Paper deployment required');
     return PaperDeploymentViewSchema.parse({
       deployment,
-      state: this.getPaperState(deploymentId),
+      state: this.active.get(deploymentId)?.adapter.snapshot() ?? null,
       auditEvents: this.dependencies.executionRepository.listDeploymentAuditEvents(deploymentId),
     });
   }
@@ -552,7 +574,7 @@ function toLiveIntent(
   orderId: string,
 ): NormalizedOrderIntent | undefined {
   if (effect.type === 'execution.close_position') {
-    const percent = effect.config.percent;
+    const percent = effect.config.percent ?? 100;
     return typeof percent === 'number' && Number.isFinite(percent) && percent > 0 && percent <= 100
       ? { type: 'close_position', market: effect.market, percent, clientOrderId: orderId }
       : undefined;

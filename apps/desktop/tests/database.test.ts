@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,7 @@ import { ExecutionRepository } from '../src/main/execution/execution-repository'
 import { ApplicationDatabase, openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
 import { WorkbenchRepository } from '../src/main/workbench/workbench-repository';
+import { WorkbenchService } from '../src/main/workbench/workbench-service';
 
 const databases: Database.Database[] = [];
 const temporaryDirectories: string[] = [];
@@ -126,6 +128,41 @@ describe('openDatabase', () => {
 });
 
 describe('migrateDatabase', () => {
+  it('opens a saved v3 Backtest and its legacy trace after migration without rewriting either artifact', async () => {
+    const db = seedVersion3Database();
+    const botId = '018f47a2-4a2a-7c5d-9b61-3a83f64406a8';
+    const timestamp = '2026-09-01T00:00:00.000Z';
+    db.exec(`
+      CREATE TABLE chat_messages (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE backtest_traces (artifact_hash TEXT PRIMARY KEY, artifact_json TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE backtest_runs (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, revision_version INTEGER NOT NULL,
+        status TEXT NOT NULL, data_source TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT,
+        summary_json TEXT NOT NULL, artifact_hash TEXT NOT NULL REFERENCES backtest_traces(artifact_hash),
+        FOREIGN KEY (bot_id, revision_version) REFERENCES strategy_revisions(bot_id, version));
+    `);
+    const artifact = JSON.stringify({ traces: [[{ traceId: 'legacy-trace', sequence: 1, type: 'flow.skipped', createdAt: timestamp, details: { reason: 'condition.not_true' } }]] });
+    const artifactHash = `sha256:${createHash('sha256').update(artifact).digest('hex')}`;
+    const summary = JSON.stringify({
+      id: '048f47a2-4a2a-7c5d-9b61-3a83f64406a8', botId, revisionVersion: 1, status: 'completed', dataSource: 'Bundled sample data',
+      startedAt: timestamp, completedAt: timestamp,
+      assumptions: { from: '2026-08-01T00:00:00.000Z', to: timestamp, startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1 },
+      metrics: { returnPercent: 0, maximumDrawdownPercent: 0, sharpeLike: 0, winRatePercent: 0, tradeCount: 0, fees: '0', funding: '0' },
+      equityCurve: [{ timestamp, equity: '10000' }], trades: [], warnings: [],
+      traces: [{ traceId: 'legacy-trace', outcome: 'skipped', occurredAt: timestamp, summary: 'No action' }], artifactHash,
+    });
+    db.prepare('INSERT INTO backtest_traces VALUES (?, ?, ?)').run(artifactHash, artifact, timestamp);
+    db.prepare('INSERT INTO backtest_runs VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)')
+      .run('048f47a2-4a2a-7c5d-9b61-3a83f64406a8', botId, 'completed', 'Bundled sample data', timestamp, timestamp, summary, artifactHash);
+    migrateDatabase(db);
+    const repository = new WorkbenchRepository(db);
+    const projected = repository.getState(botId).backtests[0]!;
+    expect(projected).toMatchObject({ artifactHash, legacyProjection: true, datasetCoverage: null, perMarket: [],
+      metrics: { endingEquity: '10000', realizedPnl: null }, traces: [{ parentTraceId: null, market: 'BTC-PERP' }] });
+    const service = new WorkbenchService({ repository, configRepository: { load: async () => null } });
+    expect(await service.getTrace({ botId, traceId: 'legacy-trace' })).toMatchObject({ parentTraceId: null, market: 'BTC-PERP', events: [{ type: 'flow.skipped' }] });
+    expect(repository.getTraceArtifact(botId, artifactHash)).toBe(artifact);
+    expect(db.prepare('SELECT summary_json FROM backtest_runs').get()).toEqual({ summary_json: summary });
+  });
   it('applies every schema migration once when called repeatedly', () => {
     const db = trackDatabase(openDatabase(':memory:'));
 

@@ -46,7 +46,13 @@ export const StrategyV1DocumentSchema = StrategyBaseSchema.extend({
 export const StrategyV2DocumentSchema = StrategyBaseSchema.extend({
   schemaVersion: z.literal('2.0'),
   marketScope: z.object({ type: z.literal('dex_universe') }).strict(),
-}).strict();
+}).strict().superRefine((document, context) => {
+  for (const [index, node] of document.nodes.entries()) {
+    if (node.type === 'predicate.position_state' && (node.version !== 2 || 'market' in node.config)) {
+      context.addIssue({ code: 'custom', message: 'Strategy 2.0 requires current-market position predicate version 2.', path: ['nodes', index] });
+    }
+  }
+});
 
 export const StrategyDocumentSchema = z.union([
   StrategyV1DocumentSchema,

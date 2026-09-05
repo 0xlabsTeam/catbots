@@ -46,6 +46,15 @@ export type DynamicRiskLimits = z.infer<typeof DynamicRiskLimitsSchema>;
 export const RiskLimitsSchema = DynamicRiskLimitsSchema;
 export type RiskLimits = DynamicRiskLimits;
 
+export function defaultBacktestRiskLimits(startingCapital: string): RiskLimits {
+  const capital = Number(startingCapital);
+  return RiskLimitsSchema.parse({
+    maxOrderUsd: String(capital * 50), maxPositionUsd: String(capital * 50), maxTotalExposureUsd: String(capital * 50),
+    maxLeverage: 50, maxDailyLossUsd: String(capital), maxDrawdownPercent: 100,
+    allowedSides: ['long', 'short'], maxOrdersPerMinute: 600,
+  });
+}
+
 const DeploymentBaseSchema = z.object({
   id: DeploymentIdSchema,
   botId: BotIdSchema,
@@ -329,7 +338,7 @@ export const PaperStateViewSchema = z.object({
 
 export const PaperDeploymentViewSchema = z.object({
   deployment: DeploymentSchema.refine((deployment) => deployment.mode === 'paper', 'Paper deployment required'),
-  state: PaperStateViewSchema,
+  state: PaperStateViewSchema.nullable(),
   auditEvents: z.array(AuditEventViewSchema),
 }).strict();
 

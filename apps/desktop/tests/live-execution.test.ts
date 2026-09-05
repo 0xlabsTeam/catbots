@@ -42,7 +42,7 @@ describe('OutboxExecutor', () => {
     expect(venue.placeOrder).toHaveBeenCalledTimes(1);
     expect(fixture.repository.getOutboxItem(liveIdempotencyKey)).toMatchObject({ status: 'unknown', attempts: 1 });
     expect(fixture.repository.listAuditEvents(fixture.proposal.trace.id).map(({ type }) => type)).toEqual([
-      'action.proposed', 'risk.approved', 'execution.submitted', 'execution.unknown',
+      'action.proposed', 'risk.approved', 'execution.queued', 'execution.submitted', 'execution.unknown',
     ]);
     expect(fixture.repository.listAuditEvents(fixture.proposal.trace.id).every((event) => (
       event.parentTraceId === 'parent:interval-1'
@@ -88,8 +88,8 @@ describe('OutboxExecutor', () => {
     fixture.repository.proposeLiveAction({
       trace: second.trace,
       events: [
-        { ...second.events[0], id: 'action-2', sequence: 3, nodeId: 'open-2', summary: 'Second action proposed.' },
-        { ...second.events[1], id: 'risk-2', sequence: 4, nodeId: 'open-2', summary: 'Second risk approved.' },
+        { ...second.events[0], id: 'action-2', sequence: 4, nodeId: 'open-2', summary: 'Second action proposed.' },
+        { ...second.events[1], id: 'risk-2', sequence: 5, nodeId: 'open-2', summary: 'Second risk approved.' },
       ],
       outbox: {
         ...second.outbox, id: '158f3f75-89ab-7def-8123-456789abcdef', actionNodeId: 'open-2',
@@ -99,8 +99,8 @@ describe('OutboxExecutor', () => {
     });
     const venue = adapter({ status: 'acknowledged', clientOrderId: 'cb_action_1', venueOrderId: 'one' });
     vi.mocked(venue.placeOrder)
-      .mockResolvedValueOnce({ status: 'acknowledged', clientOrderId: 'cb_action_1', venueOrderId: 'one' })
-      .mockResolvedValueOnce({ status: 'acknowledged', clientOrderId: 'cb_action_2', venueOrderId: 'two' });
+      .mockResolvedValueOnce({ status: 'filled', clientOrderId: 'cb_action_1', venueOrderId: 'one' })
+      .mockResolvedValueOnce({ status: 'filled', clientOrderId: 'cb_action_2', venueOrderId: 'two' });
     const executor = new OutboxExecutor({ repository: fixture.repository, adapter: venue });
 
     await executor.runOnce(liveIdempotencyKey, new AbortController().signal);

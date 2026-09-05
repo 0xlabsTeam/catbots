@@ -69,16 +69,16 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
           <LayerCard className="backtest-coverage">
             <div>
               <h3>Dataset coverage</h3>
-              <p>{formatRange(selected.datasetCoverage.from, selected.datasetCoverage.to)}</p>
+              <p>{selected.datasetCoverage === null ? 'Not recorded in this legacy Backtest.' : formatRange(selected.datasetCoverage.from, selected.datasetCoverage.to)}</p>
             </div>
             <div>
               <span>Markets in this dataset</span>
-              <strong>{selected.datasetCoverage.markets.join(', ')}</strong>
+              <strong>{selected.datasetCoverage?.markets.join(', ') ?? 'Not recorded'}</strong>
             </div>
           </LayerCard>
           <LayerCard className="backtest-by-market">
             <h3>By market</h3>
-            {selected.perMarket.length === 0 ? <p className="backtest-muted">No eligible market produced a result in this replay.</p> : (
+            {selected.perMarket.length === 0 ? <p className="backtest-muted">{selected.legacyProjection ? 'Per-market attribution was not recorded.' : 'No eligible market produced a result in this replay.'}</p> : (
               <Table aria-label="Backtest results by market">
                 <Table.Header><Table.Row><Table.Head>Market</Table.Head><Table.Head>Realized PnL</Table.Head><Table.Head>Trades</Table.Head><Table.Head>Win rate</Table.Head><Table.Head>Drawdown contribution</Table.Head></Table.Row></Table.Header>
                 <Table.Body>{selected.perMarket.map((market) => (

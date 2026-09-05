@@ -96,6 +96,7 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
   readonly #ledger: SimulationLedgerEntry[] = [];
   readonly #outcomes = new Map<string, Readonly<{ events: readonly ExecutionTraceEvent[] }>>();
   readonly #lastMarks = new Map<string, number>();
+  readonly #fundingOccurrences = new Map<string, number>();
   #cash: number;
   #totalFees = 0;
   #totalFunding = 0;
@@ -122,8 +123,15 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
 
   applyFunding(rate: number, context: EvaluationContext): void {
     const market = context.currentMarket;
+    const occurrence = `${market}\0${context.evaluatedAt}`;
+    const priorRate = this.#fundingOccurrences.get(occurrence);
+    if (priorRate !== undefined) {
+      if (priorRate !== rate) throw new Error('BACKTEST_FUNDING_OCCURRENCE_CONFLICT');
+      return;
+    }
     const price = marketPrice(context, market);
     if (!price || !Number.isFinite(rate)) throw new Error('Funding requires a valid point-in-time price and rate');
+    this.#fundingOccurrences.set(occurrence, rate);
     this.#lastMarks.set(market, price.mark);
     for (const position of this.#positions.filter((candidate) => candidate.market === market)) {
       const signedCost = position.quantity * price.mark * rate * (position.side === 'long' ? 1 : -1);
@@ -231,6 +239,17 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
         ), 0);
       return [market, decimal(realizedPnl - fees - funding + unrealizedPnl)];
     })));
+  }
+
+  riskPositions(): readonly { market: string; side: 'long' | 'short'; notionalUsd: string }[] {
+    const positions = new Map<string, { market: string; side: 'long' | 'short'; notionalUsd: string }>();
+    for (const position of this.#positions) {
+      const key = `${position.market}\0${position.side}`;
+      const notional = position.quantity * (this.#lastMarks.get(position.market) ?? position.entryPrice);
+      positions.set(key, { market: position.market, side: position.side,
+        notionalUsd: decimal(Number(positions.get(key)?.notionalUsd ?? 0) + notional) });
+    }
+    return [...positions.values()];
   }
 
   #open(

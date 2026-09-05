@@ -66,7 +66,7 @@ export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api 
                 {expanded ? <div id={panelId} className="trace-run-detail">
                   <dl>
                     <div><dt>Strategy revision</dt><dd>v{revisionVersion}</dd></div>
-                    <div><dt>Universe revision</dt><dd>{universeRevision(group.parentTraceId)}</dd></div>
+                    <div><dt>Universe revision</dt><dd>{group.traces[0]?.universeRevision ?? universeRevision(group.parentTraceId)}</dd></div>
                   </dl>
                   <div className="trace-market-list" role="group" aria-label="Market evaluations">
                     {group.traces.map((trace) => (
@@ -77,7 +77,7 @@ export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api 
                         aria-pressed={selectedTraceId === trace.traceId}
                         onClick={() => void inspect(trace.traceId)}
                       >
-                        <span><strong>{trace.market}</strong><small>{trace.summary}</small></span>
+                        <span><strong>{trace.market ?? 'Market not recorded'}</strong><small>{trace.summary}</small></span>
                         <Badge variant={outcomeVariant(trace.outcome)}>{trace.outcome}</Badge>
                       </Button>
                     ))}
@@ -89,7 +89,7 @@ export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api 
           {error ? <p role="alert">This trace could not be loaded.</p> : null}
           {detail === null ? <p className="backtest-muted">Select a run, then choose a market evaluation to inspect every logged decision.</p> : (
             <section className="trace-market-detail" aria-labelledby="trace-market-heading">
-              <div><p className="eyebrow">MARKET CHILD TRACE</p><h4 id="trace-market-heading">{detail.market} evaluation</h4></div>
+              <div><p className="eyebrow">{detail.parentTraceId === null ? 'LEGACY TRACE' : 'MARKET CHILD TRACE'}</p><h4 id="trace-market-heading">{detail.market ?? 'Market not recorded'} evaluation</h4></div>
               <LayerCard render={<ol aria-label={`Events for ${detail.market}`} />} className="trace-timeline">
                 {detail.events.map((event) => (
                   <li key={event.sequence}>
@@ -120,7 +120,10 @@ type TraceGroup = Readonly<{
 
 function groupTraces(traces: readonly TraceSummary[]): TraceGroup[] {
   const groups = new Map<string, TraceSummary[]>();
-  for (const trace of traces) groups.set(trace.parentTraceId, [...(groups.get(trace.parentTraceId) ?? []), trace]);
+  for (const trace of traces) {
+    const groupId = trace.parentTraceId ?? trace.traceId;
+    groups.set(groupId, [...(groups.get(groupId) ?? []), trace]);
+  }
   return [...groups.entries()].map(([parentTraceId, children]) => ({
     parentTraceId,
     occurredAt: children[0]!.occurredAt,

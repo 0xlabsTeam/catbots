@@ -53,7 +53,7 @@ export type UpdateLeverageIntent = Readonly<{
 }>;
 
 export type ExecutionReceipt = Readonly<{
-  status: 'acknowledged' | 'rejected' | 'unknown';
+  status: 'acknowledged' | 'filled' | 'rejected' | 'unknown';
   clientOrderId: string;
   venueOrderId?: string;
   errorCode?: string;

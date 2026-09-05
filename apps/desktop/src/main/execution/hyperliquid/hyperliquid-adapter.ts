@@ -158,7 +158,7 @@ export class HyperliquidAdapter implements PerpDexAdapter {
 }
 
 function receipt(result: HyperliquidActionResult, clientOrderId: string): ExecutionReceipt {
-  if (result.status === 'ok') return { status: 'acknowledged', clientOrderId, ...(result.venueOrderId === undefined ? {} : { venueOrderId: result.venueOrderId }) };
+  if (result.status === 'ok') return { status: result.filled === true ? 'filled' : 'acknowledged', clientOrderId, ...(result.venueOrderId === undefined ? {} : { venueOrderId: result.venueOrderId }) };
   return {
     status: result.status === 'unknown' ? 'unknown' : 'rejected',
     clientOrderId,
