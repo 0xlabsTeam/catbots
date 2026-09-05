@@ -6,10 +6,10 @@ import { evaluateRisk, type RiskEvaluationInput } from './risk-engine';
 const limits: RiskLimits = {
   maxOrderUsd: '1000',
   maxPositionUsd: '2500',
+  maxTotalExposureUsd: '5000',
   maxLeverage: 3,
   maxDailyLossUsd: '300',
   maxDrawdownPercent: 12,
-  allowedMarkets: ['BTC-PERP'],
   allowedSides: ['long', 'short'],
   maxOrdersPerMinute: 2,
 };
@@ -45,7 +45,6 @@ describe('evaluateRisk', () => {
   it.each([
     ['max-order-usd', { intent: { ...input.intent, notionalUsd: '1000.01' } }],
     ['max-leverage', { intent: { ...input.intent, leverage: 4 } }],
-    ['allowed-market', { intent: { ...input.intent, market: 'ETH-PERP' } }],
     ['allowed-side', { limits: { ...limits, allowedSides: ['short'] } }],
     ['max-position-usd', { account: { ...input.account, positions: [{ market: 'BTC-PERP', notionalUsd: '2200' }] } }],
     ['max-daily-loss-usd', { account: { ...input.account, dailyRealizedPnlUsd: '-300' } }],

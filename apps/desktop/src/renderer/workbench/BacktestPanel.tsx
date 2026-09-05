@@ -21,7 +21,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
     setRunning(true);
     setError(false);
     try {
-      const result = await api.runBacktest({ botId, revisionVersion: revision.version, assumptions });
+      const result = await api.runBacktest({ botId, revisionVersion: revision.version, marketUniverse: { mode: 'all_available' }, assumptions });
       setSelected(result);
       onCompleted(result);
     } catch {

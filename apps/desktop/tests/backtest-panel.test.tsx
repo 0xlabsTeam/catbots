@@ -15,10 +15,12 @@ const backtest = {
   id: '018f3f75-89ab-7def-8123-456789abcdea', botId, revisionVersion: 1, status: 'completed', dataSource: 'Bundled sample data',
   startedAt: '2026-09-04T00:00:00.000Z', completedAt: '2026-09-04T00:01:00.000Z',
   assumptions: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1 },
-  metrics: { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25' },
+  metrics: { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' },
+  datasetCoverage: { markets: ['BTC-PERP'], from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+  perMarket: [{ market: 'BTC-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 }],
   equityCurve: [{ timestamp: '2026-08-01T00:00:00.000Z', equity: '10000' }, { timestamp: '2026-09-01T00:00:00.000Z', equity: '10420' }],
   trades: [], warnings: ['Bundled sample data is synthetic and is not live market data.'],
-  traces: [{ traceId: 'trace-1', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'flow completed' }],
+  traces: [{ traceId: 'trace-1', parentTraceId: 'run-1', market: 'BTC-PERP', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'flow completed' }],
   artifactHash: `sha256:${'a'.repeat(64)}`,
 } satisfies BacktestSummary;
 
@@ -27,7 +29,7 @@ function api(): CatbotsDesktopApi['workbench'] {
     get: vi.fn(), sendMessage: vi.fn(), approveRevision: vi.fn(), subscribeActivity: vi.fn(() => () => undefined),
     runBacktest: vi.fn().mockResolvedValue(backtest),
     getTrace: vi.fn().mockResolvedValue({
-      traceId: 'trace-1', outcome: 'executed', events: [
+      traceId: 'trace-1', parentTraceId: 'run-1', market: 'BTC-PERP', outcome: 'executed', events: [
         { sequence: 1, type: 'trigger.received', occurredAt: '2026-08-02T00:00:00.000Z', nodeId: 't', summary: 'trigger received', details: {} },
         { sequence: 2, type: 'flow.completed', occurredAt: '2026-08-02T00:00:01.000Z', summary: 'flow completed', details: {} },
       ],

@@ -11,8 +11,10 @@ import {
   StartPaperInputSchema,
   type Deployment,
   type PaperDeploymentView,
+  type RiskLimits,
   type StartPaperInput,
 } from '@catbots/contracts';
+import { legacyMarketBindings, legacyMarketHint } from '../../legacy-contract-compat';
 import {
   createBuiltinRegistry,
   createEvaluationContext,
@@ -89,7 +91,7 @@ export class DeploymentService {
     if (exchange !== undefined) {
       try {
         const mids = await client.getAllMids(signal);
-        dataFresh = input.riskLimits.allowedMarkets.every((market) => Number(mids[market.replace(/-PERP$/, '')]) > 0);
+        dataFresh = Object.values(mids).some((mid) => Number(mid) > 0);
       } catch {
         dataFresh = false;
       }
@@ -163,7 +165,7 @@ export class DeploymentService {
       strategyVersion: input.strategyVersion,
       mode: 'live', venue: 'hyperliquid', network: 'testnet',
       maskedAccount: prepared.view.maskedAccount,
-      marketBindings: [state.bot.market], riskLimits: input.riskLimits,
+      marketBindings: [legacyMarketHint(state.bot)], riskLimits: input.riskLimits,
       status: 'running', createdAt: timestamp, updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
@@ -197,7 +199,7 @@ export class DeploymentService {
       mode: 'paper',
       venue: 'paper',
       network: 'paper',
-      marketBindings: [state.bot.market],
+      marketBindings: [legacyMarketHint(state.bot)],
       riskLimits: input.riskLimits,
       status: 'running',
       createdAt: timestamp,
@@ -211,8 +213,8 @@ export class DeploymentService {
         deploymentId: persisted.id,
         strategyId: persisted.strategyId,
         strategyVersion: persisted.strategyVersion,
-        market: persisted.marketBindings[0]!,
-        riskLimits: persisted.riskLimits,
+        market: legacyMarketBindings(persisted)[0]!,
+        riskLimits: persisted.riskLimits as RiskLimits,
       }),
       evaluations: new Map(),
     });

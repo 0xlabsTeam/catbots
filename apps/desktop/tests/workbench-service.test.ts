@@ -68,6 +68,7 @@ describe('WorkbenchService', () => {
     const backtest = await service.runBacktest({
       botId,
       revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
       assumptions: {
         from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1,
       },

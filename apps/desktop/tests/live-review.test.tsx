@@ -7,7 +7,7 @@ import type { BotSummary, CatbotsDesktopApi, LivePreflightView, RiskLimits, Stra
 import { LiveReviewScreen } from '../src/renderer/screens/LiveReviewScreen';
 
 const bot: BotSummary = {
-  id: '018f3f75-89ab-7def-8123-456789abcdef', name: 'BTC Flow', market: 'BTC-PERP', status: 'draft',
+  id: '018f3f75-89ab-7def-8123-456789abcdef', name: 'BTC Flow', dex: 'hyperliquid', status: 'draft',
   createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
 };
 const revision: StrategyRevision = {
@@ -15,8 +15,8 @@ const revision: StrategyRevision = {
   createdAt: '2026-09-05T00:00:00.000Z', approvedAt: '2026-09-05T00:01:00.000Z', nodes: [], edges: [],
 };
 const riskLimits: RiskLimits = {
-  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3, maxDailyLossUsd: '300',
-  maxDrawdownPercent: 12, allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3, maxDailyLossUsd: '300',
+  maxDrawdownPercent: 12, allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
 };
 const preflight: LivePreflightView = {
   id: '028f3f75-89ab-7def-8123-456789abcdef', botId: bot.id, strategyVersion: 2,
@@ -36,8 +36,8 @@ function deploymentApi(): CatbotsDesktopApi['deployments'] {
     prepareLive: vi.fn().mockResolvedValue(preflight),
     startLive: vi.fn().mockResolvedValue({
       id: '038f3f75-89ab-7def-8123-456789abcdef', botId: bot.id, strategyId: revision.strategyId,
-      strategyVersion: revision.version, mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: preflight.maskedAccount,
-      marketBindings: [bot.market], riskLimits, status: 'running', createdAt: preflight.checkedAt, updatedAt: preflight.checkedAt,
+      strategyVersion: revision.version, recordVersion: 2, dex: 'hyperliquid', mode: 'live', executionVenue: 'hyperliquid', network: 'testnet', maskedAccount: preflight.maskedAccount,
+      marketAccess: { mode: 'all_active_perpetuals' }, riskLimits, status: 'running', createdAt: preflight.checkedAt, updatedAt: preflight.checkedAt,
     }),
     getLive: vi.fn(), stopLive: vi.fn(), getActive: vi.fn().mockResolvedValue(null),
   };

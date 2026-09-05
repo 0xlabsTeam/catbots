@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge, Banner, Button, Input, LayerCard } from '@cloudflare/kumo';
 import { CheckCircleIcon, WarningDiamondIcon, XCircleIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi, Deployment, LivePreflightView, RiskLimits, StrategyRevision } from '@catbots/contracts';
+import { legacyMarketHint } from '../../legacy-contract-compat';
 
 export type LiveReviewScreenProps = Readonly<{
   bot: BotSummary;
@@ -76,7 +77,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
           </ReviewSection>
           <ReviewSection eyebrow="2 · STRATEGY" title={`${revision.name} · v${revision.version}`}>
             <DefinitionList rows={[
-              ['Bot', bot.name], ['Market', bot.market], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
+              ['Bot', bot.name], ['Market', legacyMarketHint(bot)], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
             ]} />
           </ReviewSection>
           <ReviewSection eyebrow="3 · RISK LIMITS" title="Hard execution boundaries">

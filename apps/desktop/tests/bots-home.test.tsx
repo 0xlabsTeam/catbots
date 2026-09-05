@@ -11,7 +11,7 @@ import { CreateDraftBotDialog } from '../src/renderer/screens/CreateDraftBotDial
 const draftBot: BotSummary = {
   id: '018f47a2-4a2a-7c5d-9b61-3a83f64406a8',
   name: 'BTC Flow',
-  market: 'BTC-PERP',
+  dex: 'hyperliquid',
   status: 'draft',
   createdAt: '2026-09-03T00:00:00.000Z',
   updatedAt: '2026-09-03T00:00:00.000Z',
@@ -21,7 +21,6 @@ const existingBot: BotSummary = {
   ...draftBot,
   id: '018f47a2-4a2a-7c5d-9b61-3a83f64406a9',
   name: 'ETH Flow',
-  market: 'ETH-PERP',
 };
 
 const redactedConfig: RedactedLocalConfig = {
@@ -72,7 +71,7 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
       stopPaper: vi.fn(),
       prepareLive: vi.fn(), startLive: vi.fn(), getLive: vi.fn(), stopLive: vi.fn(), getActive: vi.fn().mockResolvedValue(null),
     },
-    runtime: { getStatus: vi.fn(), subscribeStatus: vi.fn(() => () => undefined) },
+    runtime: { getStatus: vi.fn(), getDatabaseState: vi.fn().mockResolvedValue({ status: 'ready' }), subscribeStatus: vi.fn(() => () => undefined) },
   };
 }
 

@@ -54,14 +54,18 @@ function backtestSummary(revisionVersion: number, artifact: string): BacktestSum
       tradeCount: 5,
       fees: '12.34',
       funding: '-1.25',
+      endingEquity: '10420',
+      realizedPnl: '420',
     },
+    datasetCoverage: { markets: ['BTC-PERP'], from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+    perMarket: [{ market: 'BTC-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 }],
     equityCurve: [
       { timestamp: '2026-08-01T00:00:00.000Z', equity: '10000' },
       { timestamp: '2026-09-01T00:00:00.000Z', equity: '10420' },
     ],
     trades: [],
     warnings: ['Sample data is not live market data.'],
-    traces: [{ traceId: 'trace-1', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'Opened long' }],
+    traces: [{ traceId: 'trace-1', parentTraceId: 'run-1', market: 'BTC-PERP', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'Opened long' }],
     artifactHash: `sha256:${createHash('sha256').update(artifact).digest('hex')}`,
   };
 }

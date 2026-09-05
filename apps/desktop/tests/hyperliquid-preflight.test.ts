@@ -8,9 +8,9 @@ const account = '0x0123456789abcdef0123456789abcdef01234567';
 const agent = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
 const timestamp = '2026-09-05T00:00:00.000Z';
 const riskLimits: RiskLimits = {
-  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
   maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-  allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+  allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
 };
 
 function input() {

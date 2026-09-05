@@ -49,7 +49,7 @@ describe('web preview API', () => {
   it('simulates the complete workbench workflow without storing secrets', async () => {
     const api = createWebPreviewApi();
     await api.config.patchSettings(settings);
-    const bot = await api.bots.createDraft({ name: 'BTC Flow', market: 'BTC-PERP' });
+    const bot = await api.bots.createDraft({ name: 'BTC Flow', dex: 'hyperliquid' });
     const activities: string[] = [];
     const unsubscribe = api.workbench.subscribeActivity((activity) => activities.push(activity.phase));
 
@@ -57,6 +57,7 @@ describe('web preview API', () => {
     const backtest = await api.workbench.runBacktest({
       botId: bot.id,
       revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
       assumptions: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 3.5, slippageBps: 1 },
     });
     const trace = await api.workbench.getTrace({ botId: bot.id, traceId: backtest.traces[0]!.traceId });

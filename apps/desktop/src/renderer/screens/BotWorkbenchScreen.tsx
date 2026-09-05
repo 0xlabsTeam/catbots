@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Banner, Button, LayerCard, Tabs } from '@cloudflare/kumo';
 import type { AgentToolActivity, BotSummary, CatbotsDesktopApi, Deployment, PaperDeploymentView, RiskLimits, StrategyRevision, WorkbenchState } from '@catbots/contracts';
+import { legacyMarketHint } from '../../legacy-contract-compat';
 
 import { ChatPanel } from '../workbench/ChatPanel';
 import { BacktestPanel } from '../workbench/BacktestPanel';
@@ -117,7 +118,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       setDeployment(await deploymentApi.startPaper({
         botId: bot.id,
         strategyVersion: revision.version,
-        riskLimits: defaultRiskLimits(bot.market),
+        riskLimits: defaultRiskLimits(legacyMarketHint(bot)),
       }));
     } catch {
       setError('Paper deployment could not start. Check approval and risk limits.');
@@ -158,7 +159,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
     return <LiveReviewScreen
       bot={bot}
       revision={state.currentRevision}
-      riskLimits={defaultRiskLimits(bot.market)}
+      riskLimits={defaultRiskLimits(legacyMarketHint(bot))}
       api={deploymentApi}
       onBack={() => setReviewingLive(false)}
       onRunPaper={() => { setReviewingLive(false); void startPaper(); }}
@@ -290,11 +291,12 @@ function EmptyPaper({ title, description }: { title: string; description: string
   return <LayerCard className="workbench-empty"><h2>{title}</h2><p>{description}</p></LayerCard>;
 }
 
-function defaultRiskLimits(market: string): RiskLimits {
+function defaultRiskLimits(_market: string): RiskLimits {
   return {
     maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+    maxTotalExposureUsd: '5000',
     maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-    allowedMarkets: [market], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+    allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
   };
 }
 

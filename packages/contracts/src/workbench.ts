@@ -140,10 +140,7 @@ export const TraceSummarySchema = z.object({
   summary: z.string().trim().min(1).max(500),
 }).strict();
 
-export type TraceSummary = Omit<z.infer<typeof TraceSummarySchema>, 'parentTraceId' | 'market'> & {
-  parentTraceId?: string;
-  market?: string;
-};
+export type TraceSummary = z.infer<typeof TraceSummarySchema>;
 
 export const DatasetCoverageSchema = z.object({
   markets: UniqueMarketsSchema,
@@ -164,7 +161,7 @@ export const PerMarketBacktestMetricsSchema = z.object({
 
 export type PerMarketBacktestMetrics = z.infer<typeof PerMarketBacktestMetricsSchema>;
 
-const BacktestSummarySchemaBase = z.object({
+export const BacktestSummarySchema = z.object({
   id: z.string().uuid(),
   botId: BotIdSchema,
   revisionVersion: z.number().int().positive(),
@@ -183,17 +180,7 @@ const BacktestSummarySchemaBase = z.object({
   artifactHash: HashSchema,
 }).strict();
 
-export type BacktestSummary = Omit<z.infer<typeof BacktestSummarySchemaBase>, 'datasetCoverage' | 'perMarket' | 'metrics' | 'traces'> & {
-  metrics: Omit<z.infer<typeof BacktestMetricsSchema>, 'endingEquity' | 'realizedPnl'> & {
-    endingEquity?: string;
-    realizedPnl?: string;
-  };
-  datasetCoverage?: z.infer<typeof DatasetCoverageSchema>;
-  perMarket?: z.infer<typeof PerMarketBacktestMetricsSchema>[];
-  traces: TraceSummary[];
-};
-
-export const BacktestSummarySchema = BacktestSummarySchemaBase as unknown as z.ZodType<BacktestSummary>;
+export type BacktestSummary = z.infer<typeof BacktestSummarySchema>;
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.null(), z.boolean(), z.number().finite(), z.string(),
@@ -217,10 +204,7 @@ export const TraceDetailSchema = z.object({
   events: z.array(TraceEventViewSchema),
 }).strict();
 
-export type TraceDetail = Omit<z.infer<typeof TraceDetailSchema>, 'parentTraceId' | 'market'> & {
-  parentTraceId?: string;
-  market?: string;
-};
+export type TraceDetail = z.infer<typeof TraceDetailSchema>;
 
 export const WorkbenchStateSchema = z.object({
   bot: BotSummarySchema,
@@ -240,18 +224,14 @@ export const SendWorkbenchMessageInputSchema = z.object({
   botId: BotIdSchema,
   message: z.string().trim().min(1).max(20_000),
 }).strict();
-const RunWorkbenchBacktestInputSchemaBase = z.object({
+export const RunWorkbenchBacktestInputSchema = z.object({
   botId: BotIdSchema,
   revisionVersion: z.number().int().positive(),
   marketUniverse: BacktestMarketUniverseSchema,
   assumptions: BacktestAssumptionsViewSchema,
 }).strict();
 
-export type RunWorkbenchBacktestInput = Omit<z.infer<typeof RunWorkbenchBacktestInputSchemaBase>, 'marketUniverse'> & {
-  marketUniverse?: BacktestMarketUniverse;
-};
-
-export const RunWorkbenchBacktestInputSchema = RunWorkbenchBacktestInputSchemaBase as unknown as z.ZodType<RunWorkbenchBacktestInput>;
+export type RunWorkbenchBacktestInput = z.infer<typeof RunWorkbenchBacktestInputSchema>;
 export const ApproveStrategyRevisionInputSchema = z.object({
   botId: BotIdSchema,
   version: z.number().int().positive(),

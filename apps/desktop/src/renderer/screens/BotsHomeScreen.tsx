@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, Button, Empty, LayerCard, Table } from '@cloudflare/kumo';
 import { PlusIcon, RobotIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
+import { legacyMarketHint } from '../../legacy-contract-compat';
 import { StatusBadge } from '../components/StatusBadge';
 import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
@@ -113,7 +114,7 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
           {bots.map((bot) => (
             <Table.Row key={bot.id}>
               <Table.Cell><Button type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
-              <Table.Cell>{bot.market}</Table.Cell>
+              <Table.Cell>{legacyMarketHint(bot)}</Table.Cell>
               <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
               <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>
               <Table.Cell className="unavailable-metric" aria-label="PnL unavailable">PnL unavailable</Table.Cell>

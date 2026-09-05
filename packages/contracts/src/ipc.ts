@@ -85,7 +85,7 @@ export interface CatbotsDesktopApi {
   };
   runtime: {
     getStatus(): Promise<RuntimeStatus>;
-    getDatabaseState?(): Promise<DatabaseState>;
+    getDatabaseState(): Promise<DatabaseState>;
     subscribeStatus(listener: (status: RuntimeStatus) => void): () => void;
   };
 }

@@ -121,14 +121,14 @@ const settingsPatch = {
 const deploymentId = '028f3f75-89ab-7def-8123-456789abcdef';
 const botId = '018f3f75-89ab-7def-8123-456789abcdef';
 const riskLimits: RiskLimits = {
-  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
   maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-  allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+  allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
 };
 const paperView: PaperDeploymentView = {
   deployment: {
     id: deploymentId, botId, strategyId: 'btc-paper', strategyVersion: 1,
-    mode: 'paper', venue: 'paper', network: 'paper', marketBindings: ['BTC-PERP'],
+    recordVersion: 2, dex: 'hyperliquid', mode: 'paper', executionVenue: 'paper', marketAccess: { mode: 'all_active_perpetuals' },
     riskLimits, status: 'running', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
   },
   state: { equityUsd: '10000', positions: [], orders: [] },
@@ -141,7 +141,7 @@ const livePreflight: LivePreflightView = {
 };
 const liveDeployment: Deployment = {
   id: deploymentId, botId, strategyId: 'btc-paper', strategyVersion: 1,
-  mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: '0x0123…4567', marketBindings: ['BTC-PERP'],
+  recordVersion: 2, dex: 'hyperliquid', mode: 'live', executionVenue: 'hyperliquid', network: 'testnet', maskedAccount: '0x0123…4567', marketAccess: { mode: 'all_active_perpetuals' },
   riskLimits, status: 'running', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
 };
 

@@ -5,7 +5,9 @@ import {
   DeploymentSchema,
   type AuditEventView,
   type Deployment,
+  type LegacyDeployment,
 } from '@catbots/contracts';
+import { legacyDeploymentFields } from '../../legacy-contract-compat';
 import type { NormalizedOrderIntent } from '@catbots/execution-core';
 import type { AuditEvent } from '@catbots/strategy-runtime';
 
@@ -43,11 +45,12 @@ export type LiveActionProposal = Readonly<{
 
 type DeploymentRow = Record<string, unknown>;
 type OutboxRow = Record<string, unknown>;
+type LegacyDeploymentInput = Omit<LegacyDeployment, 'recordVersion'> & { recordVersion?: 1 };
 
 export class ExecutionRepository {
   constructor(private readonly database: Database.Database) {}
 
-  createDeployment(input: Deployment): Deployment {
+  createDeployment(input: Deployment | LegacyDeploymentInput): Deployment {
     const deployment = DeploymentSchema.parse(input);
     const revision = this.database.prepare(`
       SELECT strategy_id, status FROM strategy_revisions
@@ -56,6 +59,7 @@ export class ExecutionRepository {
     if (revision?.status !== 'approved' || revision.strategy_id !== deployment.strategyId) {
       throw new Error('Deployment requires the matching approved strategy revision');
     }
+    const legacy = legacyDeploymentFields(deployment);
     this.database.prepare(`
       INSERT INTO deployments (
         id, bot_id, strategy_id, strategy_version, mode, venue, network, masked_account,
@@ -67,10 +71,10 @@ export class ExecutionRepository {
       deployment.strategyId,
       deployment.strategyVersion,
       deployment.mode,
-      deployment.venue,
-      deployment.network,
+      legacy.venue,
+      legacy.network,
       deployment.mode === 'live' ? deployment.maskedAccount : null,
-      JSON.stringify(deployment.marketBindings),
+      JSON.stringify(legacy.marketBindings),
       JSON.stringify(deployment.riskLimits),
       deployment.status,
       deployment.createdAt,

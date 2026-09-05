@@ -6,8 +6,10 @@ import {
   type BotSummary,
   type CreateDraftBotInput,
 } from '@catbots/contracts';
+import { legacyMarketHint } from '../../legacy-contract-compat';
 
 export type Clock = () => Date;
+type LegacyCreateDraftInput = Readonly<{ name: string; market: string }>;
 
 type BotRow = {
   id: unknown;
@@ -24,7 +26,7 @@ export class BotRepository {
     private readonly clock: Clock = () => new Date(),
   ) {}
 
-  createDraft(input: CreateDraftBotInput): BotSummary {
+  createDraft(input: CreateDraftBotInput | LegacyCreateDraftInput): BotSummary {
     const draft = CreateDraftBotInputSchema.parse(input);
     const id = randomUUID();
     const timestamp = this.clock().toISOString();
@@ -32,7 +34,7 @@ export class BotRepository {
     this.database.prepare(`
       INSERT INTO bots (id, name, market, status, created_at, updated_at)
       VALUES (?, ?, ?, 'draft', ?, ?)
-    `).run(id, draft.name, draft.market, timestamp, timestamp);
+    `).run(id, draft.name, legacyMarketHint(draft), timestamp, timestamp);
 
     const row = this.database.prepare(`
       SELECT id, name, market, status, created_at, updated_at
@@ -61,7 +63,7 @@ function toBotSummary(row: unknown): BotSummary {
   return BotSummarySchema.parse({
     id: source.id,
     name: source.name,
-    market: source.market,
+    dex: 'hyperliquid',
     status: source.status,
     createdAt: source.created_at,
     updatedAt: source.updated_at,

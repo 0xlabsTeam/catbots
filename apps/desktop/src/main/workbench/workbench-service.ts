@@ -19,6 +19,8 @@ import {
   type TraceDetail,
   type WorkbenchState,
 } from '@catbots/contracts';
+
+import { legacyMarketHint } from '../../legacy-contract-compat';
 import { sanitizeAuditValue } from '@catbots/strategy-runtime';
 
 import { createAgentToolCatalog } from '../agent/agent-tools';
@@ -59,7 +61,7 @@ export class WorkbenchService {
     const onActivity = (activity: AgentToolActivity) => this.publish(activity);
     const tools = createAgentToolCatalog({
       botId: request.botId,
-      market: state.bot.market,
+      market: legacyMarketHint(state.bot),
       repository: this.dependencies.repository,
       clock: this.dependencies.clock,
       idFactory: this.dependencies.idFactory,
@@ -91,7 +93,7 @@ export class WorkbenchService {
       request.botId,
       request.revisionVersion,
       document,
-      state.bot.market,
+      legacyMarketHint(state.bot),
       request.assumptions,
       {
         clock: this.dependencies.clock,

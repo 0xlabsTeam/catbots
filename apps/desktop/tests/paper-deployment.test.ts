@@ -13,9 +13,9 @@ import { WorkbenchRepository } from '../src/main/workbench/workbench-repository'
 
 const now = '2026-09-05T08:15:00.000Z';
 const limits: RiskLimits = {
-  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
   maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-  allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+  allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
 };
 
 let database: Database.Database;

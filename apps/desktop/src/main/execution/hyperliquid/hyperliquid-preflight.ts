@@ -81,8 +81,9 @@ function maskAccount(value: string): string {
 }
 
 function riskLimitsReady(limits: RiskLimits): boolean {
-  return limits.allowedMarkets.length > 0 && limits.allowedSides.length > 0
+  return limits.allowedSides.length > 0
     && Number(limits.maxOrderUsd) > 0 && Number(limits.maxPositionUsd) >= Number(limits.maxOrderUsd)
+    && Number(limits.maxTotalExposureUsd) >= Number(limits.maxPositionUsd)
     && limits.maxLeverage > 0 && Number(limits.maxDailyLossUsd) > 0
     && limits.maxDrawdownPercent > 0 && limits.maxOrdersPerMinute > 0;
 }

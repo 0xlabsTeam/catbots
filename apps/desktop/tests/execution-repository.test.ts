@@ -48,6 +48,7 @@ function liveDeployment(): Deployment {
     botId,
     strategyId: 'btc-risk',
     strategyVersion: 1,
+    recordVersion: 1,
     mode: 'live',
     venue: 'hyperliquid',
     network: 'testnet',

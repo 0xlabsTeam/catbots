@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatbotsDesktopApi, PaperDeploymentView, WorkbenchState } from '@catbots/contracts';
+import type { CatbotsDesktopApi, PaperDeploymentView, RiskLimits, WorkbenchState } from '@catbots/contracts';
 
 vi.mock('../src/renderer/workbench/StrategyGraph', () => ({
   StrategyGraph: ({ revision, onSelectNode }: { revision: WorkbenchState['currentRevision']; onSelectNode(node: NonNullable<WorkbenchState['currentRevision']>['nodes'][number]): void }) => (
@@ -14,7 +14,7 @@ import { BotWorkbenchScreen } from '../src/renderer/screens/BotWorkbenchScreen';
 
 const state: WorkbenchState = {
   bot: {
-    id: '018f3f75-89ab-7def-8123-456789abcdef', name: 'BTC Flow', market: 'BTC-PERP', status: 'draft',
+    id: '018f3f75-89ab-7def-8123-456789abcdef', name: 'BTC Flow', dex: 'hyperliquid', status: 'draft',
     createdAt: '2026-09-04T00:00:00.000Z', updatedAt: '2026-09-04T00:00:00.000Z',
   },
   currentRevision: {
@@ -54,10 +54,10 @@ function api(): CatbotsDesktopApi['workbench'] {
 const paperView: PaperDeploymentView = {
   deployment: {
     id: '028f3f75-89ab-7def-8123-456789abcdef', botId: state.bot.id, strategyId: 'strategy', strategyVersion: 1,
-    mode: 'paper', venue: 'paper', network: 'paper', marketBindings: ['BTC-PERP'], status: 'running',
+    recordVersion: 2, dex: 'hyperliquid', mode: 'paper', executionVenue: 'paper', marketAccess: { mode: 'all_active_perpetuals' }, status: 'running',
     riskLimits: {
-      maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3, maxDailyLossUsd: '300',
-      maxDrawdownPercent: 12, allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+      maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3, maxDailyLossUsd: '300',
+      maxDrawdownPercent: 12, allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
     },
     createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
   },
@@ -156,7 +156,7 @@ describe('BotWorkbenchScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Run Paper' }));
     expect(paperApi.startPaper).toHaveBeenCalledWith(expect.objectContaining({
       botId: state.bot.id, strategyVersion: 1,
-      riskLimits: expect.objectContaining({ allowedMarkets: ['BTC-PERP'] }),
+      riskLimits: expect.objectContaining({ maxTotalExposureUsd: '5000' }),
     }));
     expect(await screen.findByText('Paper running')).toBeTruthy();
 
@@ -175,8 +175,8 @@ describe('BotWorkbenchScreen', () => {
     const liveApi = deploymentApi();
     const liveDeployment = {
       id: '038f3f75-89ab-7def-8123-456789abcdef', botId: state.bot.id, strategyId: 'strategy', strategyVersion: 1,
-      mode: 'live' as const, venue: 'hyperliquid' as const, network: 'testnet' as const, maskedAccount: '0x0123…4567',
-      marketBindings: ['BTC-PERP'], riskLimits: paperView.deployment.riskLimits, status: 'running' as const,
+      recordVersion: 2 as const, dex: 'hyperliquid' as const, mode: 'live' as const, executionVenue: 'hyperliquid' as const, network: 'testnet' as const, maskedAccount: '0x0123…4567',
+      marketAccess: { mode: 'all_active_perpetuals' as const }, riskLimits: paperView.deployment.riskLimits as RiskLimits, status: 'running' as const,
       createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
     };
     vi.mocked(liveApi.getActive).mockResolvedValue(liveDeployment);

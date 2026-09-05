@@ -51,6 +51,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
   },
   runtime: {
     getStatus: () => ipcRenderer.invoke('runtime:get-status'),
+    getDatabaseState: () => ipcRenderer.invoke('runtime:get-database-state'),
     subscribeStatus: (listener: (status: RuntimeStatus) => void): (() => void) => {
       runtimeListeners.add(listener);
       void ipcRenderer.invoke('runtime:get-status').then((status: RuntimeStatus) => {

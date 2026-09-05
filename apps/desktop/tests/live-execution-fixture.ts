@@ -44,6 +44,7 @@ export function createLiveFixture(): LiveFixture {
   const repository = new ExecutionRepository(database);
   const deployment: Deployment = {
     id: liveDeploymentId, botId, strategyId: 'btc-risk', strategyVersion: 1,
+    recordVersion: 1,
     mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: '0x1234…cdef',
     marketBindings: ['BTC-PERP'], status: 'running', createdAt: liveNow, updatedAt: liveNow,
     riskLimits: {

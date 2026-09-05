@@ -191,7 +191,7 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         const view: PaperDeploymentView = {
           deployment: {
             id, botId: request.botId, strategyId: revision.strategyId, strategyVersion: request.strategyVersion,
-            mode: 'paper', venue: 'paper', network: 'paper', marketBindings: [bot.market], riskLimits: request.riskLimits,
+            recordVersion: 2, dex: bot.dex, mode: 'paper', executionVenue: 'paper', marketAccess: { mode: 'all_active_perpetuals' }, riskLimits: request.riskLimits,
             status: 'running', createdAt: timestamp, updatedAt: timestamp,
           },
           state: { equityUsd: '10000', positions: [], orders: [] },
@@ -251,8 +251,8 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         const timestamp = new Date().toISOString();
         const deployment: Deployment = {
           id: crypto.randomUUID(), botId: bot.id, strategyId: revision.strategyId, strategyVersion: revision.version,
-          mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: preflight.maskedAccount,
-          marketBindings: [bot.market], riskLimits: request.riskLimits, status: 'running', createdAt: timestamp, updatedAt: timestamp,
+          recordVersion: 2, dex: bot.dex, mode: 'live', executionVenue: 'hyperliquid', network: 'testnet', maskedAccount: preflight.maskedAccount,
+          marketAccess: { mode: 'all_active_perpetuals' }, riskLimits: request.riskLimits, status: 'running', createdAt: timestamp, updatedAt: timestamp,
         };
         liveDeployments.set(deployment.id, deployment);
         return structuredClone(deployment);
@@ -282,6 +282,7 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
     },
     runtime: {
       getStatus: async () => ({ state: 'stopped', activeBots: 0 }),
+      getDatabaseState: async () => ({ status: 'ready' }),
       subscribeStatus: () => () => undefined,
     },
   };
@@ -333,6 +334,8 @@ function previewBacktest(botId: string, revisionVersion: number, assumptions: Ba
   const traceId = `preview-flow-v${revisionVersion}`;
   const trace: TraceDetail = {
     traceId,
+    parentTraceId: `preview-run-v${revisionVersion}`,
+    market: 'BTC-PERP',
     outcome: 'executed',
     events: [
       { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'hourly', summary: 'hourly trigger received', details: {} },
@@ -351,14 +354,16 @@ function previewBacktest(botId: string, revisionVersion: number, assumptions: Ba
       startedAt,
       completedAt: new Date().toISOString(),
       assumptions,
-      metrics: { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25' },
+      metrics: { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' },
+      datasetCoverage: { markets: ['BTC-PERP'], from: assumptions.from, to: assumptions.to },
+      perMarket: [{ market: 'BTC-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 }],
       equityCurve: [
         { timestamp: assumptions.from, equity: assumptions.startingCapital },
         { timestamp: assumptions.to, equity: String(Number(assumptions.startingCapital) * 1.042) },
       ],
       trades: [],
       warnings: ['Bundled sample data is synthetic and is not live market data.'],
-      traces: [{ traceId, outcome: 'executed', occurredAt: assumptions.from, summary: 'sample order flow completed' }],
+      traces: [{ traceId, parentTraceId: `preview-run-v${revisionVersion}`, market: 'BTC-PERP', outcome: 'executed', occurredAt: assumptions.from, summary: 'sample order flow completed' }],
       artifactHash: `sha256:${'b'.repeat(64)}`,
     },
   };
