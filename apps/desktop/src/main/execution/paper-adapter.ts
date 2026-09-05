@@ -6,10 +6,11 @@ import {
   type OpenPositionIntent,
   type PerpPosition,
 } from '@catbots/execution-core';
-import type { LegacyRiskLimits } from '@catbots/contracts';
+import type { DexId, LegacyRiskLimits, RiskLimits } from '@catbots/contracts';
 import type {
   EvaluationContext,
   ExecutionTraceEvent,
+  MarketUniverseSnapshot,
   ProposedEffect,
   RuntimeExecutionPort,
 } from '@catbots/strategy-runtime';
@@ -29,33 +30,83 @@ type MutablePaperState = {
   outcomes: Map<string, readonly ExecutionTraceEvent[]>;
 };
 
+type LegacyPaperAdapterInput = Readonly<{
+  deploymentId: string;
+  strategyId: string;
+  strategyVersion: number;
+  market: string;
+  riskLimits: LegacyRiskLimits;
+}>;
+
+export type PaperMarketUniverseSnapshot = MarketUniverseSnapshot;
+
+type DynamicPaperAdapterInput = Readonly<{
+  recordVersion: 2;
+  deploymentId: string;
+  strategyId: string;
+  strategyVersion: number;
+  botDex: DexId;
+  deploymentDex: DexId;
+  riskLimits: RiskLimits;
+  universe: PaperMarketUniverseSnapshot;
+  universeFresh: boolean;
+}>;
+
+export type PaperEvaluationIdentity = Readonly<{
+  dex: DexId;
+  currentMarket: string;
+  universeRevision: string;
+}>;
+
+type PaperUniverseState = Readonly<{
+  universe: PaperMarketUniverseSnapshot;
+  fresh: boolean;
+}>;
+
 export class PaperAdapter implements RuntimeExecutionPort {
   private committed: MutablePaperState = {
     equityUsd: '10000', positions: [], orders: [], recentOrderTimestamps: [], outcomes: new Map(),
   };
   private staged: MutablePaperState | undefined;
+  private currentUniverse: PaperUniverseState | undefined;
+  private stagedUniverse: PaperUniverseState | undefined;
+  private evaluationIdentity: PaperEvaluationIdentity | undefined;
 
-  constructor(private readonly input: Readonly<{
-    deploymentId: string;
-    strategyId: string;
-    strategyVersion: number;
-    market: string;
-    riskLimits: LegacyRiskLimits;
-  }>) {}
+  constructor(private readonly input: LegacyPaperAdapterInput | DynamicPaperAdapterInput) {
+    if (isDynamic(input)) {
+      this.assertUniverseDex(input.universe);
+      this.currentUniverse = freezeUniverse(input.universe, input.universeFresh);
+    }
+  }
 
-  beginEvaluation(): void {
+  beginEvaluation(identity?: PaperEvaluationIdentity): void {
     if (this.staged !== undefined) throw new Error('Paper evaluation is already active');
+    if (isDynamic(this.input) && identity === undefined) throw new Error('Dynamic Paper evaluation identity is required');
+    if (!isDynamic(this.input) && identity !== undefined) throw new Error('Legacy Paper evaluation does not accept dynamic identity');
     this.staged = cloneState(this.committed);
+    this.stagedUniverse = this.currentUniverse;
+    this.evaluationIdentity = identity === undefined ? undefined : Object.freeze({ ...identity });
   }
 
   commitEvaluation(): void {
     if (this.staged === undefined) throw new Error('Paper evaluation is not active');
     this.committed = this.staged;
     this.staged = undefined;
+    this.stagedUniverse = undefined;
+    this.evaluationIdentity = undefined;
   }
 
   rollbackEvaluation(): void {
     this.staged = undefined;
+    this.stagedUniverse = undefined;
+    this.evaluationIdentity = undefined;
+  }
+
+  updateMarketUniverse(input: Readonly<{ universe: PaperMarketUniverseSnapshot; fresh: boolean }>): void {
+    if (!isDynamic(this.input)) throw new Error('Legacy Paper deployment has a fixed market');
+    if (this.staged !== undefined) throw new Error('Cannot replace the Paper universe during an evaluation');
+    this.assertUniverseDex(input.universe);
+    this.currentUniverse = freezeUniverse(input.universe, input.fresh);
   }
 
   execute(effect: ProposedEffect, context: EvaluationContext): Readonly<{ events: readonly ExecutionTraceEvent[] }> {
@@ -67,31 +118,34 @@ export class PaperAdapter implements RuntimeExecutionPort {
     if (intent === undefined) return remember(state, effect.idempotencyKey, [
       { type: 'risk.rejected', metadata: { violatedRuleIds: ['risk-state-unavailable'] } },
     ]);
-    const decision = evaluateRisk({
-      intent,
-      limits: this.input.riskLimits,
-      account: {
-        equityUsd: state.equityUsd,
-        dailyRealizedPnlUsd: '0',
-        drawdownPercent: 0,
-        positions: state.positions.map(({ market, notionalUsd }) => ({ market, notionalUsd })),
-        recentOrderTimestamps: state.recentOrderTimestamps,
-        accountKillSwitchActive: false,
-        botKillSwitchActive: false,
-      },
-      evaluatedAt: context.evaluatedAt,
-    });
+    const account = {
+      equityUsd: state.equityUsd,
+      dailyRealizedPnlUsd: '0',
+      drawdownPercent: 0,
+      positions: state.positions.map(({ market, side, notionalUsd }) => ({ market, side, notionalUsd })),
+      recentOrderTimestamps: state.recentOrderTimestamps,
+      accountKillSwitchActive: false,
+      botKillSwitchActive: false,
+    };
+    const decision = isDynamic(this.input)
+      ? this.evaluateDynamicRisk(intent, effect, context, account)
+      : evaluateRisk({
+        intent,
+        limits: this.input.riskLimits,
+        account,
+        evaluatedAt: context.evaluatedAt,
+      });
     if (!decision.approved) return remember(state, effect.idempotencyKey, [
       { type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } },
     ]);
-    const price = paperPrice(context, this.input.market);
+    const price = paperPrice(context, intent.market);
     if (price === undefined) return remember(state, effect.idempotencyKey, [
       { type: 'risk.approved', metadata: { evaluator: 'paper.risk-engine' } },
       { type: 'execution.queued', metadata: { clientOrderId: intent.clientOrderId } },
       { type: 'execution.rejected', metadata: { code: 'MARKET_PRICE_UNAVAILABLE' } },
     ]);
     const order = Object.freeze({ ...intent, status: 'filled' as const, filledAt: context.evaluatedAt });
-    applyFill(state, order, price);
+    applyFill(state, order, price, isDynamic(this.input));
     state.orders.push(order);
     state.recentOrderTimestamps.push(context.evaluatedAt);
     return remember(state, effect.idempotencyKey, [
@@ -109,6 +163,49 @@ export class PaperAdapter implements RuntimeExecutionPort {
       positions: Object.freeze(this.committed.positions.map((position) => Object.freeze({ ...position }))),
       orders: Object.freeze(this.committed.orders.map((order) => Object.freeze({ ...order }))),
     });
+  }
+
+  private evaluateDynamicRisk(
+    intent: NormalizedOrderIntent,
+    effect: ProposedEffect,
+    context: EvaluationContext,
+    account: Parameters<typeof evaluateRisk>[0]['account'],
+  ) {
+    const deployment = this.input;
+    const identity = this.evaluationIdentity;
+    const universeState = this.stagedUniverse;
+    if (!isDynamic(deployment) || identity === undefined || universeState === undefined) {
+      return { approved: false as const, violatedRuleIds: ['risk-state-unavailable'] as const };
+    }
+    const selected = universeState.universe.markets.find(({ symbol }) => symbol === effect.market);
+    const metadata = selected === undefined ? undefined : {
+      market: selected.symbol,
+      active: selected.active,
+      sizeDecimals: selected.sizeDecimals,
+      maximumLeverage: selected.maximumLeverage,
+    };
+    return evaluateRisk({
+      intent,
+      limits: deployment.riskLimits,
+      account,
+      botDex: deployment.botDex,
+      deploymentDex: deployment.deploymentDex,
+      evaluationDex: identity.dex,
+      currentMarket: context.currentMarket,
+      effectMarket: effect.market,
+      evaluationUniverseRevision: identity.universeRevision,
+      marketMetadataRevision: universeState.universe.revision,
+      marketMetadataDex: universeState.universe.dex,
+      marketMetadata: metadata,
+      universeFresh: universeState.fresh,
+      evaluatedAt: context.evaluatedAt,
+    });
+  }
+
+  private assertUniverseDex(universe: PaperMarketUniverseSnapshot): void {
+    if (!isDynamic(this.input) || universe.dex !== this.input.botDex || this.input.deploymentDex !== this.input.botDex) {
+      throw new Error('Paper DEX identity mismatch');
+    }
   }
 }
 
@@ -129,8 +226,9 @@ function toIntent(
   const orderId = clientOrderId(identity);
   if (effect.type === 'execution.close_position') {
     const percent = typeof effect.config.percent === 'number' ? effect.config.percent : 100;
-    return percent > 0 && percent <= 100
-      ? { type: 'close_position', market: deployment.market, percent, clientOrderId: orderId }
+    const market = isDynamic(deployment) ? effect.market : deployment.market;
+    return typeof percent === 'number'
+      ? { type: 'close_position', market, percent, clientOrderId: orderId }
       : undefined;
   }
   if (effect.type !== 'execution.open_position') return undefined;
@@ -143,7 +241,7 @@ function toIntent(
     : size.type === 'equity_percent' ? Number(equityUsd) * size.value / 100 : Number.NaN;
   if (!Number.isFinite(notional) || notional <= 0) return undefined;
   return {
-    type: 'open_position', market: deployment.market, side, orderType: 'market',
+    type: 'open_position', market: isDynamic(deployment) ? effect.market : deployment.market, side, orderType: 'market',
     notionalUsd: decimal(notional), leverage, clientOrderId: orderId,
   } satisfies OpenPositionIntent;
 }
@@ -157,8 +255,25 @@ function paperPrice(context: EvaluationContext, market: string): number | undefi
   return price !== undefined && Number.isFinite(price) && price > 0 ? price : undefined;
 }
 
-function applyFill(state: MutablePaperState, order: PaperOrder, price: number): void {
+function applyFill(state: MutablePaperState, order: PaperOrder, price: number, aggregateByMarket: boolean): void {
   if (order.type === 'open_position') {
+    const existing = aggregateByMarket
+      ? state.positions.find(({ market }) => market === order.market)
+      : undefined;
+    if (existing !== undefined) {
+      if (existing.side !== order.side) throw new Error('Paper risk approved an implicit position flip');
+      const existingQuantity = Number(existing.quantity);
+      const addedQuantity = Number(order.notionalUsd) / price;
+      const nextQuantity = existingQuantity + addedQuantity;
+      state.positions[state.positions.indexOf(existing)] = {
+        ...existing,
+        notionalUsd: decimal(Number(existing.notionalUsd) + Number(order.notionalUsd)),
+        quantity: decimal(nextQuantity),
+        entryPrice: decimal((Number(existing.notionalUsd) + Number(order.notionalUsd)) / nextQuantity),
+        leverage: order.leverage,
+      };
+      return;
+    }
     state.positions.push({
       market: order.market,
       side: order.side,
@@ -201,4 +316,20 @@ function cloneState(source: MutablePaperState): MutablePaperState {
 
 function decimal(value: number): string {
   return Number(value.toFixed(8)).toString();
+}
+
+function isDynamic(
+  input: LegacyPaperAdapterInput | DynamicPaperAdapterInput,
+): input is DynamicPaperAdapterInput {
+  return 'recordVersion' in input && input.recordVersion === 2;
+}
+
+function freezeUniverse(universe: PaperMarketUniverseSnapshot, fresh: boolean): PaperUniverseState {
+  return Object.freeze({
+    fresh,
+    universe: Object.freeze({
+      ...universe,
+      markets: Object.freeze(universe.markets.map((market) => Object.freeze({ ...market }))),
+    }),
+  });
 }

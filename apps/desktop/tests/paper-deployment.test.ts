@@ -7,6 +7,7 @@ import { createEvaluationContext, parseStrategyDocument } from '@catbots/strateg
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { DeploymentService } from '../src/main/execution/deployment-service';
 import { ExecutionRepository } from '../src/main/execution/execution-repository';
+import { PaperAdapter } from '../src/main/execution/paper-adapter';
 import { openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
 import { WorkbenchRepository } from '../src/main/workbench/workbench-repository';
@@ -71,6 +72,82 @@ function service() {
     clock: () => new Date(now),
     idFactory: randomUUID,
   });
+}
+
+function dynamicPaperAdapter(totalExposure = '5000') {
+  return new PaperAdapter({
+    recordVersion: 2,
+    deploymentId: randomUUID(),
+    strategyId: 'dynamic-paper',
+    strategyVersion: 1,
+    botDex: 'hyperliquid',
+    deploymentDex: 'hyperliquid',
+    riskLimits: { ...limits, maxTotalExposureUsd: totalExposure, maxOrdersPerMinute: 10 },
+    universe: {
+      dex: 'hyperliquid',
+      revision: 'sha256:universe-1',
+      observedAt: now,
+      markets: [
+        {
+          symbol: 'ETH-PERP', active: true,
+          sizeDecimals: 4, maximumLeverage: 50,
+        },
+      ],
+    },
+    universeFresh: true,
+  });
+}
+
+function dynamicContext(market: string, evaluatedAt = now) {
+  return createEvaluationContext({
+    evaluatedAt,
+    currentMarket: market,
+    values: {
+      'market.price': {
+        value: { market, bid: 99, ask: 101, mark: 100 },
+        provider: 'paper.fixture', observedAt: evaluatedAt, freshnessSeconds: 0,
+        quality: { status: 'verified' }, integrityHash: `sha256:price:${market}`,
+      },
+    },
+  });
+}
+
+function openEffect(market: string, key: string, notionalUsd = 500) {
+  return {
+    nodeId: 'open',
+    type: 'execution.open_position',
+    version: 1,
+    market,
+    config: { side: 'long', size: { type: 'quote', value: notionalUsd }, leverage: 2 },
+    idempotencyKey: key,
+  } as const;
+}
+
+function closeEffect(market: string, key: string, percent = 100) {
+  return {
+    nodeId: 'close',
+    type: 'execution.close_position',
+    version: 1,
+    market,
+    config: { percent },
+    idempotencyKey: key,
+  } as const;
+}
+
+function executeDynamic(
+  adapter: PaperAdapter,
+  effect: ReturnType<typeof openEffect> | ReturnType<typeof closeEffect>,
+  revision: string,
+  evaluatedAt = now,
+) {
+  adapter.beginEvaluation({
+    dex: 'hyperliquid',
+    currentMarket: effect.market,
+    universeRevision: revision,
+  });
+  const result = adapter.execute(effect, dynamicContext(effect.market, evaluatedAt));
+  adapter.commitEvaluation();
+  return result;
 }
 
 describe('Paper deployment', () => {
@@ -219,5 +296,123 @@ describe('Paper deployment', () => {
     })).toThrow(/forced paper audit failure/i);
     expect(deployments.getPaperState(deployment.id).orders).toEqual([]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 0 });
+  });
+});
+
+describe('Dynamic-market Paper adapter', () => {
+  it('uses effect.market and keeps positions and orders market-keyed as the DEX snapshot refreshes', () => {
+    const adapter = dynamicPaperAdapter();
+    executeDynamic(adapter, openEffect('ETH-PERP', 'effect:eth'), 'sha256:universe-1');
+    executeDynamic(
+      adapter,
+      openEffect('ETH-PERP', 'effect:eth-increase', 200),
+      'sha256:universe-1',
+      '2026-09-05T08:15:30.000Z',
+    );
+    adapter.updateMarketUniverse({
+      universe: {
+        dex: 'hyperliquid',
+        revision: 'sha256:universe-2',
+        observedAt: '2026-09-05T08:16:00.000Z',
+        markets: [
+          {
+            symbol: 'ETH-PERP', active: true,
+            sizeDecimals: 4, maximumLeverage: 50,
+          },
+          {
+            symbol: 'BTC-PERP', active: true,
+            sizeDecimals: 5, maximumLeverage: 40,
+          },
+        ],
+      },
+      fresh: true,
+    });
+    executeDynamic(
+      adapter,
+      openEffect('BTC-PERP', 'effect:btc'),
+      'sha256:universe-2',
+      '2026-09-05T08:16:00.000Z',
+    );
+
+    expect(adapter.snapshot().positions.map(({ market }) => market).sort()).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(adapter.snapshot().positions.find(({ market }) => market === 'ETH-PERP')?.notionalUsd).toBe('700');
+    expect(adapter.snapshot().orders.map(({ market }) => market)).toEqual(['ETH-PERP', 'ETH-PERP', 'BTC-PERP']);
+  });
+
+  it('allows a true reduction after delisting but rejects an inactive increase and an over-close', () => {
+    const adapter = dynamicPaperAdapter();
+    executeDynamic(adapter, openEffect('ETH-PERP', 'effect:open'), 'sha256:universe-1');
+    adapter.updateMarketUniverse({
+      universe: {
+        dex: 'hyperliquid',
+        revision: 'sha256:universe-2',
+        observedAt: '2026-09-05T08:16:00.000Z',
+        markets: [{
+          symbol: 'ETH-PERP', active: false,
+          sizeDecimals: 4, maximumLeverage: 50,
+        }],
+      },
+      fresh: true,
+    });
+
+    expect(executeDynamic(
+      adapter,
+      openEffect('ETH-PERP', 'effect:inactive-open'),
+      'sha256:universe-2',
+      '2026-09-05T08:16:00.000Z',
+    ).events).toContainEqual({ type: 'risk.rejected', metadata: { violatedRuleIds: ['market-inactive'] } });
+    expect(executeDynamic(
+      adapter,
+      closeEffect('ETH-PERP', 'effect:over-close', 101),
+      'sha256:universe-2',
+      '2026-09-05T08:17:00.000Z',
+    ).events).toContainEqual({ type: 'risk.rejected', metadata: { violatedRuleIds: ['reduction-unproven'] } });
+    expect(executeDynamic(
+      adapter,
+      closeEffect('ETH-PERP', 'effect:close'),
+      'sha256:universe-2',
+      '2026-09-05T08:18:00.000Z',
+    ).events.map(({ type }) => type)).toContain('execution.filled');
+    expect(adapter.snapshot().positions).toEqual([]);
+  });
+
+  it('shares portfolio exposure across markets and rejects a mismatched evaluation revision', () => {
+    const adapter = dynamicPaperAdapter('700');
+    executeDynamic(adapter, openEffect('ETH-PERP', 'effect:eth'), 'sha256:universe-1');
+    adapter.updateMarketUniverse({
+      universe: {
+        dex: 'hyperliquid',
+        revision: 'sha256:universe-2',
+        observedAt: '2026-09-05T08:16:00.000Z',
+        markets: [
+          {
+            symbol: 'ETH-PERP', active: true,
+            sizeDecimals: 4, maximumLeverage: 50,
+          },
+          {
+            symbol: 'BTC-PERP', active: true,
+            sizeDecimals: 5, maximumLeverage: 40,
+          },
+        ],
+      },
+      fresh: true,
+    });
+
+    expect(executeDynamic(
+      adapter,
+      openEffect('BTC-PERP', 'effect:btc'),
+      'sha256:universe-2',
+      '2026-09-05T08:16:00.000Z',
+    ).events).toContainEqual({
+      type: 'risk.rejected', metadata: { violatedRuleIds: ['max-total-exposure-usd'] },
+    });
+    expect(executeDynamic(
+      adapter,
+      openEffect('BTC-PERP', 'effect:stale-child'),
+      'sha256:universe-1',
+      '2026-09-05T08:17:00.000Z',
+    ).events).toContainEqual({
+      type: 'risk.rejected', metadata: { violatedRuleIds: ['market-metadata-stale'] },
+    });
   });
 });
