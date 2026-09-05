@@ -2,6 +2,9 @@ import type { JsonValue } from './strategy-schema';
 
 export type AuditEventType =
   | 'trigger.received'
+  | 'universe.resolved'
+  | 'market.evaluation_started'
+  | 'market.evaluation_completed'
   | 'context.resolution_started'
   | 'context.resolved'
   | 'context.failed'

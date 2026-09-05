@@ -48,6 +48,7 @@ type RuntimeEvaluationRequestBase = Readonly<{
   triggerInput: TriggerInput;
   deployment: Readonly<{ id: string; mode: 'backtest' | 'paper' | 'live' }>;
   execution: RuntimeExecutionPort;
+  traceId?: string;
 }>;
 
 export type RuntimeEvaluationRequest = RuntimeEvaluationRequestBase & (
@@ -103,7 +104,8 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
   }
 
   const idempotencyKey = deriveTriggerIdempotencyKey(triggerNodeId, triggerInput);
-  const traceId = `trace:${compiled.document.strategy.id}:v${compiled.document.strategy.version}:${idempotencyKey}`;
+  const traceId = request.traceId
+    ?? `trace:${compiled.document.strategy.id}:v${compiled.document.strategy.version}:${idempotencyKey}`;
   const evaluationTime = context?.evaluatedAt ?? triggerTime(triggerInput);
   const trace = new AuditTraceBuilder({
     traceId,

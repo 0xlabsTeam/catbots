@@ -241,6 +241,22 @@ describe('evaluateTrigger', () => {
     expect(JSON.stringify(evaluateTrigger(request))).toBe(JSON.stringify(evaluateTrigger(request)));
   });
 
+  it('uses a coordinator-supplied deterministic trace ID without losing evaluation audit detail', () => {
+    const request = {
+      compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
+      context: context(25), deployment: { id: 'backtest-1', mode: 'backtest' as const },
+      execution: filledExecution(),
+    };
+    const standalone = evaluateTrigger(request);
+    const coordinated = evaluateTrigger({ ...request, traceId: 'parent-trace:market:BTC-PERP' });
+
+    expect(coordinated.traceId).toBe('parent-trace:market:BTC-PERP');
+    expect(coordinated.trace.every(({ traceId }) => traceId === coordinated.traceId)).toBe(true);
+    expect(coordinated.trace.map(({ type, nodeId, details }) => ({ type, nodeId, details }))).toEqual(
+      standalone.trace.map(({ type, nodeId, details }) => ({ type, nodeId, details })),
+    );
+  });
+
   it('ends every trace with exactly one terminal flow event when execution rejects', () => {
     const result = evaluateTrigger({
       compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
