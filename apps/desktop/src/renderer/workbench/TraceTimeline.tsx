@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, LayerCard } from '@cloudflare/kumo';
 import type { CatbotsDesktopApi, TraceDetail, TraceSummary } from '@catbots/contracts';
 
-export function TraceTimeline({ botId, revisionVersion, traces, api }: {
+export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api }: {
+  backtestId: string;
   botId: string;
   revisionVersion: number;
   traces: readonly TraceSummary[];
@@ -22,7 +23,7 @@ export function TraceTimeline({ botId, revisionVersion, traces, api }: {
     setSelectedTraceId(null);
     setDetail(null);
     setError(false);
-  }, [botId, revisionVersion, traceSetKey]);
+  }, [backtestId, botId, revisionVersion, traceSetKey]);
   const inspect = async (traceId: string) => {
     const request = ++requestSequence.current;
     setError(false);

@@ -98,7 +98,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
             {selected.trades.map((trade) => <Table.Row key={trade.traceId}><Table.Cell><code>{trade.traceId}</code></Table.Cell><Table.Cell>{trade.market}</Table.Cell><Table.Cell>{trade.side}</Table.Cell><Table.Cell>{trade.realizedPnl}</Table.Cell></Table.Row>)}
           </Table.Body></Table></LayerCard>}
           {selected.warnings.map((warning) => <div key={warning} role="alert"><Banner variant="alert" title="Backtest assumption" description={warning} /></div>)}
-          <TraceTimeline botId={botId} revisionVersion={selected.revisionVersion} traces={selected.traces} api={api} />
+          <TraceTimeline backtestId={selected.id} botId={botId} revisionVersion={selected.revisionVersion} traces={selected.traces} api={api} />
         </div>
       )}
     </section>

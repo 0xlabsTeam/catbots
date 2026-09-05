@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Banner, Button, Input, LayerCard, Select } from '@cloudflare/kumo';
-import type { BotSummary, RiskLimits, StrategyRevision } from '@catbots/contracts';
+import { RiskLimitsSchema, type BotSummary, type RiskLimits, type StrategyRevision } from '@catbots/contracts';
 
-import { DeploymentScopeSummary } from '../workbench/DeploymentScopeSummary';
+import { DeploymentScopeSummary, isDynamicDeploymentEligible } from '../workbench/DeploymentScopeSummary';
 
 export type PaperReviewScreenProps = Readonly<{
   bot: BotSummary;
@@ -27,22 +27,37 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
   const [form, setForm] = useState<RiskForm>(() => toForm(initialRiskLimits));
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const riskLimits = fromForm(form);
-  const validationError = validate(riskLimits);
+  const validation = validate(form);
 
   const update = (field: keyof RiskForm, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const start = async () => {
-    if (validationError !== null) return;
+    if (!isDynamicDeploymentEligible(revision) || validation.riskLimits === null) return;
     setStarting(true);
     setError(null);
     try {
-      await onStart(riskLimits);
+      await onStart(validation.riskLimits);
     } catch {
       setError('Paper deployment could not start. Check approval and risk limits.');
     } finally {
       setStarting(false);
     }
   };
+
+  if (!isDynamicDeploymentEligible(revision)) {
+    return (
+      <main className="live-review" aria-labelledby="paper-upgrade-title">
+        <header className="live-review-header">
+          <div><p className="eyebrow">PAPER EXECUTION REVIEW</p><h1 id="paper-upgrade-title">Upgrade required for Paper</h1></div>
+          <Button type="button" variant="secondary" onClick={onCancel}>Back to bot</Button>
+        </header>
+        <LayerCard className="live-review-section deployment-upgrade-card">
+          <h2>Strategy 2.0 dynamic scope required</h2>
+          <DeploymentScopeSummary dex={bot.dex} revision={revision} freshness="Universe data freshness is unavailable for this legacy revision." />
+          <p>Create and approve a Strategy 2.0 dynamic-market revision in Chat before reviewing Paper deployment.</p>
+        </LayerCard>
+      </main>
+    );
+  }
 
   return (
     <main className="live-review" aria-labelledby="paper-review-title">
@@ -59,7 +74,7 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
           <LayerCard className="live-review-section">
             <p className="eyebrow">1 · STRATEGY AND SCOPE</p>
             <h2>{revision.name} · v{revision.version}</h2>
-            <DeploymentScopeSummary freshness="Universe data freshness is unavailable before Paper starts." />
+            <DeploymentScopeSummary dex={bot.dex} revision={revision} freshness="Universe data freshness is unavailable before Paper starts." />
             <dl className="live-definition-list">
               <div><dt>Bot</dt><dd>{bot.name}</dd></div>
               <div><dt>Execution</dt><dd>Local Paper simulation</dd></div>
@@ -73,23 +88,23 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
             <h2>Portfolio boundaries</h2>
             <p>These limits apply across every market evaluated by this deployment.</p>
             <div className="paper-risk-form">
-              <Input type="number" min="0" id="paper-max-order" label="Max order (USD)" value={form.maxOrderUsd} onChange={(event) => update('maxOrderUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" id="paper-max-position" label="Max position (USD)" value={form.maxPositionUsd} onChange={(event) => update('maxPositionUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" id="paper-max-total-exposure" label="Max total exposure (USD)" value={form.maxTotalExposureUsd} onChange={(event) => update('maxTotalExposureUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" step="0.1" id="paper-max-leverage" label="Max leverage" value={form.maxLeverage} onChange={(event) => update('maxLeverage', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" id="paper-max-daily-loss" label="Max daily loss (USD)" value={form.maxDailyLossUsd} onChange={(event) => update('maxDailyLossUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" step="0.1" id="paper-max-drawdown" label="Max drawdown (%)" value={form.maxDrawdownPercent} onChange={(event) => update('maxDrawdownPercent', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="0" step="any" id="paper-max-order" label="Max order (USD)" value={form.maxOrderUsd} error={validation.fieldErrors.maxOrderUsd} onChange={(event) => update('maxOrderUsd', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="0" step="any" id="paper-max-position" label="Max position (USD)" value={form.maxPositionUsd} error={validation.fieldErrors.maxPositionUsd} onChange={(event) => update('maxPositionUsd', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="0" step="any" id="paper-max-total-exposure" label="Max total exposure (USD)" value={form.maxTotalExposureUsd} error={validation.fieldErrors.maxTotalExposureUsd} onChange={(event) => update('maxTotalExposureUsd', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="1" max="50" step="1" id="paper-max-leverage" label="Max leverage" value={form.maxLeverage} error={validation.fieldErrors.maxLeverage} onChange={(event) => update('maxLeverage', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="0" step="any" id="paper-max-daily-loss" label="Max daily loss (USD)" value={form.maxDailyLossUsd} error={validation.fieldErrors.maxDailyLossUsd} onChange={(event) => update('maxDailyLossUsd', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="0" max="100" step="any" id="paper-max-drawdown" label="Max drawdown (%)" value={form.maxDrawdownPercent} error={validation.fieldErrors.maxDrawdownPercent} onChange={(event) => update('maxDrawdownPercent', event.currentTarget.value)} disabled={starting} />
               <Select<RiskForm['allowedSides']> label="Allowed sides" value={form.allowedSides} onValueChange={(value) => { if (value !== null) update('allowedSides', value); }} disabled={starting}>
                 <Select.Option value="both">Long and short</Select.Option>
                 <Select.Option value="long">Long only</Select.Option>
                 <Select.Option value="short">Short only</Select.Option>
               </Select>
-              <Input type="number" min="1" step="1" id="paper-order-rate" label="Max orders per minute" value={form.maxOrdersPerMinute} onChange={(event) => update('maxOrdersPerMinute', event.currentTarget.value)} disabled={starting} />
+              <Input type="number" min="1" max="600" step="1" id="paper-order-rate" label="Max orders per minute" value={form.maxOrdersPerMinute} error={validation.fieldErrors.maxOrdersPerMinute} onChange={(event) => update('maxOrdersPerMinute', event.currentTarget.value)} disabled={starting} />
             </div>
-            {validationError === null ? null : <p className="paper-risk-error" role="alert">{validationError}</p>}
+            {validation.riskLimits === null ? <p className="paper-risk-error" role="alert">Review the highlighted risk limits before starting Paper.</p> : null}
             <div className="live-confirm-actions">
               <Button type="button" variant="secondary" disabled={starting} onClick={onCancel}>Cancel</Button>
-              <Button type="button" variant="primary" disabled={validationError !== null} loading={starting} onClick={() => void start()}>Start Paper</Button>
+              <Button type="button" variant="primary" disabled={validation.riskLimits === null} loading={starting} onClick={() => void start()}>Start Paper</Button>
             </div>
           </LayerCard>
         </aside>
@@ -111,8 +126,11 @@ function toForm(limits: RiskLimits): RiskForm {
   };
 }
 
-function fromForm(form: RiskForm): RiskLimits {
-  return {
+function validate(form: RiskForm): Readonly<{
+  riskLimits: RiskLimits | null;
+  fieldErrors: Partial<Record<keyof RiskForm, string>>;
+}> {
+  const parsed = RiskLimitsSchema.safeParse({
     maxOrderUsd: form.maxOrderUsd,
     maxPositionUsd: form.maxPositionUsd,
     maxTotalExposureUsd: form.maxTotalExposureUsd,
@@ -121,16 +139,34 @@ function fromForm(form: RiskForm): RiskLimits {
     maxDrawdownPercent: Number(form.maxDrawdownPercent),
     allowedSides: form.allowedSides === 'both' ? ['long', 'short'] : [form.allowedSides],
     maxOrdersPerMinute: Number(form.maxOrdersPerMinute),
-  };
+  });
+  if (!parsed.success) {
+    const fieldErrors: Partial<Record<keyof RiskForm, string>> = {};
+    for (const issue of parsed.error.issues) {
+      const field = issue.path[0];
+      if (typeof field === 'string' && field in riskFieldMessages && fieldErrors[field as keyof RiskForm] === undefined) {
+        fieldErrors[field as keyof RiskForm] = riskFieldMessages[field as keyof typeof riskFieldMessages];
+      }
+    }
+    return { riskLimits: null, fieldErrors };
+  }
+  if (Number(parsed.data.maxPositionUsd) < Number(parsed.data.maxOrderUsd)) {
+    return { riskLimits: null, fieldErrors: { maxPositionUsd: 'Max position must be at least the max order.' } };
+  }
+  if (Number(parsed.data.maxTotalExposureUsd) < Number(parsed.data.maxPositionUsd)) {
+    return { riskLimits: null, fieldErrors: { maxTotalExposureUsd: 'Max total exposure must be at least the max position.' } };
+  }
+  return { riskLimits: parsed.data, fieldErrors: {} };
 }
 
-function validate(limits: RiskLimits): string | null {
-  const positive = [limits.maxOrderUsd, limits.maxPositionUsd, limits.maxTotalExposureUsd, limits.maxDailyLossUsd]
-    .every((value) => value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0);
-  if (!positive || !Number.isFinite(limits.maxLeverage) || limits.maxLeverage <= 0 || !Number.isFinite(limits.maxDrawdownPercent) || limits.maxDrawdownPercent <= 0 || !Number.isInteger(limits.maxOrdersPerMinute) || limits.maxOrdersPerMinute <= 0) {
-    return 'Enter positive values for every risk limit.';
-  }
-  if (Number(limits.maxPositionUsd) < Number(limits.maxOrderUsd)) return 'Max position must be at least the max order.';
-  if (Number(limits.maxTotalExposureUsd) < Number(limits.maxPositionUsd)) return 'Max total exposure must be at least the max position.';
-  return null;
-}
+const positiveAmountError = 'Enter a positive decimal amount without separators.';
+const riskFieldMessages = {
+  maxOrderUsd: positiveAmountError,
+  maxPositionUsd: positiveAmountError,
+  maxTotalExposureUsd: positiveAmountError,
+  maxLeverage: 'Max leverage must be a whole number from 1 to 50.',
+  maxDailyLossUsd: positiveAmountError,
+  maxDrawdownPercent: 'Max drawdown must be greater than 0 and at most 100.',
+  allowedSides: 'Choose at least one allowed side.',
+  maxOrdersPerMinute: 'Order rate must be a whole number from 1 to 600.',
+} as const;

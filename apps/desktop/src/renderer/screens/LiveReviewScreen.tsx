@@ -3,7 +3,7 @@ import { Badge, Banner, Button, Input, LayerCard } from '@cloudflare/kumo';
 import { CheckCircleIcon, WarningDiamondIcon, XCircleIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi, Deployment, LivePreflightView, RiskLimits, StrategyRevision } from '@catbots/contracts';
 
-import { DeploymentScopeSummary } from '../workbench/DeploymentScopeSummary';
+import { DeploymentScopeSummary, isDynamicDeploymentEligible } from '../workbench/DeploymentScopeSummary';
 
 export type LiveReviewScreenProps = Readonly<{
   bot: BotSummary;
@@ -24,6 +24,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isDynamicDeploymentEligible(revision)) return;
     let active = true;
     setPreparing(true);
     void api.prepareLive({ botId: bot.id, strategyVersion: revision.version, network: 'testnet', riskLimits })
@@ -31,7 +32,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
       .catch(() => { if (active) setError('Live preflight could not be completed.'); })
       .finally(() => { if (active) setPreparing(false); });
     return () => { active = false; };
-  }, [api, bot.id, revision.version, riskLimits]);
+  }, [api, bot.id, revision, riskLimits]);
 
   const start = async () => {
     if (preflight?.ready !== true || confirmation !== bot.name) return;
@@ -61,6 +62,21 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
     : freshnessCheck?.ok === true
       ? `Universe data is fresh. ${freshnessCheck.message}`
       : `Universe data is stale or unavailable. ${freshnessCheck?.message ?? 'Freshness was not reported.'}`;
+  if (!isDynamicDeploymentEligible(revision)) {
+    return (
+      <main className="live-review" aria-labelledby="live-upgrade-title">
+        <header className="live-review-header">
+          <div><p className="eyebrow">LIVE EXECUTION SAFETY GATE</p><h1 id="live-upgrade-title">Upgrade required for Live</h1></div>
+          <Button type="button" variant="secondary" onClick={onBack}>Back to bot</Button>
+        </header>
+        <LayerCard className="live-review-section deployment-upgrade-card">
+          <h2>Strategy 2.0 dynamic scope required</h2>
+          <DeploymentScopeSummary dex={bot.dex} revision={revision} freshness="Universe data freshness is unavailable for this legacy revision." />
+          <p>Create and approve a Strategy 2.0 dynamic-market revision in Chat before reviewing Live deployment.</p>
+        </LayerCard>
+      </main>
+    );
+  }
   return (
     <main className="live-review" aria-labelledby="live-review-title">
       <header className="live-review-header">
@@ -83,7 +99,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
             ]} />
           </ReviewSection>
           <ReviewSection eyebrow="2 · STRATEGY" title={`${revision.name} · v${revision.version}`}>
-            <DeploymentScopeSummary freshness={freshnessSummary} stale={freshnessCheck?.ok === false} />
+            <DeploymentScopeSummary dex={bot.dex} revision={revision} freshness={freshnessSummary} stale={freshnessCheck?.ok === false} />
             <DefinitionList rows={[
               ['Bot', bot.name], ['Strategy revision', `v${revision.version}`], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
             ]} />

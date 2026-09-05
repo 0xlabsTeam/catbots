@@ -141,3 +141,57 @@ Results before the final post-report rerun:
 - No Fix Round 1 blocker remains.
 - A Strategy 1.0 revision without a trusted migrated market hint is labeled `Fixed market · unavailable`; it is never widened to dynamic scope.
 - Paper cannot claim universe freshness before its runtime has started because the current review contract exposes no pre-start universe snapshot. The review says it is unavailable rather than inventing a fresh state.
+
+## Fix Round 2 — Backtest identity, deployment eligibility, and shared risk validation
+
+Addressed the three follow-up P2 findings.
+
+- `TraceTimeline` now receives the selected Backtest ID as part of its reset identity. A distinct run clears expanded parent, selected market, detail, and error even if every trace summary field is identical, and the existing request sequence prevents late responses from repopulating the new run.
+- Deployment review eligibility is now one shared predicate: the selected revision must be approved, Strategy schema 2.0, and DEX-universe scoped. Workbench Paper and Live actions are absent for approved Strategy 1.0 revisions, and the Paper start handler also enforces the predicate before IPC.
+- Approved legacy revisions show concise upgrade guidance pointing back to the existing Chat → new revision → approval workflow. The truthful fixed market remains visible; all-active market access is never shown.
+- Live review defensively skips preflight for ineligible revisions and presents the same upgrade boundary if invoked directly. The shared deployment scope summary now derives DEX and market access from the supplied bot and revision instead of hardcoding dynamic access.
+- Paper risk validation now delegates the complete candidate to `RiskLimitsSchema`, retains the shared exact parsed object for submission, and layers only the portfolio ordering checks on top. Static field-safe messages avoid surfacing schema internals.
+- Number controls match contract boundaries: leverage is an integer from 1–50, drawdown is positive and at most 100, and order rate is an integer from 1–600. Decimal USD amounts remain exact strings with arbitrary decimal steps. Invalid values display field feedback plus a safe summary, disable Start, and never reach IPC.
+
+### Fix Round 2 RED / GREEN evidence
+
+- Backtest identity RED: changing only `backtestId` left the previous parent expanded and allowed its state to remain. GREEN: Backtest/trace `5/5`, including rejection reset and a deferred response after two identical-summary run switches.
+- Deployment eligibility RED: approved Strategy 1.0 exposed both deployment actions, and direct Live review preflighted and described all-active access. GREEN: Workbench plus Live review `10/10`; legacy scope is fixed-market and no deployment/preflight call occurs.
+- Risk-boundary RED: the Paper form advertised leverage minimum 0 and accepted schema-invalid fractional leverage, drawdown above 100, and order rate above 600. GREEN: invalid examples `2.5`, `101`, and `601` are blocked; valid upper edges `50`, `100`, and `600` submit the exact full object.
+
+### Fix Round 2 final verification (Node 22)
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/contracts exec vitest run src/execution.test.ts src/workbench.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/workbench-repository.test.ts tests/workbench-service.test.ts tests/strategy-graph.test.tsx tests/backtest-panel.test.tsx tests/bot-workbench.test.tsx tests/live-review.test.tsx tests/renderer-theme.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+git diff --check
+```
+
+Results before the final post-report focused rerun:
+
+- Contracts: 2 files / 20 tests passed.
+- Focused repository, service, UI, and renderer-theme gate: 7 files / 35 tests passed.
+- Full desktop suite: 40 files passed, 1 skipped; 339 tests passed, 1 opt-in LM Studio test skipped.
+- Workspace typecheck: contracts, strategy-runtime, execution-core, and desktop passed.
+- Diff whitespace check passed.
+
+### Fix Round 2 changed files
+
+- `apps/desktop/src/renderer/workbench/BacktestPanel.tsx`
+- `apps/desktop/src/renderer/workbench/TraceTimeline.tsx`
+- `apps/desktop/src/renderer/workbench/DeploymentScopeSummary.tsx`
+- `apps/desktop/src/renderer/screens/BotWorkbenchScreen.tsx`
+- `apps/desktop/src/renderer/screens/LiveReviewScreen.tsx`
+- `apps/desktop/src/renderer/screens/PaperReviewScreen.tsx`
+- `apps/desktop/src/renderer/app.css`
+- `apps/desktop/tests/backtest-panel.test.tsx`
+- `apps/desktop/tests/bot-workbench.test.tsx`
+- `apps/desktop/tests/live-review.test.tsx`
+
+### Fix Round 2 compatibility and concerns
+
+- No Fix Round 2 blocker remains.
+- Legacy running deployments retain their pause/stop or emergency-stop controls; the eligibility gate only prevents creating new deployments from legacy revisions.
+- Paper freshness remains explicitly unavailable until the runtime starts because no pre-start universe snapshot is present in the renderer contract.

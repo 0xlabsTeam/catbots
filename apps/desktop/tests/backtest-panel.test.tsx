@@ -160,12 +160,12 @@ describe('BacktestPanel', () => {
       parentTraceId: 'trace:s:v1:deployment:d:trigger:event:event-2:dex:hyperliquid:universe:bundled%3Anext',
       market: 'SOL-PERP', outcome: 'skipped', occurredAt: '2026-08-03T00:00:00.000Z', summary: 'flow skipped',
     }];
-    const { rerender } = render(<TraceTimeline botId={botId} revisionVersion={1} traces={firstTraces} api={traceApi} />);
+    const { rerender } = render(<TraceTimeline backtestId="backtest-1" botId={botId} revisionVersion={1} traces={firstTraces} api={traceApi} />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: /interval run/i }));
     await user.click(screen.getByRole('button', { name: /ETH-PERP/ }));
-    rerender(<TraceTimeline botId={botId} revisionVersion={1} traces={nextTraces} api={traceApi} />);
+    rerender(<TraceTimeline backtestId="backtest-1" botId={botId} revisionVersion={1} traces={nextTraces} api={traceApi} />);
 
     expect(screen.getByRole('button', { name: /event run/i }).getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('button', { name: /ETH-PERP/ })).toBeNull();
@@ -174,5 +174,34 @@ describe('BacktestPanel', () => {
       traceId: 'trace-2', parentTraceId: firstTraces[0]!.parentTraceId, market: 'ETH-PERP', outcome: 'executed', events: [],
     }));
     expect(screen.queryByRole('heading', { name: 'ETH-PERP evaluation' })).toBeNull();
+  });
+
+  it('resets trace navigation and ignores deferred responses when identical summaries belong to another Backtest', async () => {
+    let resolveTrace: ((detail: TraceDetail) => void) | undefined;
+    const pendingTrace = new Promise<TraceDetail>((resolve) => { resolveTrace = resolve; });
+    const traceApi = { getTrace: vi.fn()
+      .mockRejectedValueOnce(new Error('old run failed'))
+      .mockReturnValueOnce(pendingTrace) };
+    const { rerender } = render(<TraceTimeline backtestId="backtest-a" botId={botId} revisionVersion={1} traces={backtest.traces} api={traceApi} />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /interval run/i }));
+    await user.click(screen.getByRole('button', { name: /BTC-PERP/ }));
+    expect(await screen.findByText('This trace could not be loaded.')).toBeTruthy();
+
+    rerender(<TraceTimeline backtestId="backtest-b" botId={botId} revisionVersion={1} traces={backtest.traces} api={traceApi} />);
+    expect(screen.getByRole('button', { name: /interval run/i }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('This trace could not be loaded.')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /interval run/i }));
+    await user.click(screen.getByRole('button', { name: /ETH-PERP/ }));
+    rerender(<TraceTimeline backtestId="backtest-c" botId={botId} revisionVersion={1} traces={backtest.traces} api={traceApi} />);
+    await act(async () => resolveTrace?.({
+      traceId: 'trace-2', parentTraceId: backtest.traces[0]!.parentTraceId, market: 'ETH-PERP', outcome: 'executed', events: [],
+    }));
+
+    expect(screen.getByRole('button', { name: /interval run/i }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('heading', { name: 'ETH-PERP evaluation' })).toBeNull();
+    expect(screen.queryByText('This trace could not be loaded.')).toBeNull();
   });
 });

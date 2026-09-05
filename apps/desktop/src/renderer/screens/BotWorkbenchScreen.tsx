@@ -7,6 +7,7 @@ import { BacktestPanel } from '../workbench/BacktestPanel';
 import { InspectorPanel } from '../workbench/InspectorPanel';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
+import { isDynamicDeploymentEligible } from '../workbench/DeploymentScopeSummary';
 import { LiveReviewScreen } from './LiveReviewScreen';
 import { PaperReviewScreen } from './PaperReviewScreen';
 
@@ -112,7 +113,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
   };
   const startPaper = async (riskLimits: RiskLimits) => {
     const revision = state?.currentRevision;
-    if (revision?.status !== 'approved') return;
+    if (!isDynamicDeploymentEligible(revision)) return;
     setChangingDeployment(true);
     setError(null);
     try {
@@ -158,7 +159,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
   if (state === null) {
     return <section className="workbench-loading" role="status">{error ?? 'Loading bot workspace…'}</section>;
   }
-  if (reviewingLive && state.currentRevision !== null) {
+  if (reviewingLive && isDynamicDeploymentEligible(state.currentRevision)) {
     return <LiveReviewScreen
       bot={bot}
       revision={state.currentRevision}
@@ -170,7 +171,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       onOpenSettings={onOpenSettings}
     />;
   }
-  if (reviewingPaper && state.currentRevision !== null) {
+  if (reviewingPaper && isDynamicDeploymentEligible(state.currentRevision)) {
     return <PaperReviewScreen
       bot={bot}
       revision={state.currentRevision}
@@ -234,6 +235,8 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
 }>) {
   const status = deployment?.deployment.status;
   const liveStatus = liveDeployment?.mode === 'live' ? liveDeployment.status : undefined;
+  const canReviewDeployment = isDynamicDeploymentEligible(revision);
+  const legacyApproved = revision?.status === 'approved' && !canReviewDeployment;
   return (
     <LayerCard className="paper-controls">
       <div>
@@ -242,16 +245,17 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
         <p>{liveStatus === 'running' ? 'Hyperliquid testnet · risk checks and every flow event are logged.' : 'Local simulation · risk checks and every flow event are logged.'}</p>
       </div>
       <div className="paper-control-actions">
+        {legacyApproved ? <div className="deployment-upgrade-note"><Badge variant="info">Upgrade required</Badge><span>Create and approve a Strategy 2.0 dynamic-market revision in Chat.</span></div> : null}
         {status === 'running' ? <Badge variant="success">Paper running</Badge> : null}
         {liveStatus === 'running' ? <Badge variant="error">Live · Hyperliquid testnet</Badge> : null}
-        {(status === undefined || status === 'stopped') && revision?.status === 'approved'
+        {(status === undefined || status === 'stopped') && canReviewDeployment
           ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
           : null}
         {status === 'running' ? <Button type="button" variant="secondary" disabled={changing} onClick={onPause}>Pause</Button> : null}
         {status === 'running' || status === 'paused'
           ? <Button type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
           : null}
-        {revision?.status === 'approved' && liveStatus !== 'running'
+        {canReviewDeployment && liveStatus !== 'running'
           ? <Button type="button" variant="secondary" disabled={changing || status === 'running'} onClick={onReviewLive}>Review Live</Button>
           : null}
         {liveStatus === 'running'

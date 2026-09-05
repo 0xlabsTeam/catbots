@@ -909,6 +909,9 @@ h2 {
 .paper-review-grid { grid-template-columns: minmax(0, .8fr) minmax(26rem, 1.2fr); }
 .paper-risk-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .875rem; margin-block: 1rem; }
 .paper-risk-error { margin-bottom: .75rem; color: var(--text-color-kumo-danger); font-size: .8125rem; }
+.deployment-upgrade-note { display: flex; align-items: center; gap: .5rem; max-width: 25rem; color: var(--text-color-kumo-subtle); font-size: .75rem; line-height: 1.4; }
+.deployment-upgrade-card { width: min(100%, 40rem); margin-top: 1rem; }
+.deployment-upgrade-card > p:last-child { margin-top: 1rem; color: var(--text-color-kumo-subtle); line-height: 1.5; }
 .live-section-note { margin-top: .6rem; color: var(--text-color-kumo-subtle); font-size: .75rem; line-height: 1.45; }
 .live-definition-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
 .live-definition-list > div { display: grid; gap: .25rem; padding: .75rem; border: 1px solid var(--color-kumo-line); border-radius: .5rem; background: var(--color-kumo-canvas); }

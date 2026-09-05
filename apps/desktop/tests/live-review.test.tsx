@@ -95,4 +95,20 @@ describe('LiveReviewScreen', () => {
     expect((screen.getByRole('button', { name: 'Start Live' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('link', { name: 'Open settings' })).toBeTruthy();
   });
+
+  it('does not preflight or expose dynamic access for an approved legacy fixed-market revision', () => {
+    const api = deploymentApi();
+    const legacyRevision = {
+      ...revision,
+      schemaVersion: '1.0' as const,
+      marketScope: { type: 'legacy_fixed' as const, market: 'BTC-PERP' },
+    };
+    render(<LiveReviewScreen bot={bot} revision={legacyRevision} riskLimits={riskLimits} api={api} onBack={vi.fn()} onRunPaper={vi.fn()} onStarted={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Upgrade required for Live' })).toBeTruthy();
+    expect(screen.getByText('Market access: Fixed market · BTC-PERP')).toBeTruthy();
+    expect(screen.queryByText('Market access: All active perpetual markets')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start Live' })).toBeNull();
+    expect(api.prepareLive).not.toHaveBeenCalled();
+  });
 });

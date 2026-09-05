@@ -169,14 +169,48 @@ describe('BotWorkbenchScreen', () => {
     expect(paperApi.startPaper).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Run Paper' }));
+    const leverage = screen.getByLabelText('Max leverage');
+    const drawdown = screen.getByLabelText('Max drawdown (%)');
+    const orderRate = screen.getByLabelText('Max orders per minute');
+    const startPaper = screen.getByRole('button', { name: 'Start Paper' });
+    expect(leverage.getAttribute('min')).toBe('1');
+    expect(leverage.getAttribute('max')).toBe('50');
+    expect(leverage.getAttribute('step')).toBe('1');
+    expect(drawdown.getAttribute('max')).toBe('100');
+    expect(orderRate.getAttribute('max')).toBe('600');
+
+    await user.clear(leverage);
+    await user.type(leverage, '2.5');
+    expect(screen.getByText('Max leverage must be a whole number from 1 to 50.')).toBeTruthy();
+    expect((startPaper as HTMLButtonElement).disabled).toBe(true);
+    await user.click(startPaper);
+    expect(paperApi.startPaper).not.toHaveBeenCalled();
+    await user.clear(leverage);
+    await user.type(leverage, '50');
+
+    await user.clear(drawdown);
+    await user.type(drawdown, '101');
+    expect(screen.getByText('Max drawdown must be greater than 0 and at most 100.')).toBeTruthy();
+    expect((startPaper as HTMLButtonElement).disabled).toBe(true);
+    await user.clear(drawdown);
+    await user.type(drawdown, '100');
+
+    await user.clear(orderRate);
+    await user.type(orderRate, '601');
+    expect(screen.getByText('Order rate must be a whole number from 1 to 600.')).toBeTruthy();
+    expect(screen.getByText('Review the highlighted risk limits before starting Paper.')).toBeTruthy();
+    expect((startPaper as HTMLButtonElement).disabled).toBe(true);
+    await user.clear(orderRate);
+    await user.type(orderRate, '600');
     await user.clear(screen.getByLabelText('Max total exposure (USD)'));
     await user.type(screen.getByLabelText('Max total exposure (USD)'), '6000');
-    await user.click(screen.getByRole('button', { name: 'Start Paper' }));
+    expect((startPaper as HTMLButtonElement).disabled).toBe(false);
+    await user.click(startPaper);
     expect(paperApi.startPaper).toHaveBeenCalledWith(expect.objectContaining({
       botId: state.bot.id, strategyVersion: 1,
       riskLimits: {
-        maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '6000', maxLeverage: 3,
-        maxDailyLossUsd: '300', maxDrawdownPercent: 12, allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+        maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '6000', maxLeverage: 50,
+        maxDailyLossUsd: '300', maxDrawdownPercent: 100, allowedSides: ['long', 'short'], maxOrdersPerMinute: 600,
       },
     }));
     expect(await screen.findByText('Paper running')).toBeTruthy();
@@ -208,5 +242,26 @@ describe('BotWorkbenchScreen', () => {
     expect(await screen.findByRole('button', { name: 'Stop Live' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Stop Live' }));
     expect(liveApi.stopLive).toHaveBeenCalledWith({ deploymentId: liveDeployment.id });
+  });
+
+  it('requires an approved Strategy 2.0 revision before Paper or Live review', async () => {
+    const workbenchApi = api();
+    workbenchApi.get = vi.fn().mockResolvedValue({
+      ...state,
+      currentRevision: {
+        ...state.currentRevision!, status: 'approved', approvedAt: '2026-09-05T00:00:00.000Z',
+        schemaVersion: '1.0', marketScope: { type: 'legacy_fixed', market: 'BTC-PERP' },
+      },
+    });
+    const deployApi = deploymentApi();
+    render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={deployApi} onBack={vi.fn()} />);
+
+    expect(await screen.findByText('Upgrade required')).toBeTruthy();
+    expect(screen.getByText(/create and approve a Strategy 2.0 dynamic-market revision in Chat/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Run Paper' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review Live' })).toBeNull();
+    expect(screen.queryByText('All active perpetual markets')).toBeNull();
+    expect(deployApi.startPaper).not.toHaveBeenCalled();
+    expect(deployApi.prepareLive).not.toHaveBeenCalled();
   });
 });
