@@ -27,12 +27,7 @@ export class HyperliquidAdapter implements PerpDexAdapter {
   }>) {}
 
   async getMarkets(signal: AbortSignal): Promise<readonly PerpMarket[]> {
-    const generation = ++this.nextMetaGeneration;
-    const meta = await this.options.client.getMeta(signal);
-    if (generation > this.publishedMetaGeneration) {
-      this.meta = meta;
-      this.publishedMetaGeneration = generation;
-    }
+    const meta = await this.fetchAndPublishMeta(signal);
     return meta.universe.map(({ name, szDecimals, maxLeverage, isDelisted }) => ({
       market: toCatbotsMarket(name),
       baseAsset: name,
@@ -133,8 +128,18 @@ export class HyperliquidAdapter implements PerpDexAdapter {
   }
 
   private async getMeta(signal: AbortSignal): Promise<HyperliquidMeta> {
-    this.meta ??= await this.options.client.getMeta(signal);
-    return this.meta;
+    return this.meta ?? this.fetchAndPublishMeta(signal);
+  }
+
+  private async fetchAndPublishMeta(signal: AbortSignal): Promise<HyperliquidMeta> {
+    const generation = ++this.nextMetaGeneration;
+    const response = await this.options.client.getMeta(signal);
+    if (generation > this.publishedMetaGeneration) {
+      this.meta = response;
+      this.publishedMetaGeneration = generation;
+      return response;
+    }
+    return this.meta!;
   }
 
   private async resolveMarket(market: string, signal: AbortSignal): Promise<{ asset: number; coin: string; szDecimals: number }> {

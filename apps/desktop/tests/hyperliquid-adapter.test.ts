@@ -103,6 +103,48 @@ describe('HyperliquidAdapter', () => {
     expect(api.placeOrder).toHaveBeenCalledWith(expect.objectContaining({ size: '0.12' }), signal);
   });
 
+  it('makes a pending lazy order and later orders use newer concurrently refreshed metadata', async () => {
+    const olderLazy = deferred<Awaited<ReturnType<HyperliquidClientPort['getMeta']>>>();
+    const newerMarkets = deferred<Awaited<ReturnType<HyperliquidClientPort['getMeta']>>>();
+    const api = client({
+      getMeta: vi.fn()
+        .mockReturnValueOnce(olderLazy.promise)
+        .mockReturnValueOnce(newerMarkets.promise),
+      getAllMids: vi.fn().mockResolvedValue({ ETH: '100' }),
+    });
+    const adapter = new HyperliquidAdapter({ client: api });
+    const order = (clientOrderId: string) => ({
+      type: 'open_position' as const,
+      market: 'ETH-PERP',
+      side: 'long' as const,
+      orderType: 'market' as const,
+      notionalUsd: '12.345',
+      leverage: 2,
+      clientOrderId,
+    });
+
+    const pendingOrder = adapter.placeOrder(order('cb_lazy_overlap'), signal);
+    const marketRefresh = adapter.getMarkets(signal);
+    newerMarkets.resolve({
+      universe: [{ name: 'ETH', szDecimals: 2, maxLeverage: 50, isDelisted: true }],
+    });
+    await marketRefresh;
+    olderLazy.resolve({ universe: [{ name: 'ETH', szDecimals: 5, maxLeverage: 50 }] });
+
+    await pendingOrder;
+    await adapter.placeOrder(order('cb_after_overlap'), signal);
+    expect(api.placeOrder).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ size: '0.12' }),
+      signal,
+    );
+    expect(api.placeOrder).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ size: '0.12' }),
+      signal,
+    );
+  });
+
   it('queries the master account and normalizes balances and signed positions', async () => {
     const api = client();
     const adapter = new HyperliquidAdapter({ client: api });
