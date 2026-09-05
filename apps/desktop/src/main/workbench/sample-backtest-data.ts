@@ -1,17 +1,40 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  runSingleMarketBacktest,
+  BacktestSummarySchema,
+  type BacktestAssumptionsViewSchema,
+  type BacktestMarketUniverse,
+  type BacktestSummary,
+  type DexId,
+} from '@catbots/contracts';
+import {
+  runBacktest,
   type AuditEvent,
   type BacktestAssumptions,
-  type LegacyBacktestInput,
+  type BacktestInput,
   type EvaluationValue,
   type JsonValue,
+  type MarketUniverseSnapshot,
   type StrategyDocument,
 } from '@catbots/strategy-runtime';
-import { BacktestSummarySchema, type BacktestAssumptionsViewSchema, type BacktestSummary } from '@catbots/contracts';
 import type { z } from 'zod';
 
 type PublicAssumptions = z.infer<typeof BacktestAssumptionsViewSchema>;
+
+export type BundledSampleDatasetCatalog = Readonly<{
+  dex: DexId;
+  markets: readonly string[];
+  from: string;
+  to: string;
+  limitations: string;
+}>;
+
+export const bundledSampleDatasetCatalog: BundledSampleDatasetCatalog = Object.freeze({
+  dex: 'hyperliquid',
+  markets: Object.freeze(['BTC-PERP', 'ETH-PERP']),
+  from: '2026-08-01T00:00:00.000Z',
+  to: '2026-09-01T00:00:00.000Z',
+  limitations: 'Bundled synthetic coverage includes only BTC-PERP and ETH-PERP; it does not represent every Hyperliquid market.',
+});
 
 export type SampleBacktestDependencies = Readonly<{
   clock?: () => Date;
@@ -24,25 +47,33 @@ export function runBundledSampleBacktest(
   botId: string,
   revisionVersion: number,
   strategy: StrategyDocument,
-  market: string,
+  dex: DexId,
+  marketUniverse: BacktestMarketUniverse,
   assumptions: PublicAssumptions,
   dependencies: SampleBacktestDependencies = {},
 ): { summary: BacktestSummary; artifact: string } {
+  if (dex !== bundledSampleDatasetCatalog.dex) {
+    throw new Error('Bundled sample dataset does not cover the selected DEX');
+  }
   const startedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
-  const result = runSingleMarketBacktest({
+  const result = runBacktest({
     strategy,
-    market,
+    marketUniverse,
+    datasetCoverage: {
+      markets: bundledSampleDatasetCatalog.markets,
+      from: bundledSampleDatasetCatalog.from,
+      to: bundledSampleDatasetCatalog.to,
+    },
     range: { from: assumptions.from, to: assumptions.to },
     assumptions: toRuntimeAssumptions(assumptions),
-    inputs: sampleInputs(strategy, market, assumptions),
+    inputs: buildSampleInputs(strategy, assumptions),
     shouldCancel: dependencies.shouldCancel,
     onProgress: (progress) => dependencies.onProgress?.(progress.completed, progress.total),
   });
   const completedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
   const artifactHash = `sha256:${createHash('sha256').update(result.serializedArtifact).digest('hex')}`;
   const id = (dependencies.idFactory ?? randomUUID)();
-  const realizedPnl = result.trades.reduce((total, trade) => total + Number(trade.realizedPnl ?? '0'), 0).toString();
-  const endingEquity = result.equityCurve.at(-1)?.equity ?? assumptions.startingCapital;
+  const childTraces = result.traces.flatMap(({ children }) => children.map(({ evaluation }) => evaluation.trace));
   const summary = BacktestSummarySchema.parse({
     id,
     botId,
@@ -52,22 +83,19 @@ export function runBundledSampleBacktest(
     startedAt,
     completedAt,
     assumptions,
-    metrics: { ...result.metrics, endingEquity, realizedPnl },
-    datasetCoverage: { markets: [market], from: assumptions.from, to: assumptions.to },
-    perMarket: [{
-      market,
-      realizedPnl,
-      tradeCount: result.metrics.tradeCount,
-      winRatePercent: result.metrics.winRatePercent,
-      drawdownContributionPercent: result.metrics.maximumDrawdownPercent,
-    }],
+    metrics: result.metrics,
+    datasetCoverage: result.datasetCoverage,
+    perMarket: result.perMarket,
     equityCurve: result.equityCurve,
-    trades: toBacktestTrades(result.trades, result.traces),
+    trades: toBacktestTrades(result.trades, childTraces),
     warnings: [
+      bundledSampleDatasetCatalog.limitations,
       'Bundled sample data is synthetic and is not live market data.',
       ...result.warnings,
     ],
-    traces: result.traces.map((trace) => toTraceSummary(trace, id, market)),
+    traces: result.traces.flatMap(({ parentTraceId, children }) => children.map(({ market, evaluation }) => (
+      toTraceSummary(evaluation.trace, parentTraceId, market)
+    ))),
     artifactHash,
   });
   return { summary, artifact: result.serializedArtifact };
@@ -84,52 +112,134 @@ function toRuntimeAssumptions(input: PublicAssumptions): BacktestAssumptions {
   };
 }
 
-function sampleInputs(strategy: StrategyDocument, market: string, assumptions: PublicAssumptions): LegacyBacktestInput[] {
-  const midpoint = new Date((Date.parse(assumptions.from) + Date.parse(assumptions.to)) / 2).toISOString();
-  const values = sampleValues(strategy, market, midpoint);
-  return strategy.nodes.filter((node) => node.kind === 'trigger').map((trigger, index) => {
-    if (trigger.type === 'trigger.event') {
-      const eventType = typeof trigger.config.eventType === 'string' ? trigger.config.eventType : 'sample.event';
-      return {
-        occurredAt: midpoint,
-        priority: index,
-        stableId: `sample-${trigger.id}`,
+type SampleFrame = Readonly<{
+  occurredAt: string;
+  revision: string;
+  markets: readonly Readonly<{
+    symbol: string;
+    mark: number;
+    rsi: number;
+    funding: number;
+    volume: number;
+    rank: number;
+  }>[];
+}>;
+
+const sampleFrames: readonly SampleFrame[] = Object.freeze([
+  Object.freeze({
+    occurredAt: '2026-08-10T00:00:00.000Z',
+    revision: 'bundled:before-eth-listing',
+    markets: Object.freeze([
+      Object.freeze({ symbol: 'BTC-PERP', mark: 100, rsi: 25, funding: -0.0001, volume: 2_000_000_000, rank: 1 }),
+    ]),
+  }),
+  Object.freeze({
+    occurredAt: '2026-08-20T00:00:00.000Z',
+    revision: 'bundled:eth-listed',
+    markets: Object.freeze([
+      Object.freeze({ symbol: 'BTC-PERP', mark: 100, rsi: 85, funding: 0.0001, volume: 2_100_000_000, rank: 1 }),
+      Object.freeze({ symbol: 'ETH-PERP', mark: 200, rsi: 25, funding: -0.0002, volume: 1_000_000_000, rank: 2 }),
+    ]),
+  }),
+]);
+
+function buildSampleInputs(strategy: StrategyDocument, assumptions: PublicAssumptions): BacktestInput[] {
+  const intervalTriggers = strategy.nodes.filter((node) => node.kind === 'trigger' && node.type === 'trigger.interval');
+  const eventTriggers = strategy.nodes.filter((node) => node.kind === 'trigger' && node.type === 'trigger.event');
+  const inputs: BacktestInput[] = [];
+  for (const [frameIndex, frame] of sampleFrames.entries()) {
+    if (!withinRange(frame.occurredAt, assumptions)) continue;
+    const universe = sampleUniverse(frame);
+    const marketValues = Object.fromEntries(frame.markets.map((market) => [
+      market.symbol,
+      sampleValues(strategy, market, frame.occurredAt),
+    ]));
+    for (const [triggerIndex, trigger] of intervalTriggers.entries()) {
+      inputs.push({
+        occurredAt: frame.occurredAt,
+        priority: triggerIndex,
+        stableId: `sample:${frameIndex}:${trigger.id}`,
         triggerNodeId: trigger.id,
-        triggerInput: {
-          kind: 'event',
-          event: {
-            id: `sample-event-${trigger.id}`,
-            type: eventType,
-            occurredAt: midpoint,
-            receivedAt: midpoint,
-            source: 'catbots.bundled-sample',
-            payload: typeof trigger.config.filters === 'object'
-              && trigger.config.filters !== null
-              && !Array.isArray(trigger.config.filters)
-              ? trigger.config.filters
-              : {},
-            quality: { status: 'verified', freshnessSeconds: 0 },
-          },
-        },
-        values,
-      };
+        triggerInput: { kind: 'interval', occurredAt: frame.occurredAt },
+        universe,
+        marketValues,
+        fundingRates: Object.fromEntries(frame.markets.map(({ symbol, funding }) => [symbol, funding])),
+      });
     }
-    return {
-      occurredAt: midpoint,
-      priority: index,
-      stableId: `sample-${trigger.id}`,
-      triggerNodeId: trigger.id,
-      triggerInput: { kind: 'interval', occurredAt: midpoint },
-      values,
-    };
-  });
+  }
+
+  const eventTime = '2026-08-25T00:00:00.000Z';
+  if (withinRange(eventTime, assumptions)) {
+    const listedFrame = sampleFrames[1]!;
+    const universe = sampleUniverse({ ...listedFrame, occurredAt: eventTime, revision: 'bundled:event-frame' });
+    const marketValues = Object.fromEntries(listedFrame.markets.map((market) => [
+      market.symbol,
+      sampleValues(strategy, market, eventTime),
+    ]));
+    for (const [triggerIndex, trigger] of eventTriggers.entries()) {
+      const eventType = typeof trigger.config.eventType === 'string' ? trigger.config.eventType : 'sample.event';
+      for (const [marketIndex, market] of listedFrame.markets.entries()) {
+        inputs.push({
+          occurredAt: eventTime,
+          priority: intervalTriggers.length + triggerIndex * listedFrame.markets.length + marketIndex,
+          stableId: `sample:event:${trigger.id}:${market.symbol}`,
+          triggerNodeId: trigger.id,
+          triggerInput: {
+            kind: 'event',
+            event: {
+              id: `sample-event:${trigger.id}:${market.symbol}`,
+              type: eventType,
+              market: market.symbol,
+              occurredAt: eventTime,
+              receivedAt: eventTime,
+              source: 'catbots.bundled-sample',
+              payload: typeof trigger.config.filters === 'object'
+                && trigger.config.filters !== null
+                && !Array.isArray(trigger.config.filters)
+                ? trigger.config.filters
+                : {},
+              quality: { status: 'verified', freshnessSeconds: 0 },
+            },
+          },
+          universe,
+          marketValues,
+        });
+      }
+    }
+  }
+  return inputs;
 }
 
-function sampleValues(strategy: StrategyDocument, market: string, observedAt: string): Record<string, EvaluationValue<unknown>> {
+function withinRange(timestamp: string, assumptions: PublicAssumptions): boolean {
+  const parsed = Date.parse(timestamp);
+  return parsed >= Date.parse(assumptions.from) && parsed <= Date.parse(assumptions.to);
+}
+
+function sampleUniverse(frame: SampleFrame): MarketUniverseSnapshot {
+  return {
+    dex: bundledSampleDatasetCatalog.dex,
+    revision: frame.revision,
+    observedAt: frame.occurredAt,
+    markets: frame.markets.map(({ symbol }) => ({
+      symbol,
+      active: true,
+      sizeDecimals: 4,
+      maximumLeverage: 20,
+    })),
+  };
+}
+
+function sampleValues(
+  strategy: StrategyDocument,
+  market: SampleFrame['markets'][number],
+  observedAt: string,
+): Record<string, EvaluationValue<unknown>> {
   const raw: Record<string, JsonValue> = {
-    'market.price': { market, bid: 100, ask: 100, mark: 100 },
-    'market.funding': { rate: -0.0001 },
-    'indicator.rsi.14': { value: 25 },
+    'market.price': { market: market.symbol, bid: market.mark, ask: market.mark, mark: market.mark },
+    'market.funding': { rate: market.funding },
+    'market.volume': { notional24h: market.volume },
+    'market.rank': { value: market.rank },
+    'indicator.rsi.14': { value: market.rsi },
     'data.etf_flow.btc.net_daily': { usd: -100_000_000 },
   };
   for (const node of strategy.nodes) {
@@ -137,7 +247,7 @@ function sampleValues(strategy: StrategyDocument, market: string, observedAt: st
       if (typeof operand !== 'object' || operand === null || Array.isArray(operand)) continue;
       const ref = operand.ref;
       const field = operand.field;
-      if (typeof ref !== 'string' || ref === 'market.price' || raw[ref] !== undefined) continue;
+      if (typeof ref !== 'string' || ref === 'market.symbol' || raw[ref] !== undefined) continue;
       raw[ref] = typeof field === 'string' ? { [field]: 1 } : 1;
     }
   }
@@ -147,7 +257,7 @@ function sampleValues(strategy: StrategyDocument, market: string, observedAt: st
     observedAt,
     freshnessSeconds: 0,
     quality: { status: 'verified' as const },
-    integrityHash: `sha256:${createHash('sha256').update(`${ref}:${observedAt}`).digest('hex')}`,
+    integrityHash: `sha256:${createHash('sha256').update(`${ref}:${market.symbol}:${observedAt}`).digest('hex')}`,
   }]));
 }
 

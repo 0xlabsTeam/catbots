@@ -27,7 +27,10 @@ import { runAgentTurn } from '../agent/agent-loop';
 import { AnthropicCompatibleChatProvider } from '../llm/anthropic-compatible-chat';
 import type { CompatibleChatProvider } from '../llm/compatible-chat-provider';
 import { OpenAiCompatibleChatProvider } from '../llm/openai-compatible-chat';
-import { runBundledSampleBacktest } from './sample-backtest-data';
+import {
+  bundledSampleDatasetCatalog,
+  runBundledSampleBacktest,
+} from './sample-backtest-data';
 import type { WorkbenchRepository } from './workbench-repository';
 
 type ProviderFactory = (config: LocalConfig['llm']) => CompatibleChatProvider;
@@ -60,7 +63,8 @@ export class WorkbenchService {
     const onActivity = (activity: AgentToolActivity) => this.publish(activity);
     const tools = createAgentToolCatalog({
       botId: request.botId,
-      market: this.requireLegacyMarketHint(request.botId),
+      dex: state.bot.dex,
+      backtestDatasetCatalog: bundledSampleDatasetCatalog,
       repository: this.dependencies.repository,
       clock: this.dependencies.clock,
       idFactory: this.dependencies.idFactory,
@@ -92,7 +96,8 @@ export class WorkbenchService {
       request.botId,
       request.revisionVersion,
       document,
-      this.requireLegacyMarketHint(request.botId),
+      state.bot.dex,
+      request.marketUniverse,
       request.assumptions,
       {
         clock: this.dependencies.clock,
@@ -126,7 +131,7 @@ export class WorkbenchService {
     const trace = findTrace(JSON.parse(artifact) as unknown, request.traceId);
     return TraceDetailSchema.parse({
       traceId: request.traceId,
-      parentTraceId: backtest.id,
+      parentTraceId: summary.parentTraceId,
       market: summary.market,
       outcome: summary.outcome,
       events: trace.map((event, index) => ({
@@ -149,11 +154,6 @@ export class WorkbenchService {
     for (const listener of this.#listeners) listener(activity);
   }
 
-  private requireLegacyMarketHint(botId: string): string {
-    const market = this.dependencies.repository.getStoredIdentity(botId).legacyMarketHint;
-    if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
-    return market;
-  }
 }
 
 function createProvider(config: LocalConfig['llm']): CompatibleChatProvider {
@@ -167,11 +167,29 @@ function findTrace(value: unknown, traceId: string): Record<string, unknown>[] {
   const traces = (value as { traces?: unknown }).traces;
   if (!Array.isArray(traces)) throw new Error('TRACE_ARTIFACT_INVALID');
   for (const candidate of traces) {
-    if (!Array.isArray(candidate)) continue;
-    const events = candidate.filter((event): event is Record<string, unknown> => typeof event === 'object' && event !== null);
-    if (events.some((event) => event.traceId === traceId)) return events;
+    if (Array.isArray(candidate)) {
+      const events = records(candidate);
+      if (events.some((event) => event.traceId === traceId)) return events;
+      continue;
+    }
+    if (typeof candidate !== 'object' || candidate === null) continue;
+    const children = (candidate as { children?: unknown }).children;
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (typeof child !== 'object' || child === null) continue;
+      const evaluation = (child as { evaluation?: unknown }).evaluation;
+      if (typeof evaluation !== 'object' || evaluation === null) continue;
+      const trace = (evaluation as { trace?: unknown }).trace;
+      if (!Array.isArray(trace)) continue;
+      const events = records(trace);
+      if (events.some((event) => event.traceId === traceId)) return events;
+    }
   }
   throw new Error('TRACE_NOT_FOUND');
+}
+
+function records(value: unknown[]): Record<string, unknown>[] {
+  return value.filter((event): event is Record<string, unknown> => typeof event === 'object' && event !== null);
 }
 
 function requiredString(value: unknown): string {

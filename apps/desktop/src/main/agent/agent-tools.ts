@@ -1,9 +1,20 @@
 import { z } from 'zod';
-import { BacktestAssumptionsViewSchema } from '@catbots/contracts';
-import { createBuiltinRegistry, parseStrategyDocument, validateStrategy } from '@catbots/strategy-runtime';
+import {
+  BacktestAssumptionsViewSchema,
+  BacktestMarketUniverseSchema,
+  type DexId,
+} from '@catbots/contracts';
+import {
+  createBuiltinRegistry,
+  StrategyV2DocumentSchema,
+  validateStrategy,
+} from '@catbots/strategy-runtime';
 
 import { parseJsonValue, type AgentToolDefinition, type JsonValue } from '../llm/compatible-chat-provider';
-import { runBundledSampleBacktest } from '../workbench/sample-backtest-data';
+import {
+  runBundledSampleBacktest,
+  type BundledSampleDatasetCatalog,
+} from '../workbench/sample-backtest-data';
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 
 const allowedToolNames = [
@@ -25,7 +36,8 @@ export type AgentToolCatalog = Readonly<{
 
 export type AgentToolDependencies = Readonly<{
   botId: string;
-  market: string;
+  dex: DexId;
+  backtestDatasetCatalog: BundledSampleDatasetCatalog;
   repository: WorkbenchRepository;
   clock?: () => Date;
   idFactory?: () => string;
@@ -37,6 +49,7 @@ const noArguments = z.object({}).strict();
 const validateArguments = z.object({ strategy: z.unknown() }).strict();
 const backtestArguments = z.object({
   revisionVersion: z.number().int().positive(),
+  marketUniverse: BacktestMarketUniverseSchema,
   assumptions: BacktestAssumptionsViewSchema,
 }).strict();
 const explainArguments = z.object({ revisionVersion: z.number().int().positive() }).strict();
@@ -49,7 +62,7 @@ const registry = createBuiltinRegistry();
 const strategyDocumentJsonSchema: JsonValue = {
   type: 'object',
   properties: {
-    schemaVersion: { type: 'string', const: '1.0' },
+    schemaVersion: { type: 'string', const: '2.0' },
     strategy: {
       type: 'object',
       properties: {
@@ -58,6 +71,12 @@ const strategyDocumentJsonSchema: JsonValue = {
         version: { type: 'integer', minimum: 1 },
       },
       required: ['id', 'name', 'version'],
+      additionalProperties: false,
+    },
+    marketScope: {
+      type: 'object',
+      properties: { type: { type: 'string', const: 'dex_universe' } },
+      required: ['type'],
       additionalProperties: false,
     },
     nodes: {
@@ -94,7 +113,7 @@ const strategyDocumentJsonSchema: JsonValue = {
       },
     },
   },
-  required: ['schemaVersion', 'strategy', 'nodes', 'edges'],
+  required: ['schemaVersion', 'strategy', 'marketScope', 'nodes', 'edges'],
   additionalProperties: false,
 };
 
@@ -106,8 +125,9 @@ const definitions: readonly AgentToolDefinition[] = [
   }, ['strategy']),
   definition('backtest_strategy', 'Run a saved revision against bundled sample data.', {
     revisionVersion: { type: 'integer', minimum: 1 },
+    marketUniverse: jsonSchemaFor(BacktestMarketUniverseSchema),
     assumptions: jsonSchemaFor(BacktestAssumptionsViewSchema),
-  }, ['revisionVersion', 'assumptions']),
+  }, ['revisionVersion', 'marketUniverse', 'assumptions']),
   definition('explain_strategy', 'Explain a saved strategy revision.', {
     revisionVersion: { type: 'integer', minimum: 1 },
   }, ['revisionVersion']),
@@ -139,17 +159,26 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
         if (name === 'list_data_products') {
           noArguments.parse(argumentsValue);
           return { ok: true, products: [
+            { id: 'market.symbol', label: 'Current market symbol', source: 'Runtime-bound market context', valueType: 'string' },
             { id: 'market.price', label: 'Market price', source: 'Bundled sample data', fields: { mark: 'number', bid: 'number', ask: 'number' } },
             { id: 'market.funding', label: 'Perpetual funding rate', source: 'Bundled sample data', fields: { rate: 'number' } },
+            { id: 'market.volume', label: '24-hour notional volume', source: 'Bundled sample data', fields: { notional24h: 'number' } },
+            { id: 'market.rank', label: 'Market volume rank', source: 'Bundled sample data', fields: { value: 'number' } },
             { id: 'indicator.rsi.14', label: 'RSI 14', source: 'Bundled sample data', fields: { value: 'number' } },
             { id: 'data.etf_flow.btc.net_daily', label: 'BTC ETF net daily flow', source: 'Bundled sample data', fields: { usd: 'number' } },
-          ] } as AgentToolResult;
+          ], dataset: {
+            dex: dependencies.backtestDatasetCatalog.dex,
+            markets: [...dependencies.backtestDatasetCatalog.markets],
+            from: dependencies.backtestDatasetCatalog.from,
+            to: dependencies.backtestDatasetCatalog.to,
+            limitations: dependencies.backtestDatasetCatalog.limitations,
+          } } as AgentToolResult;
         }
         if (name === 'validate_strategy') {
           const input = validateArguments.parse(argumentsValue);
           let document;
           try {
-            document = parseStrategyDocument(input.strategy);
+            document = StrategyV2DocumentSchema.parse(input.strategy);
           } catch (error) {
             if (error instanceof z.ZodError) {
               return {
@@ -180,7 +209,8 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
             dependencies.botId,
             input.revisionVersion,
             document,
-            dependencies.market,
+            dependencies.dex,
+            input.marketUniverse,
             input.assumptions,
             {
               clock: dependencies.clock,

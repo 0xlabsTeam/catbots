@@ -15,7 +15,8 @@ let botId: string;
 let repository: WorkbenchRepository;
 
 const strategy = parseStrategyDocument({
-  schemaVersion: '1.0', strategy: { id: 's', name: 'Safe strategy', version: 1 },
+  schemaVersion: '2.0', strategy: { id: 's', name: 'Safe strategy', version: 1 },
+  marketScope: { type: 'dex_universe' },
   nodes: [
     { id: 't', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
     { id: 'c', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { literal: 2 }, operator: 'gt', right: { literal: 1 } } },
@@ -50,6 +51,17 @@ function createService(provider: CompatibleChatProvider = { complete: vi.fn(asyn
 }
 
 describe('WorkbenchService', () => {
+  it('sends messages for a DEX-scoped bot without a legacy market dependency', async () => {
+    const dynamicBot = new BotRepository(database).createDraft({ name: 'Dynamic Bot', dex: 'hyperliquid' });
+    const provider = { complete: vi.fn(async () => ({ text: 'Which markets should I screen?', toolCalls: [] })) };
+    const service = createService(provider);
+
+    const state = await service.sendMessage({ botId: dynamicBot.id, message: 'Build momentum' });
+
+    expect(state.bot).toMatchObject({ dex: 'hyperliquid' });
+    expect(provider.complete).toHaveBeenCalledOnce();
+  });
+
   it('loads Main-only provider settings and returns sanitized Agent state', async () => {
     const provider = { complete: vi.fn(async () => ({ text: 'What is your exit rule?', toolCalls: [] })) };
     const service = createService(provider);
@@ -76,6 +88,8 @@ describe('WorkbenchService', () => {
     const trace = await service.getTrace({ botId, traceId: backtest.traces[0]?.traceId ?? '' });
 
     expect(backtest.dataSource).toBe('Bundled sample data');
+    expect(backtest.datasetCoverage.markets).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(backtest.perMarket.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(trace).toMatchObject({ traceId: backtest.traces[0]?.traceId, events: expect.any(Array) });
     expect(repository.getState(botId).currentRevision?.status).toBe('draft');
     await expect(service.approveRevision({ botId, version: 1 })).resolves.toMatchObject({ status: 'approved' });

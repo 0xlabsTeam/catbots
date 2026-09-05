@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parseStrategyDocument } from '@catbots/strategy-runtime';
 
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { createAgentToolCatalog } from '../src/main/agent/agent-tools';
 import { openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
+import { bundledSampleDatasetCatalog } from '../src/main/workbench/sample-backtest-data';
 import { WorkbenchRepository } from '../src/main/workbench/workbench-repository';
 
 let database: Database.Database;
@@ -13,8 +15,9 @@ let botId: string;
 let repository: WorkbenchRepository;
 
 const validStrategy = {
-  schemaVersion: '1.0',
+  schemaVersion: '2.0',
   strategy: { id: 'momentum', name: 'Momentum', version: 1 },
+  marketScope: { type: 'dex_universe' },
   nodes: [
     { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
     { id: 'price', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.price', field: 'mark' }, operator: 'gt', right: { literal: 90 } } },
@@ -25,6 +28,21 @@ const validStrategy = {
     { id: 'e2', source: 'price', sourcePort: 'result', target: 'buy', targetPort: 'condition' },
   ],
 };
+
+const { marketScope: _dynamicMarketScope, ...dynamicStrategyFields } = validStrategy;
+const legacyStrategy = {
+  ...dynamicStrategyFields,
+  schemaVersion: '1.0',
+};
+
+function createCatalog() {
+  return createAgentToolCatalog({
+    botId,
+    dex: 'hyperliquid',
+    backtestDatasetCatalog: bundledSampleDatasetCatalog,
+    repository,
+  });
+}
 
 beforeEach(() => {
   database = openDatabase(':memory:');
@@ -37,7 +55,7 @@ afterEach(() => database.close());
 
 describe('Agent tool catalog', () => {
   it('exposes exactly the six approved tools with strict object schemas', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     expect(catalog.definitions.map(({ name }) => name)).toEqual([
       'list_nodes', 'list_data_products', 'validate_strategy', 'backtest_strategy', 'explain_strategy', 'compare_versions',
@@ -46,7 +64,7 @@ describe('Agent tool catalog', () => {
   });
 
   it('describes the complete strategy document, node configs, and graph ports to the model', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
     const validateTool = catalog.definitions.find(({ name }) => name === 'validate_strategy');
     const listed = catalog.execute('list_nodes', {});
 
@@ -55,12 +73,18 @@ describe('Agent tool catalog', () => {
         strategy: {
           type: 'object',
           properties: {
-            schemaVersion: { const: '1.0' },
+            schemaVersion: { const: '2.0' },
             strategy: { type: 'object' },
+            marketScope: {
+              type: 'object',
+              properties: { type: { const: 'dex_universe' } },
+              required: ['type'],
+              additionalProperties: false,
+            },
             nodes: { type: 'array', items: { oneOf: expect.any(Array) } },
             edges: { type: 'array', items: { type: 'object' } },
           },
-          required: ['schemaVersion', 'strategy', 'nodes', 'edges'],
+          required: ['schemaVersion', 'strategy', 'marketScope', 'nodes', 'edges'],
           additionalProperties: false,
         },
       },
@@ -79,7 +103,7 @@ describe('Agent tool catalog', () => {
   });
 
   it('returns safe document issue paths so the model can repair malformed strategy JSON', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     const result = catalog.execute('validate_strategy', {
       strategy: { strategy: { id: 'broken' }, nodes: [], edges: [] },
@@ -99,26 +123,37 @@ describe('Agent tool catalog', () => {
   });
 
   it('describes every bundled data field used by the sample backtest', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     const result = catalog.execute('list_data_products', {});
 
     expect(result).toMatchObject({
       ok: true,
       products: expect.arrayContaining([
+        expect.objectContaining({ id: 'market.symbol', valueType: 'string' }),
         expect.objectContaining({ id: 'market.price', fields: { mark: 'number', bid: 'number', ask: 'number' } }),
         expect.objectContaining({ id: 'market.funding', fields: { rate: 'number' } }),
+        expect.objectContaining({ id: 'market.volume', fields: { notional24h: 'number' } }),
+        expect.objectContaining({ id: 'market.rank', fields: { value: 'number' } }),
         expect.objectContaining({ id: 'indicator.rsi.14', fields: { value: 'number' } }),
         expect.objectContaining({ id: 'data.etf_flow.btc.net_daily', fields: { usd: 'number' } }),
       ]),
+      dataset: {
+        dex: 'hyperliquid',
+        markets: ['BTC-PERP', 'ETH-PERP'],
+        from: '2026-08-01T00:00:00.000Z',
+        to: '2026-09-01T00:00:00.000Z',
+        limitations: expect.stringContaining('only BTC-PERP and ETH-PERP'),
+      },
     });
   });
 
   it('returns safe argument issue paths so the model can repair a backtest request', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     const result = catalog.execute('backtest_strategy', {
       revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
       assumptions: {
         from: '2026-08-01T00:00:00.000Z',
         to: '2026-09-01T00:00:00.000Z',
@@ -140,7 +175,7 @@ describe('Agent tool catalog', () => {
   });
 
   it('validates and persists only structurally valid strategies', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     const invalid = catalog.execute('validate_strategy', { strategy: { ...validStrategy, edges: [] } });
     const valid = catalog.execute('validate_strategy', { strategy: validStrategy });
@@ -150,19 +185,38 @@ describe('Agent tool catalog', () => {
     expect(repository.getState(botId).revisions).toHaveLength(1);
   });
 
+  it('rejects new Strategy 1.0 revisions while preserving readable legacy revisions', () => {
+    repository.createValidatedRevision(botId, parseStrategyDocument(legacyStrategy));
+    const catalog = createCatalog();
+
+    const rejected = catalog.execute('validate_strategy', { strategy: legacyStrategy });
+    const explanation = catalog.execute('explain_strategy', { revisionVersion: 1 });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_STRATEGY',
+        issues: expect.arrayContaining([expect.objectContaining({ path: 'schemaVersion' })]),
+      },
+    });
+    expect(explanation).toMatchObject({ ok: true, explanation: expect.stringContaining('Momentum') });
+    expect(repository.getState(botId).revisions).toHaveLength(1);
+  });
+
   it('rejects unknown tools and malformed arguments with stable structured errors', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
 
     expect(catalog.execute('delete_everything', {})).toEqual({ ok: false, error: { code: 'UNKNOWN_TOOL', message: 'Tool is not available.' } });
     expect(catalog.execute('backtest_strategy', { revisionVersion: -1 })).toMatchObject({ ok: false, error: { code: 'INVALID_TOOL_ARGUMENTS' } });
   });
 
   it('runs a deterministic sample backtest and stores its trace artifact', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
     catalog.execute('validate_strategy', { strategy: validStrategy });
 
     const result = catalog.execute('backtest_strategy', {
       revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
       assumptions: {
         from: '2026-08-01T00:00:00.000Z',
         to: '2026-09-01T00:00:00.000Z',
@@ -172,12 +226,24 @@ describe('Agent tool catalog', () => {
       },
     });
 
-    expect(result).toMatchObject({ ok: true, backtest: { dataSource: 'Bundled sample data', revisionVersion: 1, status: 'completed' } });
+    expect(result).toMatchObject({
+      ok: true,
+      backtest: {
+        dataSource: 'Bundled sample data',
+        revisionVersion: 1,
+        status: 'completed',
+        datasetCoverage: { markets: ['BTC-PERP', 'ETH-PERP'] },
+        perMarket: [
+          expect.objectContaining({ market: 'BTC-PERP' }),
+          expect.objectContaining({ market: 'ETH-PERP' }),
+        ],
+      },
+    });
     expect(repository.getState(botId).backtests).toHaveLength(1);
   });
 
   it('explains and compares immutable revisions without exposing config JSON', () => {
-    const catalog = createAgentToolCatalog({ botId, market: 'BTC-PERP', repository });
+    const catalog = createCatalog();
     catalog.execute('validate_strategy', { strategy: validStrategy });
     catalog.execute('validate_strategy', { strategy: { ...validStrategy, strategy: { ...validStrategy.strategy, name: 'Momentum v2' } } });
 
