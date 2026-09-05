@@ -135,6 +135,7 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         const request = GetWorkbenchInputSchema.parse(input);
         return getWorkbench(request.botId, request.version);
       },
+      stopAgent: async () => undefined,
       sendMessage: async (input) => {
         const request = SendWorkbenchMessageInputSchema.parse(input);
         const workbench = workbenches.get(request.botId);

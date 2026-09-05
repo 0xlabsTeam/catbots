@@ -1,3 +1,4 @@
+import { readProviderStream } from './provider-stream';
 import type { LocalConfig } from '@catbots/contracts';
 import {
   CompatibleChatProviderError,
@@ -24,6 +25,7 @@ export class AnthropicCompatibleChatProvider implements CompatibleChatProvider {
     const system = request.messages.filter((message) => message.role === 'system').map((message) => message.content).join('\n\n');
     const body: Record<string, JsonValue> = {
       model: this.provider.model,
+      ...(request.onText ? { stream: true } : {}),
       messages: request.messages.filter((message) => message.role !== 'system').map(toAnthropicMessage),
       max_tokens: request.maxTokens ?? 2048,
     };
@@ -31,7 +33,8 @@ export class AnthropicCompatibleChatProvider implements CompatibleChatProvider {
     if (request.tools.length > 0) {
       body.tools = request.tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.inputSchema }));
     }
-    const response = await postProviderJson(this.provider, 'messages', body, signal, this.options);
+    const response = await postProviderJson(this.provider, 'messages', body, signal, this.options, request.onText
+      ? (response, limit) => readProviderStream(response, limit, 'anthropic', request.onText!) : undefined);
     return parseAnthropicCompletion(response);
   }
 }

@@ -1,3 +1,5 @@
+import { exampleNodePackage } from '@catbots/contracts';
+import { CommunityNodeCatalog } from '@catbots/strategy-runtime';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,6 +94,43 @@ beforeEach(() => {
 afterEach(() => database.close());
 
 describe('runAgentTurn', () => {
+  it('discovers an installed node and saves its expanded graph with package provenance through the agent tool', () => {
+    const catalog = new CommunityNodeCatalog([{ manifest: exampleNodePackage, integrity: `sha256:${'b'.repeat(64)}`, enabled: true }]);
+    const tools = createAgentToolCatalog({ botId, dex: 'hyperliquid', backtestDatasetCatalog: bundledSampleDatasetCatalog, repository, catalog });
+    expect(JSON.stringify(tools.execute('list_nodes', {}))).toContain('catbots.funding_filter');
+    expect(JSON.stringify(tools.definitions)).toContain('catbots.funding_filter');
+    const candidate = structuredClone(strategy);
+    candidate.nodes[1] = { id: 'c', kind: 'condition', type: 'catbots.funding_filter', version: 1, config: { threshold: 0 } } as never;
+    const result = tools.execute('validate_strategy', { strategy: candidate });
+    expect(result.ok).toBe(true);
+    const saved = repository.getStrategyDocument(botId, 1);
+    expect(saved.nodes.some((node) => node.id === 'c__compare')).toBe(true);
+    expect('packageLock' in saved && saved.packageLock?.[0]?.name).toBe('@catbots/funding-filter');
+  });
+
+  it.each(['สวัสดี', 'สวัสดีครับ!', 'hi', 'Hello!'])('handles a greeting %s without resuming historical strategy work', async (message) => {
+    repository.appendChatMessage(botId, 'user', 'Change the funding threshold');
+    repository.appendChatMessage(botId, 'assistant', 'Validated and saved as draft revision 3.');
+    const provider = new FakeProvider([]);
+    const tools = createTools();
+    const execute = vi.spyOn(tools, 'execute');
+    const state = await runAgentTurn({ botId, message, signal: new AbortController().signal }, {
+      provider, repository, tools, requestId: randomUUID(),
+    });
+    expect(provider.requests).toHaveLength(0);
+    expect(execute).not.toHaveBeenCalled();
+    expect(state.currentRevision).toBeNull();
+    expect(state.messages.at(-1)?.content).toBe(message.startsWith('สวัสดี') ? 'สวัสดีครับ มีอะไรให้ช่วยครับ?' : 'Hi! How can I help?');
+  });
+
+  it('keeps a greeting with an actual request on the normal agent path', async () => {
+    const provider = new FakeProvider([{ text: 'Which rule?', toolCalls: [] }]);
+    await runAgentTurn({ botId, message: 'hi, change my entry rule', signal: new AbortController().signal }, {
+      provider, repository, tools: createTools(), requestId: randomUUID(),
+    });
+    expect(provider.requests).toHaveLength(1);
+  });
+
   it('persists a plain user/assistant exchange and emits sanitized activity', async () => {
     const provider = new FakeProvider([{ text: 'Tell me your entry rule.', toolCalls: [] }]);
     const onActivity = vi.fn();
@@ -166,13 +205,14 @@ describe('runAgentTurn', () => {
       provider, repository, tools: createTools(), requestId: randomUUID(),
     });
 
-    expect(JSON.stringify(provider.requests[1]?.messages)).toContain('UNKNOWN_TOOL');
+    expect(JSON.stringify(provider.requests[1]?.messages)).toContain('Tool run_shell not found');
     expect(repository.getState(botId).revisions).toHaveLength(0);
   });
 
   it('finishes the turn immediately after a successful backtest instead of allowing repeated runs', async () => {
     const tools = createTools();
     tools.execute('validate_strategy', { strategy });
+    const execute = vi.fn(tools.execute);
     const provider = new FakeProvider([{
       text: 'Running the requested backtest.',
       toolCalls: [{
@@ -189,13 +229,14 @@ describe('runAgentTurn', () => {
             slippageBps: 5,
           },
         }),
-      }],
+      }, { id: 'after-backtest', name: 'validate_strategy', arguments: parseJsonValue({ strategy }) }],
     }]);
 
     const state = await runAgentTurn({ botId, message: 'Backtest it', signal: new AbortController().signal }, {
-      provider, repository, tools, requestId: randomUUID(),
+      provider, repository, tools: { ...tools, execute }, requestId: randomUUID(),
     });
 
+    expect(execute).toHaveBeenCalledTimes(1);
     expect(provider.requests).toHaveLength(1);
     expect(state.backtests).toHaveLength(1);
     expect(state.messages.at(-1)).toMatchObject({
@@ -207,13 +248,54 @@ describe('runAgentTurn', () => {
   it('stops after eight tool rounds', async () => {
     const completion = { text: '', toolCalls: [{ id: 'loop', name: 'list_nodes', arguments: {} }] } satisfies AgentCompletion;
     const provider = new FakeProvider(Array.from({ length: 9 }, () => completion));
+    const execute = vi.fn(createTools().execute);
 
     const run = runAgentTurn({ botId, message: 'Loop', signal: new AbortController().signal }, {
-      provider, repository, tools: createTools(), requestId: randomUUID(),
+      provider, repository, tools: { ...createTools(), execute }, requestId: randomUUID(),
     });
 
     await expect(run).rejects.toMatchObject({ code: 'AGENT_TOOL_ROUND_LIMIT' } satisfies Partial<AgentLoopError>);
     expect(provider.requests).toHaveLength(9);
+    expect(execute).toHaveBeenCalledTimes(8);
+    expect(repository.getState(botId).messages).toHaveLength(1);
+  });
+
+  it('rejects invalid Pi tool arguments before they can mutate a revision', async () => {
+    const provider = new FakeProvider([
+      { text: '', toolCalls: [{ id: 'invalid', name: 'validate_strategy', arguments: {} }] },
+      { text: 'Please provide a strategy.', toolCalls: [] },
+    ]);
+    const tools = createTools();
+    const execute = vi.fn(tools.execute);
+    await runAgentTurn({ botId, message: 'Draft', signal: new AbortController().signal }, {
+      provider, repository, tools: { ...tools, execute }, requestId: randomUUID(),
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(provider.requests[1]?.messages).toContainEqual(expect.objectContaining({ role: 'tool', toolCallId: 'invalid' }));
+    expect(repository.getState(botId).revisions).toHaveLength(0);
+  });
+
+  it('discards a provider response received after cancellation', async () => {
+    const controller = new AbortController();
+    const execute = vi.fn(createTools().execute);
+    const provider: CompatibleChatProvider = { complete: async () => {
+      controller.abort();
+      return { text: '', toolCalls: [{ id: 'late', name: 'list_nodes', arguments: {} }] };
+    } };
+    await expect(runAgentTurn({ botId, message: 'Cancel', signal: controller.signal }, {
+      provider, repository, tools: { ...createTools(), execute }, requestId: randomUUID(),
+    })).rejects.toMatchObject({ code: 'AGENT_ABORTED' });
+    expect(execute).not.toHaveBeenCalled();
+    expect(repository.getState(botId).messages).toHaveLength(1);
+  });
+
+  it('sanitizes provider failures through the Pi error protocol', async () => {
+    const onActivity = vi.fn();
+    const provider: CompatibleChatProvider = { complete: async () => { throw new Error('secret-provider-key'); } };
+    await expect(runAgentTurn({ botId, message: 'Explain RSI', signal: new AbortController().signal }, {
+      provider, repository, tools: createTools(), requestId: randomUUID(), onActivity,
+    })).rejects.toMatchObject({ code: 'AGENT_FAILED' });
+    expect(JSON.stringify(onActivity.mock.calls)).not.toContain('secret-provider-key');
     expect(repository.getState(botId).messages).toHaveLength(1);
   });
 

@@ -1,0 +1,21 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, expect, it } from 'vitest';
+import { exampleNodePackage } from '@catbots/contracts';
+import { NodePackageService } from '../src/main/nodes/package-service';
+const dirs: string[] = []; afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+it('installs, retains immutable versions, rolls back and restores the catalog after restart', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'catbots-nodes-')); dirs.push(dir); const path = join(dir, 'packages.json');
+  const service = new NodePackageService(path);
+  const installed = service.command({ action: 'install', source: JSON.stringify(exampleNodePackage) });
+  const first = installed.packages[0]!;
+  const modified = structuredClone(exampleNodePackage); modified.nodes[0]!.title = 'Changed';
+  expect(() => service.command({ action: 'install', source: JSON.stringify(modified) })).toThrow('different contents');
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toHaveLength(1);
+  modified.version = '1.1.0'; service.command({ action: 'install', source: JSON.stringify(modified) });
+  const restored = new NodePackageService(path);
+  expect(restored.command({ action: 'list' }).packages.map((item) => item.enabled)).toEqual([false, true]);
+  restored.command({ action: 'enable', integrity: first.integrity, enabled: true });
+  expect(restored.catalog().registry.get('condition', 'catbots.funding_filter', 1).visualization.title).toBe('Funding filter');
+});

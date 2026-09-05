@@ -65,7 +65,10 @@ export class WorkbenchRepository {
     private readonly database: Database.Database,
     private readonly clock: Clock = () => new Date(),
     private readonly idFactory: IdFactory = randomUUID,
+    private readonly catalog?: () => import('@catbots/strategy-runtime').CommunityNodeCatalog,
   ) {}
+
+  prepareDocument(input: unknown) { return this.catalog ? this.catalog().compile(input) : parseStrategyDocument(input); }
 
   createValidatedRevision(botId: string, candidate: StrategyDocument): StrategyRevision {
     return this.database.transaction(() => {
@@ -74,7 +77,7 @@ export class WorkbenchRepository {
         SELECT COALESCE(MAX(version), 0) + 1 AS version
         FROM strategy_revisions WHERE bot_id = ?
       `).get(botId) as { version: number };
-      const document = parseStrategyDocument({
+      const document = this.prepareDocument({
         ...candidate,
         strategy: { ...candidate.strategy, version: next.version },
       });

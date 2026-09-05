@@ -65,6 +65,29 @@ function createService(provider: CompatibleChatProvider = { complete: vi.fn(asyn
 }
 
 describe('WorkbenchService', () => {
+  it('stops only the matching request and rejects overlapping agent runs', async () => {
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    let signal!: AbortSignal;
+    const service = createService({ complete: async (_request, incomingSignal) => {
+      signal = incomingSignal;
+      started();
+      return new Promise((_resolve, reject) => incomingSignal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+    } });
+    const requestId = randomUUID();
+    const pending = service.sendMessage({ botId, requestId, message: 'Build a strategy' });
+    await ready;
+    await expect(service.sendMessage({ botId, message: 'Duplicate' })).rejects.toThrow('AGENT_BUSY');
+    await service.stopAgent({ botId, requestId: randomUUID() });
+    expect(signal.aborted).toBe(false);
+    await service.stopAgent({ botId, requestId });
+    const state = await pending;
+    expect(signal.aborted).toBe(true);
+    expect(state.messages).toHaveLength(1);
+    expect(state.revisions).toHaveLength(0);
+    await service.stopAgent({ botId, requestId });
+  });
+
   it('sends messages for a DEX-scoped bot without a legacy market dependency', async () => {
     const dynamicBot = new BotRepository(database).createDraft({ name: 'Dynamic Bot', dex: 'hyperliquid' });
     const provider = { complete: vi.fn(async () => ({ text: 'Which markets should I screen?', toolCalls: [] })) };
@@ -150,7 +173,7 @@ describe('WorkbenchService', () => {
     const listener = vi.fn();
     const unsubscribe = service.subscribeActivity(listener);
 
-    await service.sendMessage({ botId, message: 'Hello' });
+    await service.sendMessage({ botId, message: 'Explain RSI' });
     unsubscribe();
     await service.sendMessage({ botId, message: 'Again' });
 

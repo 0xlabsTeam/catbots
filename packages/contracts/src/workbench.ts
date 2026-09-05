@@ -85,10 +85,11 @@ export const AgentToolNameSchema = z.enum([
 export const AgentToolActivitySchema = z.object({
   botId: BotIdSchema,
   requestId: z.string().uuid(),
-  phase: z.enum(['thinking', 'tool_started', 'tool_completed', 'backtest_progress', 'completed', 'failed']),
+  phase: z.enum(['text_delta', 'thinking', 'tool_started', 'tool_completed', 'backtest_progress', 'completed', 'failed']),
   tool: AgentToolNameSchema.optional(),
   message: z.string().trim().min(1).max(500),
   progress: z.number().min(0).max(1).optional(),
+  delta: z.string().max(4096).optional(),
 }).strict();
 
 export type AgentToolActivity = z.infer<typeof AgentToolActivitySchema>;
@@ -240,6 +241,7 @@ export const GetWorkbenchInputSchema = z.object({
 }).strict();
 export const SendWorkbenchMessageInputSchema = z.object({
   botId: BotIdSchema,
+  requestId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(20_000),
 }).strict();
 export const RunWorkbenchBacktestInputSchema = z.object({
@@ -263,3 +265,6 @@ export type GetWorkbenchInput = z.infer<typeof GetWorkbenchInputSchema>;
 export type SendWorkbenchMessageInput = z.infer<typeof SendWorkbenchMessageInputSchema>;
 export type ApproveStrategyRevisionInput = z.infer<typeof ApproveStrategyRevisionInputSchema>;
 export type GetTraceInput = z.infer<typeof GetTraceInputSchema>;
+
+export const StopWorkbenchAgentInputSchema = z.object({ botId: BotIdSchema, requestId: z.string().uuid() }).strict();
+export type StopWorkbenchAgentInput = z.infer<typeof StopWorkbenchAgentInputSchema>;

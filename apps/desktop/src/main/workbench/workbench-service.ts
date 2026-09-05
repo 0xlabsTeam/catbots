@@ -1,3 +1,4 @@
+import { StopWorkbenchAgentInputSchema, type StopWorkbenchAgentInput } from '@catbots/contracts';
 import { randomUUID } from 'node:crypto';
 import {
   AgentToolActivitySchema,
@@ -37,6 +38,8 @@ type ProviderFactory = (config: LocalConfig['llm']) => CompatibleChatProvider;
 
 export type WorkbenchServiceDependencies = Readonly<{
   repository: WorkbenchRepository;
+  nodePackages?: import('../nodes/package-service').NodePackageService;
+  providerService?: import('../providers/provider-service').ProviderService;
   configRepository: { load(): Promise<LocalConfig | null> };
   providerFactory?: ProviderFactory;
   clock?: () => Date;
@@ -44,6 +47,7 @@ export type WorkbenchServiceDependencies = Readonly<{
 }>;
 
 export class WorkbenchService {
+  readonly #active = new Map<string, { requestId: string; controller: AbortController }>();
   readonly #listeners = new Set<(activity: AgentToolActivity) => void>();
 
   constructor(private readonly dependencies: WorkbenchServiceDependencies) {}
@@ -55,36 +59,51 @@ export class WorkbenchService {
 
   async sendMessage(input: SendWorkbenchMessageInput): Promise<WorkbenchState> {
     const request = SendWorkbenchMessageInputSchema.parse(input);
-    const config = await this.dependencies.configRepository.load();
-    if (config === null) throw new Error('LLM_CONFIGURATION_REQUIRED');
-    const requestId = (this.dependencies.idFactory ?? randomUUID)();
+    if (this.#active.has(request.botId)) throw new Error('AGENT_BUSY');
+    const requestId = request.requestId ?? (this.dependencies.idFactory ?? randomUUID)();
     const controller = new AbortController();
-    const state = this.dependencies.repository.getState(request.botId);
-    const onActivity = (activity: AgentToolActivity) => this.publish(activity);
-    const tools = createAgentToolCatalog({
-      botId: request.botId,
-      dex: state.bot.dex,
-      backtestDatasetCatalog: bundledSampleDatasetCatalog,
-      repository: this.dependencies.repository,
-      clock: this.dependencies.clock,
-      idFactory: this.dependencies.idFactory,
-      shouldCancel: () => controller.signal.aborted,
-      onBacktestProgress: (completed, total) => this.publish(AgentToolActivitySchema.parse({
+    this.#active.set(request.botId, { requestId, controller });
+    try {
+      const config = await this.dependencies.configRepository.load();
+      const transport = await this.dependencies.providerService?.transport();
+      if (config === null && !transport) throw new Error('LLM_CONFIGURATION_REQUIRED');
+      const state = this.dependencies.repository.getState(request.botId);
+      const onActivity = (activity: AgentToolActivity) => this.publish(activity);
+      const tools = createAgentToolCatalog({
         botId: request.botId,
+        dex: state.bot.dex,
+        backtestDatasetCatalog: bundledSampleDatasetCatalog,
+        repository: this.dependencies.repository,
+        catalog: this.dependencies.nodePackages?.catalog(),
+        clock: this.dependencies.clock,
+        idFactory: this.dependencies.idFactory,
+        shouldCancel: () => controller.signal.aborted,
+        onBacktestProgress: (completed, total) => this.publish(AgentToolActivitySchema.parse({
+          botId: request.botId,
+          requestId,
+          phase: 'backtest_progress',
+          tool: 'backtest_strategy',
+          message: 'Backtest is running.',
+          progress: total === 0 ? 1 : completed / total,
+        })),
+      });
+      return await runAgentTurn({ botId: request.botId, message: request.message, signal: controller.signal }, {
+        provider: transport ?? (this.dependencies.providerFactory ?? createProvider)(config!.llm),
+        repository: this.dependencies.repository,
+        tools,
         requestId,
-        phase: 'backtest_progress',
-        tool: 'backtest_strategy',
-        message: 'Backtest is running.',
-        progress: total === 0 ? 1 : completed / total,
-      })),
-    });
-    return runAgentTurn({ botId: request.botId, message: request.message, signal: controller.signal }, {
-      provider: (this.dependencies.providerFactory ?? createProvider)(config.llm),
-      repository: this.dependencies.repository,
-      tools,
-      requestId,
-      onActivity,
-    });
+        onActivity,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) return this.dependencies.repository.getState(request.botId);
+      throw error;
+    } finally { this.#active.delete(request.botId); }
+  }
+
+  async stopAgent(input: StopWorkbenchAgentInput): Promise<void> {
+    const request = StopWorkbenchAgentInputSchema.parse(input);
+    const active = this.#active.get(request.botId);
+    if (active?.requestId === request.requestId) active.controller.abort();
   }
 
   async runBacktest(input: RunWorkbenchBacktestInput): Promise<BacktestSummary> {

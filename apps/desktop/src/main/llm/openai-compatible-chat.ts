@@ -1,3 +1,4 @@
+import { readProviderStream } from './provider-stream';
 import type { LocalConfig } from '@catbots/contracts';
 import {
   CompatibleChatProviderError,
@@ -23,6 +24,7 @@ export class OpenAiCompatibleChatProvider implements CompatibleChatProvider {
   async complete(request: AgentCompletionRequest, signal: AbortSignal): Promise<AgentCompletion> {
     const body: Record<string, JsonValue> = {
       model: this.provider.model,
+      ...(request.onText ? { stream: true } : {}),
       messages: request.messages.map(toOpenAiMessage),
       max_tokens: request.maxTokens ?? 2048,
       ...(this.provider.provider === 'openai-compatible' && this.provider.reasoningEffort !== undefined
@@ -35,7 +37,8 @@ export class OpenAiCompatibleChatProvider implements CompatibleChatProvider {
         function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
       }));
     }
-    const response = await postProviderJson(this.provider, 'chat/completions', body, signal, this.options);
+    const response = await postProviderJson(this.provider, 'chat/completions', body, signal, this.options, request.onText
+      ? (response, limit) => readProviderStream(response, limit, 'openai', request.onText!) : undefined);
     return parseOpenAiCompletion(response);
   }
 }

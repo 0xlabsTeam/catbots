@@ -40,6 +40,7 @@ export type AgentToolDependencies = Readonly<{
   dex: DexId;
   backtestDatasetCatalog: BundledSampleDatasetCatalog;
   repository: WorkbenchRepository;
+  catalog?: import('@catbots/strategy-runtime').CommunityNodeCatalog;
   clock?: () => Date;
   idFactory?: () => string;
   shouldCancel?: () => boolean;
@@ -59,7 +60,7 @@ const compareArguments = z.object({
   rightVersion: z.number().int().positive(),
 }).strict();
 
-const registry = createBuiltinRegistry();
+function createDefinitions(registry: import('@catbots/strategy-runtime').NodeRegistry) {
 const strategyDocumentJsonSchema: JsonValue = {
   type: 'object',
   properties: {
@@ -138,9 +139,13 @@ const definitions: readonly AgentToolDefinition[] = [
   }, ['leftVersion', 'rightVersion']),
 ];
 
+return definitions;
+}
+
 export function createAgentToolCatalog(dependencies: AgentToolDependencies): AgentToolCatalog {
+  const registry = dependencies.catalog?.registry ?? createBuiltinRegistry();
   return {
-    definitions,
+    definitions: createDefinitions(registry),
     execute(name, argumentsValue) {
       if (!allowedToolNames.includes(name as AgentToolName)) return failure('UNKNOWN_TOOL', 'Tool is not available.');
       try {
@@ -179,7 +184,7 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
           const input = validateArguments.parse(argumentsValue);
           let document;
           try {
-            document = StrategyV2DocumentSchema.parse(input.strategy);
+            document = dependencies.catalog ? dependencies.catalog.compile(input.strategy) : StrategyV2DocumentSchema.parse(input.strategy);
           } catch (error) {
             if (error instanceof z.ZodError) {
               return {
@@ -197,7 +202,7 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
             }
             return failure('INVALID_STRATEGY', 'Strategy document is malformed.');
           }
-          const result = validateStrategy(document, registry);
+          const result = validateStrategy(document, createBuiltinRegistry());
           if (!result.valid) {
             return { ok: false, error: { code: 'INVALID_STRATEGY', message: 'Strategy graph is invalid.', issues: result.errors.map(({ code, nodeId, edgeId }) => ({ code, nodeId: nodeId ?? null, edgeId: edgeId ?? null })) } } as AgentToolResult;
           }

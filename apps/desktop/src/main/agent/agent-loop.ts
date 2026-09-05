@@ -1,10 +1,10 @@
+import { runAgentLoopContinue, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
+import type { Message, TSchema, Model, Api } from '@earendil-works/pi-ai';
+import { compatiblePiStream, piTransportModel, assistantMessage } from './pi-provider';
 import { AgentToolActivitySchema, type AgentToolActivity, type WorkbenchState } from '@catbots/contracts';
 
 import type { AgentToolCatalog, AgentToolName } from './agent-tools';
-import type {
-  AgentConversationMessage,
-  CompatibleChatProvider,
-} from '../llm/compatible-chat-provider';
+import type { CompatibleChatProvider } from '../llm/compatible-chat-provider';
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 import { bundledSampleDatasetCatalog } from '../workbench/sample-backtest-data';
 
@@ -27,8 +27,10 @@ export type RunAgentTurnInput = Readonly<{
   signal: AbortSignal;
 }>;
 
+export type NativeAgentTransport = { model: Model<Api>; stream: StreamFn };
+
 export type RunAgentTurnDependencies = Readonly<{
-  provider: CompatibleChatProvider;
+  provider: CompatibleChatProvider | NativeAgentTransport;
   repository: WorkbenchRepository;
   tools: AgentToolCatalog;
   requestId: string;
@@ -44,60 +46,84 @@ export async function runAgentTurn(input: RunAgentTurnInput, dependencies: RunAg
   if (input.signal.aborted) throw new AgentLoopError('AGENT_ABORTED');
   const initial = dependencies.repository.getState(input.botId);
   dependencies.repository.appendChatMessage(input.botId, 'user', input.message);
-  const conversation: AgentConversationMessage[] = [
-    { role: 'system', content: systemPrompt(initial) },
-    ...initial.messages.map(({ role, content }) => ({ role, content } as const)),
-    { role: 'user', content: input.message },
+  // A greeting is not authorization to resume old strategy work. Keep this
+  // narrow: mixed messages such as “hi, change RSI to 30” still reach the agent.
+  const greeting = greetingResponse(input.message);
+  if (greeting !== null) {
+    dependencies.repository.appendChatMessage(input.botId, 'assistant', greeting);
+    emit(dependencies, input.botId, { phase: 'completed', message: 'Agent response completed.' });
+    return dependencies.repository.getState(input.botId);
+  }
+  const messages: Message[] = [
+    ...initial.messages.map(({ role, content }): Message => role === 'user'
+      ? { role, content, timestamp: Date.now() }
+      : assistantMessage(content)),
+    { role: 'user', content: input.message, timestamp: Date.now() },
   ];
   let toolRounds = 0;
+  let completedBacktest = false;
+  let failure: AgentLoopError | undefined;
+  let response = '';
+  const tools: AgentTool[] = dependencies.tools.definitions.filter(({ name }) => toolNames.has(name as AgentToolName)).map((definition) => ({
+    name: definition.name,
+    label: definition.name,
+    description: definition.description,
+    parameters: definition.inputSchema as TSchema,
+    execute: async (_id, args) => {
+      assertNotAborted(input.signal);
+      // A successful backtest is a review boundary, including within one tool batch.
+      if (completedBacktest) return { content: [{ type: 'text', text: 'Review the completed backtest before continuing.' }], details: {}, terminate: true };
+      const result = dependencies.tools.execute(definition.name, args);
+      if (definition.name === 'backtest_strategy' && result.ok === true) completedBacktest = true;
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+    },
+  }));
 
   try {
-    while (true) {
-      assertNotAborted(input.signal);
-      emit(dependencies, input.botId, { phase: 'thinking', message: 'Designing the strategy.' });
-      const completion = await dependencies.provider.complete({
-        messages: conversation,
-        tools: dependencies.tools.definitions,
-        maxTokens: 4096,
-      }, input.signal);
-      assertNotAborted(input.signal);
-
-      if (completion.toolCalls.length === 0) {
-        dependencies.repository.appendChatMessage(input.botId, 'assistant', completion.text);
-        emit(dependencies, input.botId, { phase: 'completed', message: 'Agent response completed.' });
-        return dependencies.repository.getState(input.botId);
+    await runAgentLoopContinue({ systemPrompt: systemPrompt(initial), messages, tools }, {
+      model: 'stream' in dependencies.provider ? dependencies.provider.model : piTransportModel,
+      convertToLlm: (history) => history as Message[],
+      toolExecution: 'sequential',
+      maxTokens: 4096,
+      beforeToolCall: async () => failure || input.signal.aborted
+        ? { block: true, reason: 'Agent stopped.', terminate: true }
+        : undefined,
+      shouldStopAfterTurn: () => completedBacktest || failure !== undefined || input.signal.aborted,
+    }, (event) => {
+      if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+        const delta = event.assistantMessageEvent.delta;
+        for (let offset = 0; offset < delta.length; offset += 4096) emit(dependencies, input.botId, { phase: 'text_delta', message: 'Writing response.', delta: delta.slice(offset, offset + 4096) });
       }
-      if (toolRounds >= MAX_TOOL_ROUNDS) throw new AgentLoopError('AGENT_TOOL_ROUND_LIMIT');
-      toolRounds += 1;
-      conversation.push({ role: 'assistant', content: completion.text, toolCalls: completion.toolCalls });
-      let completedBacktest = false;
-
-      for (const call of completion.toolCalls) {
-        const knownTool = toolNames.has(call.name as AgentToolName) ? call.name as AgentToolName : undefined;
+      if (event.type === 'turn_start') {
+        emit(dependencies, input.botId, { phase: 'thinking', message: 'Thinking…' });
+      }
+      if (event.type === 'message_end' && event.message.role === 'assistant') {
+        const message = event.message;
+        if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+          failure = new AgentLoopError(message.stopReason === 'aborted' ? 'AGENT_ABORTED' : 'AGENT_FAILED');
+        } else if (message.content.some((part) => part.type === 'toolCall')) {
+          if (++toolRounds > MAX_TOOL_ROUNDS) failure = new AgentLoopError('AGENT_TOOL_ROUND_LIMIT');
+        } else {
+          response = message.content.filter((part) => part.type === 'text').map((part) => part.text).join('');
+        }
+      }
+      if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
+        const known = toolNames.has(event.toolName as AgentToolName) ? event.toolName as AgentToolName : undefined;
+        const started = event.type === 'tool_execution_start';
         emit(dependencies, input.botId, {
-          phase: 'tool_started',
-          ...(knownTool === undefined ? {} : { tool: knownTool }),
-          message: knownTool === undefined ? 'Rejecting an unavailable tool.' : `Running ${knownTool}.`,
-        });
-        const result = dependencies.tools.execute(call.name, call.arguments);
-        if (knownTool === 'backtest_strategy' && result.ok === true) completedBacktest = true;
-        conversation.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) });
-        emit(dependencies, input.botId, {
-          phase: 'tool_completed',
-          ...(knownTool === undefined ? {} : { tool: knownTool }),
-          message: knownTool === undefined ? 'Unavailable tool rejected.' : `${knownTool} completed.`,
+          phase: started ? 'tool_started' : 'tool_completed',
+          ...(known === undefined ? {} : { tool: known }),
+          message: known === undefined ? 'Unavailable tool rejected.' : `${known} ${started ? 'started' : 'completed'}.`,
         });
       }
-      if (completedBacktest) {
-        dependencies.repository.appendChatMessage(
-          input.botId,
-          'assistant',
-          'Backtest completed. Review the performance, trades, warnings, and execution trace before approving this draft.',
-        );
-        emit(dependencies, input.botId, { phase: 'completed', message: 'Agent response completed.' });
-        return dependencies.repository.getState(input.botId);
-      }
-    }
+    }, input.signal, 'stream' in dependencies.provider ? dependencies.provider.stream : compatiblePiStream(dependencies.provider));
+    assertNotAborted(input.signal);
+    if (failure) throw failure;
+    dependencies.repository.appendChatMessage(input.botId, 'assistant', completedBacktest
+      ? 'Backtest completed. Review the performance, trades, warnings, and execution trace before approving this draft.'
+      : response);
+    emit(dependencies, input.botId, { phase: 'completed', message: 'Agent response completed.' });
+    return dependencies.repository.getState(input.botId);
   } catch (error) {
     const normalized = input.signal.aborted ? new AgentLoopError('AGENT_ABORTED')
       : error instanceof AgentLoopError ? error
@@ -112,7 +138,11 @@ function systemPrompt(state: WorkbenchState): string {
     ? 'No strategy revision exists yet.'
     : `Current draft is v${state.currentRevision.version} with nodes: ${state.currentRevision.nodes.map(({ id, title }) => `${id} (${title})`).join(', ')}.`;
   return [
-    'You are the Catbots strategy design Agent for a non-coding trader.',
+    'You are Catbots, a conversational strategy assistant for a non-coding trader.',
+    'Answer the latest user message directly, in the language they use. Previous messages are context, not a request to repeat or continue an earlier task.',
+    'For greetings or casual conversation, reply briefly and naturally without calling tools or starting strategy work. For questions, explain what was asked before suggesting next steps.',
+    'Create, modify, validate, or backtest a strategy only when the user asks for that work. Ask a concise clarification when their intent or required rules are missing; do not invent them.',
+    'Never invent results, prices, performance, or completed changes. Use tool results for factual claims about the saved strategy; use explain_strategy when asked about its current rules.',
     'Use only the provided tools. Never request or reveal credentials, execute code, approve revisions, or enable Paper/Live trading.',
     'Create only Strategy schema 2.0 documents with marketScope { type: "dex_universe" }.',
     'A strategy must follow Trigger → Condition → Action and may combine conditions.',
@@ -136,4 +166,11 @@ function emit(
   activity: Omit<AgentToolActivity, 'botId' | 'requestId'>,
 ): void {
   dependencies.onActivity?.(AgentToolActivitySchema.parse({ botId, requestId: dependencies.requestId, ...activity }));
+}
+
+function greetingResponse(message: string): string | null {
+  const text = message.normalize('NFKC').trim().replace(/[!！?.。\s]+$/u, '').toLowerCase();
+  if (/^(สวัสดี|หวัดดี)(ครับ|ค่ะ|คะ|จ้า|จ้ะ)?$/u.test(text)) return 'สวัสดีครับ มีอะไรให้ช่วยครับ?';
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening)$/u.test(text)) return 'Hi! How can I help?';
+  return null;
 }

@@ -1,4 +1,12 @@
-import { app, dialog, session, utilityProcess, type BrowserWindow } from 'electron';
+import { NodePackageService } from './nodes/package-service';
+import { safeStorage, shell } from 'electron';
+import { ProviderService } from './providers/provider-service';
+import { EncryptedCredentialStore } from './providers/credential-store';
+import { app, dialog, net, session, utilityProcess, type BrowserWindow } from 'electron';
+import { startWebServer } from './web/http-server';
+import { webMethods } from './web/methods';
+import { createApplicationHandlers, IpcRequestError, type IpcHandlerDependencies } from './ipc/application-handlers';
+import { AgentToolActivitySchema, RuntimeStatusSchema } from '@catbots/contracts';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,6 +36,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 const appOrigin = 'catbots://app';
 const database = new ApplicationDatabase();
 const runtime = new RuntimeSupervisor(() => utilityProcess.fork(join(__dirname, 'runtime-worker.js')));
+let webServer: Awaited<ReturnType<typeof startWebServer>> | undefined;
 let disposeIpcHandlers: (() => void) | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: TrayController | undefined;
@@ -96,8 +105,13 @@ void app.whenReady()
     const connection = databaseResult.database;
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
-    const workbenchRepository = new WorkbenchRepository(connection);
-    const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository });
+    const nodePackages = new NodePackageService(join(dataDirectory, 'node-packages.json'));
+    const workbenchRepository = new WorkbenchRepository(connection, undefined, undefined, () => nodePackages.catalog());
+    const providerService = new ProviderService(new EncryptedCredentialStore(join(dataDirectory, 'provider-auth.enc'), {
+      encrypt: (value) => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable'); return safeStorage.encryptString(value); },
+      decrypt: (value) => safeStorage.decryptString(value),
+    }), join(dataDirectory, 'provider-selection.json'), undefined, (url) => shell.openExternal(url));
+    const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository, providerService, nodePackages });
     const marketUniverseCache = new MarketUniverseCache({
       adapter: isolatedE2E
         ? e2eMarketUniverseAdapter()
@@ -121,19 +135,53 @@ void app.whenReady()
     startupPhase = 'runtime';
     runtime.start();
     startupPhase = 'ipc';
-    disposeIpcHandlers = registerIpcHandlers({
+    const serviceDependencies: IpcHandlerDependencies = {
       app: {
         getVersion: () => app.getVersion(),
         showMainWindow: openMainWindow,
         quitApplication: requestQuit,
       },
       configRepository,
+      providerService,
+      nodePackages,
       botRepository,
       workbenchService,
       deploymentService,
       runtime,
       testLlmConnection,
-    });
+    };
+    disposeIpcHandlers = registerIpcHandlers(serviceDependencies);
+    if (process.env.CATBOTS_WEB === '1' && !app.isPackaged) {
+      if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) throw new Error('WEB_DEV_SERVER_REQUIRED');
+      const application = createApplicationHandlers(serviceDependencies);
+      webServer = await startWebServer({
+        port: 5180,
+        invoke: async (method, input) => {
+          if (!Object.hasOwn(webMethods, method)) throw new IpcRequestError('UNKNOWN_METHOD');
+          const name = webMethods[method as keyof typeof webMethods];
+          return (application[name] as (input?: unknown) => Promise<unknown>)(input);
+        },
+        subscribe: (send) => {
+          const runtimeSubscription = runtime.subscribeStatus((status) => {
+            const parsed = RuntimeStatusSchema.safeParse(status);
+            if (parsed.success) send('runtime', parsed.data);
+          });
+          const activitySubscription = workbenchService.subscribeActivity((activity) => {
+            const parsed = AgentToolActivitySchema.safeParse(activity);
+            if (parsed.success) send('activity', parsed.data);
+          });
+          return () => { runtimeSubscription(); activitySubscription(); };
+        },
+        asset: async (path) => {
+          const target = new URL(path, MAIN_WINDOW_VITE_DEV_SERVER_URL);
+          if (target.origin !== new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL!).origin) throw new Error('INVALID_ASSET');
+          const response = await net.fetch(target.href);
+          if (!response.ok) throw new Error('ASSET_NOT_FOUND');
+          return { body: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get('content-type') ?? 'application/octet-stream' };
+        },
+      });
+      console.log(`Catbots web: ${webServer.origin} (real local backend)`);
+    }
     startupPhase = 'tray';
     installTray();
     if (isolatedE2E) {
@@ -229,7 +277,7 @@ void app.whenReady()
       });
     }
     startupPhase = 'main-window';
-    await openMainWindow();
+    if (process.env.CATBOTS_WEB_ONLY !== '1') await openMainWindow();
     startupPhase = 'ready';
   })
   .catch(async () => {
@@ -413,6 +461,7 @@ function shutdown(): Promise<void> {
   if (shutdownPromise !== undefined) return shutdownPromise;
 
   shutdownPromise = (async () => {
+    await webServer?.close();
     disposeMarketUniverseRefresh();
     try {
       await runtime.stop();

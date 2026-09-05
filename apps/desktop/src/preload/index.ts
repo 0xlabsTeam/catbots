@@ -18,6 +18,8 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     showMainWindow: (): Promise<void> => ipcRenderer.invoke('app:show-main-window'),
     quitApplication: (): Promise<void> => ipcRenderer.invoke('app:quit-application'),
   },
+  nodes: { command: (input) => ipcRenderer.invoke('nodes:command', input) },
+  providers: { command: (input) => ipcRenderer.invoke('providers:command', input) },
   config: {
     getBootstrapState: () => ipcRenderer.invoke('config:get-bootstrap-state'),
     patchSettings: (input) => ipcRenderer.invoke('config:patch-settings', input),
@@ -29,6 +31,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
   },
   workbench: {
     get: (input) => ipcRenderer.invoke('workbench:get', input),
+    stopAgent: (input) => ipcRenderer.invoke('workbench:stop-agent', input),
     sendMessage: (input) => ipcRenderer.invoke('workbench:send-message', input),
     runBacktest: (input) => ipcRenderer.invoke('workbench:run-backtest', input),
     approveRevision: (input) => ipcRenderer.invoke('workbench:approve-revision', input),

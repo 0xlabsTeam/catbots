@@ -23,6 +23,7 @@ export type AgentCompletionRequest = Readonly<{
   messages: readonly AgentConversationMessage[];
   tools: readonly AgentToolDefinition[];
   maxTokens?: number;
+  onText?: (delta: string) => void;
 }>;
 
 export type AgentCompletion = Readonly<{
@@ -81,6 +82,7 @@ export async function postProviderJson(
   body: JsonValue,
   signal: AbortSignal,
   options: CompatibleChatProviderOptions,
+  consume?: (response: Response, maximumBytes: number) => Promise<unknown>,
 ): Promise<unknown> {
   if (signal.aborted) throw new CompatibleChatProviderError('PROVIDER_ABORTED');
   const controller = new AbortController();
@@ -106,6 +108,7 @@ export async function postProviderJson(
       await discardResponse(response);
       throw new CompatibleChatProviderError('PROVIDER_REJECTED');
     }
+    if (consume) return await consume(response, Math.max(1, options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES));
     const source = await readBoundedBody(response, Math.max(1, options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES), controller);
     try {
       return JSON.parse(source) as unknown;
@@ -113,9 +116,9 @@ export async function postProviderJson(
       throw new CompatibleChatProviderError('PROVIDER_INVALID_RESPONSE');
     }
   } catch (error) {
-    if (error instanceof CompatibleChatProviderError) throw error;
     if (timedOut) throw new CompatibleChatProviderError('PROVIDER_TIMEOUT');
     if (signal.aborted) throw new CompatibleChatProviderError('PROVIDER_ABORTED');
+    if (error instanceof CompatibleChatProviderError) throw error;
     throw new CompatibleChatProviderError('PROVIDER_REQUEST_FAILED');
   } finally {
     clearTimeout(timeout);

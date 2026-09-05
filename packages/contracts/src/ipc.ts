@@ -20,6 +20,7 @@ import type {
   GetWorkbenchInput,
   RunWorkbenchBacktestInput,
   SendWorkbenchMessageInput,
+  StopWorkbenchAgentInput,
   StrategyRevision,
   TraceDetail,
   WorkbenchState,
@@ -50,6 +51,8 @@ export type ConnectionTestResult =
   | { ok: false; code: string; message: string };
 
 export interface CatbotsDesktopApi {
+  nodes?: { command(input: import('./node-packages').NodePackageCommand): Promise<import('./node-packages').NodePackageStatus> };
+  providers?: { command(input: import('./providers').ProviderCommand): Promise<import('./providers').ProviderStatus> };
   app: {
     getVersion(): Promise<string>;
     showMainWindow(): Promise<void>;
@@ -66,6 +69,7 @@ export interface CatbotsDesktopApi {
   };
   workbench: {
     get(input: GetWorkbenchInput): Promise<WorkbenchState>;
+    stopAgent(input: StopWorkbenchAgentInput): Promise<void>;
     sendMessage(input: SendWorkbenchMessageInput): Promise<WorkbenchState>;
     runBacktest(input: RunWorkbenchBacktestInput): Promise<BacktestSummary>;
     approveRevision(input: ApproveStrategyRevisionInput): Promise<StrategyRevision>;

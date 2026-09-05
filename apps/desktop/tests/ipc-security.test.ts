@@ -237,7 +237,7 @@ function createDependencies() {
     },
     workbenchService: {
       get: vi.fn(async () => workbenchState),
-      sendMessage: vi.fn(async () => workbenchState),
+      stopAgent: vi.fn(async () => undefined), sendMessage: vi.fn(async () => workbenchState),
       runBacktest: vi.fn(async () => backtestSummary),
       approveRevision: vi.fn(async () => strategyRevision),
       getTrace: vi.fn(async () => TraceDetailSchema.parse({
@@ -697,6 +697,8 @@ describe('validated IPC handlers', () => {
     const remove = registerIpcHandlers(createDependencies());
 
     expect(electronBridge.handle.mock.calls.map(([channel]) => channel)).toEqual([
+      'nodes:command',
+      'providers:command',
       'app:get-version',
       'app:show-main-window',
       'app:quit-application',
@@ -706,6 +708,7 @@ describe('validated IPC handlers', () => {
       'bots:list',
       'bots:create-draft',
       'workbench:get',
+      'workbench:stop-agent',
       'workbench:send-message',
       'workbench:run-backtest',
       'workbench:approve-revision',
@@ -724,7 +727,7 @@ describe('validated IPC handlers', () => {
     ]);
 
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(27);
   });
 
   it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
@@ -801,9 +804,9 @@ describe('validated IPC handlers', () => {
     removeFirst();
 
     expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(27);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(54);
   });
 
   it('restores the previous owned registration after a replacement failure', () => {
@@ -834,11 +837,11 @@ describe('validated IPC handlers', () => {
     const removeFirst = registerIpcHandlers(firstDependencies);
 
     expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(27);
 
     const removeSecond = registerIpcHandlers(secondDependencies);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(54);
   });
 
   it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
@@ -849,9 +852,9 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
 
     const removeReplacement = registerIpcHandlers(createDependencies());
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(27);
     removeReplacement();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(54);
   });
 
   it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
@@ -859,11 +862,11 @@ describe('validated IPC handlers', () => {
     invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
 
     expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(27);
 
     const remove = registerIpcHandlers(createDependencies());
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(54);
   });
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
@@ -877,6 +880,8 @@ describe('validated IPC handlers', () => {
       'app:quit-application',
       'app:show-main-window',
       'app:get-version',
+      'providers:command',
+      'nodes:command',
     ]);
   });
 });
@@ -895,7 +900,7 @@ describe('preload bridge', () => {
     expect(Object.isFrozen(api.deployments)).toBe(true);
     expect(Object.isFrozen(api.runtime)).toBe(true);
     expect(Object.isFrozen((api.app as { getVersion: unknown }).getVersion)).toBe(true);
-    expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'workbench', 'deployments', 'runtime']);
+    expect(Object.keys(api)).toEqual(['app', 'nodes', 'providers', 'config', 'bots', 'workbench', 'deployments', 'runtime']);
     expect(JSON.stringify(api)).not.toContain('ipcRenderer');
     expect(JSON.stringify(api)).not.toContain('process');
     electronBridge.invoke.mockResolvedValueOnce({ status: 'ready' });
