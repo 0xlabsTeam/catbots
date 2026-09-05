@@ -6,6 +6,15 @@ import type { HyperliquidClientPort } from '../src/main/execution/hyperliquid/hy
 const signal = new AbortController().signal;
 const account = '0x0123456789abcdef0123456789abcdef01234567';
 
+function deferred<T>(): Readonly<{
+  promise: Promise<T>;
+  resolve(value: T): void;
+}> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => { resolve = accept; });
+  return { promise, resolve };
+}
+
 function client(overrides: Partial<HyperliquidClientPort> = {}): HyperliquidClientPort {
   return {
     getMeta: vi.fn().mockResolvedValue({
@@ -65,6 +74,33 @@ describe('HyperliquidAdapter', () => {
       expect.objectContaining({ market: 'ETH-PERP' }),
     ]);
     expect(api.getMeta).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let an older metadata response replace newer order-resolution precision', async () => {
+    const olderActive = deferred<Awaited<ReturnType<HyperliquidClientPort['getMeta']>>>();
+    const newerDelisted = deferred<Awaited<ReturnType<HyperliquidClientPort['getMeta']>>>();
+    const api = client({
+      getMeta: vi.fn()
+        .mockReturnValueOnce(olderActive.promise)
+        .mockReturnValueOnce(newerDelisted.promise),
+      getAllMids: vi.fn().mockResolvedValue({ ETH: '100' }),
+    });
+    const adapter = new HyperliquidAdapter({ client: api });
+
+    const olderRequest = adapter.getMarkets(signal);
+    const newerRequest = adapter.getMarkets(signal);
+    newerDelisted.resolve({
+      universe: [{ name: 'ETH', szDecimals: 2, maxLeverage: 50, isDelisted: true }],
+    });
+    await newerRequest;
+    olderActive.resolve({ universe: [{ name: 'ETH', szDecimals: 5, maxLeverage: 50 }] });
+    await olderRequest;
+
+    await adapter.placeOrder({
+      type: 'open_position', market: 'ETH-PERP', side: 'long', orderType: 'market',
+      notionalUsd: '12.345', leverage: 2, clientOrderId: 'cb_overlap',
+    }, signal);
+    expect(api.placeOrder).toHaveBeenCalledWith(expect.objectContaining({ size: '0.12' }), signal);
   });
 
   it('queries the master account and normalizes balances and signed positions', async () => {

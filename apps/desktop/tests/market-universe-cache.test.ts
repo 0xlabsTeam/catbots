@@ -5,6 +5,15 @@ import { MarketUniverseCache } from '../src/main/execution/market-universe-cache
 
 const signal = new AbortController().signal;
 
+function deferred<T>(): Readonly<{
+  promise: Promise<T>;
+  resolve(value: T): void;
+}> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => { resolve = accept; });
+  return { promise, resolve };
+}
+
 function market(
   symbol: string,
   overrides: Partial<PerpMarket> = {},
@@ -94,6 +103,66 @@ describe('MarketUniverseCache', () => {
     now += 501;
     expect(cache.freshness(new Date(now))).toEqual({ fresh: false, reason: 'expired' });
     expect(cache.snapshot()).toBe(lastSuccessfulSnapshot);
+  });
+
+  it('does not let an older overlapping refresh overwrite newer delisted metadata', async () => {
+    let now = Date.parse('2026-09-05T00:00:00.000Z');
+    let elapsed = 0;
+    const olderActive = deferred<readonly PerpMarket[]>();
+    const newerDelisted = deferred<readonly PerpMarket[]>();
+    const venue = {
+      getMarkets: vi.fn()
+        .mockReturnValueOnce(olderActive.promise)
+        .mockReturnValueOnce(newerDelisted.promise),
+    };
+    const cache = new MarketUniverseCache({
+      adapter: venue,
+      clock: () => new Date(now),
+      monotonicClock: () => elapsed,
+      ttlMs: 1_000,
+    });
+
+    const olderRefresh = cache.refresh(signal);
+    const newerRefresh = cache.refresh(signal);
+    newerDelisted.resolve([market('ETH-PERP', { active: false, sizeDecimals: 3 })]);
+    await expect(newerRefresh).resolves.toMatchObject({
+      markets: [{ symbol: 'ETH-PERP', active: false, sizeDecimals: 3 }],
+    });
+
+    now += 100;
+    elapsed += 100;
+    olderActive.resolve([market('ETH-PERP', { active: true, sizeDecimals: 4 })]);
+    await olderRefresh;
+
+    expect(cache.snapshot().markets).toEqual([
+      { symbol: 'ETH-PERP', active: false, sizeDecimals: 3, maximumLeverage: 50 },
+    ]);
+    expect(cache.freshness()).toEqual({ fresh: true });
+  });
+
+  it('rejects negative wall-clock ages and expires by monotonic time after clock rollback', async () => {
+    const observedAt = Date.parse('2026-09-05T00:00:00.000Z');
+    let now = observedAt;
+    let elapsed = 0;
+    const cache = new MarketUniverseCache({
+      adapter: adapter([market('ETH-PERP')]),
+      clock: () => new Date(now),
+      monotonicClock: () => elapsed,
+      ttlMs: 1_000,
+    });
+    await cache.initialize(signal);
+
+    now = observedAt - 1;
+    elapsed = 100;
+    expect(cache.freshness()).toEqual({ fresh: false, reason: 'expired' });
+
+    now = observedAt + 900;
+    elapsed = 900;
+    expect(cache.freshness()).toEqual({ fresh: true });
+
+    now = observedAt + 500;
+    elapsed = 1_001;
+    expect(cache.freshness()).toEqual({ fresh: false, reason: 'expired' });
   });
 
   it('runs periodic refreshes until the owning coordinator aborts them', async () => {

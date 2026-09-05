@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 
 import type { PerpDexAdapter, PerpMarket } from '@catbots/execution-core';
 import type { MarketUniverseMarket, MarketUniverseSnapshot } from '@catbots/strategy-runtime';
@@ -12,6 +13,7 @@ export type MarketUniverseCacheOptions = Readonly<{
   ttlMs?: number;
   refreshIntervalMs?: number;
   clock?: () => Date;
+  monotonicClock?: () => number;
 }>;
 
 const DEFAULT_TTL_MS = 5 * 60_000;
@@ -20,13 +22,18 @@ const MAX_BOUNDED_DURATION_MS = 24 * 60 * 60_000;
 export class MarketUniverseCache {
   private readonly adapter: Pick<PerpDexAdapter, 'getMarkets'>;
   private readonly clock: () => Date;
+  private readonly monotonicClock: () => number;
   private readonly ttlMs: number;
   private readonly refreshIntervalMs: number;
   private currentSnapshot: MarketUniverseSnapshot | undefined;
+  private currentSnapshotPublishedAt: number | undefined;
+  private nextRefreshGeneration = 0;
+  private publishedRefreshGeneration = 0;
 
   constructor(options: MarketUniverseCacheOptions) {
     this.adapter = options.adapter;
     this.clock = options.clock ?? (() => new Date());
+    this.monotonicClock = options.monotonicClock ?? (() => performance.now());
     this.ttlMs = boundedDuration(options.ttlMs ?? DEFAULT_TTL_MS, 'MARKET_UNIVERSE_TTL_INVALID');
     this.refreshIntervalMs = boundedDuration(
       options.refreshIntervalMs ?? Math.max(1, Math.floor(this.ttlMs / 2)),
@@ -39,12 +46,15 @@ export class MarketUniverseCache {
   }
 
   async refresh(signal: AbortSignal): Promise<MarketUniverseSnapshot> {
+    const generation = ++this.nextRefreshGeneration;
     signal.throwIfAborted();
     const markets = await this.adapter.getMarkets(signal);
     signal.throwIfAborted();
+    if (generation < this.publishedRefreshGeneration) return this.snapshot();
 
     const normalized = normalizeMarkets(markets, this.currentSnapshot?.markets ?? []);
     const observedAt = validDate(this.clock(), 'MARKET_UNIVERSE_CLOCK_INVALID').toISOString();
+    const publishedAt = validMonotonicTime(this.monotonicClock());
     const snapshot = Object.freeze({
       dex: 'hyperliquid' as const,
       revision: contentRevision(normalized),
@@ -52,6 +62,8 @@ export class MarketUniverseCache {
       markets: normalized,
     });
     this.currentSnapshot = snapshot;
+    this.currentSnapshotPublishedAt = publishedAt;
+    this.publishedRefreshGeneration = generation;
     return snapshot;
   }
 
@@ -65,7 +77,9 @@ export class MarketUniverseCache {
     if (snapshot === undefined) return Object.freeze({ fresh: false, reason: 'unavailable' });
     const checkedAt = validDate(at, 'MARKET_UNIVERSE_CLOCK_INVALID').getTime();
     const observedAt = Date.parse(snapshot.observedAt);
-    return checkedAt - observedAt <= this.ttlMs
+    const wallAge = checkedAt - observedAt;
+    const monotonicAge = validMonotonicTime(this.monotonicClock()) - this.currentSnapshotPublishedAt!;
+    return wallAge >= 0 && wallAge <= this.ttlMs && monotonicAge >= 0 && monotonicAge <= this.ttlMs
       ? Object.freeze({ fresh: true })
       : Object.freeze({ fresh: false, reason: 'expired' });
   }
@@ -138,5 +152,10 @@ function boundedDuration(value: number, code: string): number {
 
 function validDate(value: Date, code: string): Date {
   if (!Number.isFinite(value.getTime())) throw new Error(code);
+  return value;
+}
+
+function validMonotonicTime(value: number): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error('MARKET_UNIVERSE_MONOTONIC_CLOCK_INVALID');
   return value;
 }

@@ -16,6 +16,8 @@ import { decimal, fixedError, formatOrderPrice, formatOrderSize, toCatbotsMarket
 
 export class HyperliquidAdapter implements PerpDexAdapter {
   private meta: HyperliquidMeta | undefined;
+  private nextMetaGeneration = 0;
+  private publishedMetaGeneration = 0;
   private readonly originalClientIds = new Map<string, string>();
 
   constructor(private readonly options: Readonly<{
@@ -25,8 +27,12 @@ export class HyperliquidAdapter implements PerpDexAdapter {
   }>) {}
 
   async getMarkets(signal: AbortSignal): Promise<readonly PerpMarket[]> {
+    const generation = ++this.nextMetaGeneration;
     const meta = await this.options.client.getMeta(signal);
-    this.meta = meta;
+    if (generation > this.publishedMetaGeneration) {
+      this.meta = meta;
+      this.publishedMetaGeneration = generation;
+    }
     return meta.universe.map(({ name, szDecimals, maxLeverage, isDelisted }) => ({
       market: toCatbotsMarket(name),
       baseAsset: name,
