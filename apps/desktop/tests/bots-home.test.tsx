@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BotSummary, CatbotsDesktopApi, CreateDraftBotInput, RedactedLocalConfig } from '@catbots/contracts';
@@ -96,6 +96,39 @@ async function connectFirstLaunchProvider(user: ReturnType<typeof userEvent.setu
 describe('BotsHomeScreen', () => {
   afterEach(cleanup);
 
+  it('shows only the approved accessible fields and submits the selected DEX from the keyboard', async () => {
+    const user = userEvent.setup();
+    const api = makeApi();
+    render(<CreateDraftBotDialog api={api} open onOpenChange={vi.fn()} onCreated={vi.fn()} />);
+
+    const nameInput = screen.getByLabelText('Bot name');
+    const dexSelect = screen.getByRole('combobox', { name: 'DEX' });
+    expect(nameInput).toBeTruthy();
+    expect(dexSelect.textContent).toContain('Hyperliquid');
+    expect(screen.queryByLabelText('Market')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/coming soon|future DEX|later milestones/i);
+
+    dexSelect.focus();
+    await user.keyboard('{Enter}');
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(options[0]?.textContent).toContain('Hyperliquid');
+    await user.keyboard('{Escape}');
+
+    nameInput.focus();
+    await user.type(nameInput, 'ETH RSI{Enter}');
+    expect(api.createDraft).toHaveBeenCalledWith({ name: 'ETH RSI', dex: 'hyperliquid' });
+  });
+
+  it('labels and renders Bot DEX identity without a Market column', async () => {
+    render(<BotsHomeScreen api={makeApi({ list: vi.fn().mockResolvedValue([existingBot]) })} />);
+
+    const table = await screen.findByRole('table', { name: 'Local bots' });
+    expect(within(table).getByRole('columnheader', { name: 'DEX' })).toBeTruthy();
+    expect(within(table).getByText('Hyperliquid')).toBeTruthy();
+    expect(within(table).queryByRole('columnheader', { name: 'Market' })).toBeNull();
+  });
+
   it('creates a local draft and shows it on Bots Home', async () => {
     const user = userEvent.setup();
     const api = makeApi();
@@ -126,6 +159,7 @@ describe('BotsHomeScreen', () => {
     const { rerender } = render(<BotsHomeScreen api={makeApi({ list })} />);
     const emptyHeading = await screen.findByRole('heading', { name: 'No bots yet' });
     expect(emptyHeading.parentElement?.className).toContain('border-kumo-fill');
+    expect(screen.getByText(/DEX-scoped strategy workspace/i)).toBeTruthy();
 
     rerender(<BotsHomeScreen api={makeApi({ list })} />);
     expect((await screen.findByRole('alert')).textContent).toContain('We could not load local bots. Try again.');

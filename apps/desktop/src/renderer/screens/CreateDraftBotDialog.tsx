@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Banner, Button, Dialog, Input } from '@cloudflare/kumo';
+import { Banner, Button, Dialog, Input, Select } from '@cloudflare/kumo';
 import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
 
 type CreateDraftBotDialogProps = {
@@ -9,8 +9,8 @@ type CreateDraftBotDialogProps = {
   onCreated(bot: BotSummary): void;
 };
 
-type DraftForm = { name: string };
-type DraftErrors = Partial<Record<keyof DraftForm, string>>;
+type DraftForm = { name: string; dex: 'hyperliquid' };
+type DraftErrors = Partial<Record<'name', string>>;
 
 function validate(form: DraftForm): DraftErrors {
   const errors: DraftErrors = {};
@@ -20,7 +20,7 @@ function validate(form: DraftForm): DraftErrors {
 }
 
 export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: CreateDraftBotDialogProps) {
-  const [form, setForm] = useState<DraftForm>({ name: '' });
+  const [form, setForm] = useState<DraftForm>({ name: '', dex: 'hyperliquid' });
   const [errors, setErrors] = useState<DraftErrors>({});
   const [error, setError] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -33,7 +33,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
     return () => { mountedRef.current = false; };
   }, []);
 
-  const updateForm = (key: keyof DraftForm, value: string) => {
+  const updateForm = <Key extends keyof DraftForm,>(key: Key, value: DraftForm[Key]) => {
     if (creatingRef.current) return;
     setForm((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
@@ -54,7 +54,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
     if (Object.keys(nextErrors).length > 0) return;
     const requestToken = requestTokenRef.current + 1;
     requestTokenRef.current = requestToken;
-    const input = { name: form.name.trim(), dex: 'hyperliquid' as const };
+    const input = { name: form.name.trim(), dex: form.dex };
     creatingRef.current = true;
     setIsCreating(true);
     setError(false);
@@ -62,7 +62,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
       const created = await api.createDraft(input);
       if (!mountedRef.current || requestToken !== requestTokenRef.current) return;
       onCreated(created);
-      setForm({ name: '' });
+      setForm({ name: '', dex: 'hyperliquid' });
       onOpenChange(false);
     } catch {
       if (mountedRef.current && requestToken === requestTokenRef.current) setError(true);
@@ -76,7 +76,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
     <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (nextOpen) onOpenChange(true); else close(); }}>
       <Dialog className="create-draft-dialog p-8" size="base">
         <Dialog.Title>Create a local draft</Dialog.Title>
-        <Dialog.Description>Start with a name. This draft uses Hyperliquid; strategy, backtest, and trading controls arrive in later milestones.</Dialog.Description>
+        <Dialog.Description>Create a strategy workspace for Hyperliquid perpetual markets.</Dialog.Description>
         <form className="draft-form" onSubmit={submit}>
           <Input
             id="bot-name"
@@ -90,6 +90,15 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
             autoFocus
           />
           {errors.name === undefined ? null : <p id="bot-name-error" role="alert">{errors.name}</p>}
+          <Select<DraftForm['dex']>
+            label="DEX"
+            value={form.dex}
+            onValueChange={(dex) => { if (dex !== null) updateForm('dex', dex); }}
+            renderValue={() => 'Hyperliquid'}
+            disabled={isCreating}
+          >
+            <Select.Option value="hyperliquid">Hyperliquid</Select.Option>
+          </Select>
           {error ? <Banner variant="error" role="alert" title="Draft not created" description="We could not create this draft. Review the local values and try again." /> : null}
           <div className="draft-form-actions">
             <Button type="button" variant="secondary" onClick={close} disabled={isCreating}>Cancel</Button>

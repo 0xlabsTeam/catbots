@@ -7,6 +7,10 @@ import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
 type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots']; onOpenBot?(bot: BotSummary): void };
 
+const DEX_DISPLAY_NAMES: Record<BotSummary['dex'], string> = {
+  hyperliquid: 'Hyperliquid',
+};
+
 export function formatUpdatedAt(value: string, locale = 'en-US', timeZone = 'UTC'): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) return 'Updated locally';
@@ -89,7 +93,7 @@ function EmptyBots({ onCreate }: { onCreate(): void }) {
       className="bots-empty-state"
       icon={<RobotIcon aria-hidden="true" size={48} weight="duotone" />}
       title="No bots yet"
-      description="Create a local draft with a name. You can shape its strategy in a later milestone."
+      description="Create a DEX-scoped strategy workspace for Hyperliquid perpetual markets."
       contents={<Button type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>}
     />
   );
@@ -113,7 +117,7 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
           {bots.map((bot) => (
             <Table.Row key={bot.id}>
               <Table.Cell><Button type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
-              <Table.Cell>{bot.dex}</Table.Cell>
+              <Table.Cell>{DEX_DISPLAY_NAMES[bot.dex]}</Table.Cell>
               <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
               <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>
               <Table.Cell className="unavailable-metric" aria-label="PnL unavailable">PnL unavailable</Table.Cell>
