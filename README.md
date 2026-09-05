@@ -72,11 +72,18 @@ Hyperliquid testnet additionally requires the master account's public address an
 ## Running Catbots
 
 ```sh
-pnpm dev       # native Electron application
-pnpm dev:web   # simulated browser preview
+pnpm dev           # native Electron application
+pnpm dev:desktop   # same as pnpm dev
+pnpm dev:web       # real browser UI + local Electron backend, no window at startup
+pnpm dev:all       # browser UI + desktop window, sharing one backend
+pnpm dev:preview   # simulated UI only
 ```
 
-The browser preview uses in-memory fixtures, resets on reload, retains no API keys, and performs no YAML, SQLite, runtime, or exchange operations. Use the Electron application for persistence and native integration testing.
+Open **http://127.0.0.1:5180/** after the terminal prints `Catbots web:`. Real web mode uses the same AI provider, config, SQLite repositories, backtests and deployment services as desktop. Reloading the browser preserves saved bots and conversations. `dev:all` is the supported way to use both surfaces together; do not start separate backend processes against the same profile.
+
+The browser talks to a loopback-only HTTP backend using an HttpOnly, SameSite session and same-origin requests. Provider credentials remain in the backend after entry. The backend currently runs on Electron/macOS; this is a real local web client, not a standalone static site or an Internet-hosted multi-user server. Keep the backend process running. Closing the browser does not quit the backend or stop its runtime; use the tray's Quit action or stop the dev process. Native quit confirmation and existing live-review requirements remain in place. Web mode is currently a development entry point, not a packaged web distribution. Port 5180 must be free; an occupied port fails startup instead of silently changing the browser origin.
+
+`dev:preview` is separate: the browser preview uses in-memory fixtures, resets on reload, retains no API keys, and performs no YAML, SQLite, runtime, or exchange operations. Use the Electron application for persistence and native integration testing.
 
 Paper simulates the selected DEX locally. Hyperliquid Live mode uses the approved Strategy 2.0 revision, a fresh market universe, explicit Live review, and the configured testnet Agent Wallet. Both modes use DEX-wide market access plus per-market and shared portfolio controls. Details are in [Dynamic markets](docs/dynamic-markets.md#paper-and-hyperliquid-testnet).
 
@@ -113,3 +120,49 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing the renderer/Main trust 
 Catbots currently includes the local desktop foundation, Chat-driven Strategy 2.0 workbench, deterministic multi-market Backtests, Paper execution, guarded Hyperliquid testnet execution, dynamic market-universe refresh, and durable per-market audit records. Windows, Linux, spot, options, cross-DEX routing, and mainnet execution are outside the current release.
 
 No open-source license has been selected. Until one is added, copyright remains with the project owner and reuse terms are not granted automatically.
+
+### Pi strategy agent
+
+The shared web/desktop backend runs `@earendil-works/pi-agent-core` 0.84.3 and `@earendil-works/pi-ai` 0.84.4, matching [Cloudflare OS](https://github.com/cloudflare/cloudflare-os/tree/main/packages/workshop-backend). Pi owns the conversation loop, schema validation, sequential tool execution, and lifecycle events. Catbots supplies six strategy tools and the existing OpenAI-compatible/Anthropic-compatible HTTP transport, so saved provider settings (including LM Studio and reasoning effort) still apply. No separate Pi CLI installation or login is needed.
+
+The agent can inspect nodes/data, validate drafts, backtest, explain, and compare versions. It cannot approve or deploy a strategy. A successful backtest stops further tools in that batch and ends the turn for review; at most eight tool rounds may execute. Cancellation and credential-safe failures propagate through the same backend to both clients.
+
+The transport forwards live text deltas from OpenAI-compatible and Anthropic-compatible SSE responses through Pi to both web and desktop chat. Tool calls execute only after a complete, validated response; interrupted or truncated streams cannot execute partial tool arguments. Pi coding-agent shell/filesystem tools and usage/cost accounting are not enabled. Existing chat history and strategy storage remain compatible.
+
+### Subscription providers (Pi)
+
+Settings → AI providers supports ChatGPT Plus/Pro (Codex), Claude Pro/Max,
+GitHub Copilot, xAI, OpenRouter, and Radius through Pi's provider-owned login
+flows. Select **Sign in**, open the provider page, finish any device-code or
+manual-code prompt, then choose a model and **Use for chat**. API-key login is
+also offered where Pi supports it. Existing compatible API settings remain
+available through **Use compatible API settings instead**. First-launch users
+can connect and select a subscription model without creating API-key settings.
+
+Web and desktop use the same local backend and credentials. OAuth tokens and
+API keys stay in the profile's `provider-auth.enc`, encrypted using Electron
+safeStorage; the file is user-only (0600). Catbots does not read or modify
+`~/.pi/agent/auth.json`. Pi resolves and refreshes credentials under a serialized
+store lock. Sign out deletes the local credential; it does not revoke a token
+at the provider. OpenRouter keys can be revoked from the OpenRouter account.
+The active provider/model is saved separately in `provider-selection.json`.
+
+Claude subscription authentication draws on extra usage billed per token;
+OpenRouter sign-in creates a key billed from OpenRouter credits. Provider terms,
+account entitlements, and model availability still apply. Radius uses a dynamic
+catalog: use **Refresh models** after connecting if necessary. Provider login
+opens in the host's system browser, with Pi's loopback callback or manual input.
+Actual account sign-in requires the account owner; automated tests use simulated
+provider flows and do not prove subscription entitlement or live inference.
+
+References: [Pi provider documentation](https://pi.dev/docs/latest/providers),
+[Cloudflare OS provider routing](https://github.com/cloudflare/cloudflare-os/blob/main/packages/workshop-backend/src/ai-models.ts).
+
+### Community nodes
+
+Open **Nodes** to inspect/install the Funding Filter starter or import a community
+subflow manifest. The shared backend makes enabled definitions available to AI
+chat. Saved revisions contain expanded built-in graphs and package version/hash
+metadata, so package updates do not rewrite existing bots. Use archived versions
+to roll back. See [Community Node SDK v1](docs/architecture/community-node-sdk.md)
+for the authoring command, manifest format, limits and current scope.
