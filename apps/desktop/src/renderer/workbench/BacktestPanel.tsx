@@ -55,20 +55,50 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
         <div className="backtest-results">
           <div className="backtest-provenance"><Badge variant="info">{selected.dataSource}</Badge><span>Revision v{selected.revisionVersion}</span><span>{formatRange(selected.assumptions.from, selected.assumptions.to)}</span></div>
           <p className="backtest-observation">These are observed simulation results under the pinned assumptions below, not a forecast or investment promise.</p>
-          <div className="metric-grid">
-            <Metric label="Return" value={formatPercent(selected.metrics.returnPercent, true)} />
-            <Metric label="Max drawdown" value={formatPercent(selected.metrics.maximumDrawdownPercent)} />
-            <Metric label="Sharpe-like" value={selected.metrics.sharpeLike.toFixed(2)} />
-            <Metric label="Win rate" value={formatPercent(selected.metrics.winRatePercent)} />
-            <Metric label="Trades" value={String(selected.metrics.tradeCount)} />
-            <Metric label="Fees / funding" value={`${selected.metrics.fees} / ${selected.metrics.funding}`} />
-          </div>
+          <section className="backtest-result-section" aria-labelledby="portfolio-performance-heading">
+            <h3 id="portfolio-performance-heading">Portfolio performance</h3>
+            <div className="metric-grid">
+              <Metric label="Return" value={formatPercent(selected.metrics.returnPercent, true)} />
+              <Metric label="Max drawdown" value={formatPercent(selected.metrics.maximumDrawdownPercent)} />
+              <Metric label="Sharpe-like" value={selected.metrics.sharpeLike.toFixed(2)} />
+              <Metric label="Win rate" value={formatPercent(selected.metrics.winRatePercent)} />
+              <Metric label="Trades" value={String(selected.metrics.tradeCount)} />
+              <Metric label="Fees / funding" value={`${selected.metrics.fees} / ${selected.metrics.funding}`} />
+            </div>
+          </section>
+          <LayerCard className="backtest-coverage">
+            <div>
+              <h3>Dataset coverage</h3>
+              <p>{formatRange(selected.datasetCoverage.from, selected.datasetCoverage.to)}</p>
+            </div>
+            <div>
+              <span>Markets in this dataset</span>
+              <strong>{selected.datasetCoverage.markets.join(', ')}</strong>
+            </div>
+          </LayerCard>
+          <LayerCard className="backtest-by-market">
+            <h3>By market</h3>
+            {selected.perMarket.length === 0 ? <p className="backtest-muted">No eligible market produced a result in this replay.</p> : (
+              <Table aria-label="Backtest results by market">
+                <Table.Header><Table.Row><Table.Head>Market</Table.Head><Table.Head>Realized PnL</Table.Head><Table.Head>Trades</Table.Head><Table.Head>Win rate</Table.Head><Table.Head>Drawdown contribution</Table.Head></Table.Row></Table.Header>
+                <Table.Body>{selected.perMarket.map((market) => (
+                  <Table.Row key={market.market}>
+                    <Table.Cell><strong>{market.market}</strong></Table.Cell>
+                    <Table.Cell>{formatUsd(market.realizedPnl)}</Table.Cell>
+                    <Table.Cell>{market.tradeCount}</Table.Cell>
+                    <Table.Cell>{formatPercent(market.winRatePercent)}</Table.Cell>
+                    <Table.Cell>{formatPercent(market.drawdownContributionPercent)}</Table.Cell>
+                  </Table.Row>
+                ))}</Table.Body>
+              </Table>
+            )}
+          </LayerCard>
           <EquityCurve points={selected.equityCurve} />
           {selected.trades.length === 0 ? null : <LayerCard className="backtest-trades"><h3>Trades</h3><Table aria-label="Backtest trades"><Table.Header><Table.Row><Table.Head>Trace</Table.Head><Table.Head>Market</Table.Head><Table.Head>Side</Table.Head><Table.Head>Realized PnL</Table.Head></Table.Row></Table.Header><Table.Body>
             {selected.trades.map((trade) => <Table.Row key={trade.traceId}><Table.Cell><code>{trade.traceId}</code></Table.Cell><Table.Cell>{trade.market}</Table.Cell><Table.Cell>{trade.side}</Table.Cell><Table.Cell>{trade.realizedPnl}</Table.Cell></Table.Row>)}
           </Table.Body></Table></LayerCard>}
           {selected.warnings.map((warning) => <div key={warning} role="alert"><Banner variant="alert" title="Backtest assumption" description={warning} /></div>)}
-          <TraceTimeline botId={botId} traces={selected.traces} api={api} />
+          <TraceTimeline botId={botId} revisionVersion={selected.revisionVersion} traces={selected.traces} api={api} />
         </div>
       )}
     </section>
@@ -91,4 +121,8 @@ function formatPercent(value: number, signed = false): string {
 
 function formatRange(from: string, to: string): string {
   return `${new Date(from).toLocaleDateString()} – ${new Date(to).toLocaleDateString()}`;
+}
+
+function formatUsd(value: string): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value));
 }

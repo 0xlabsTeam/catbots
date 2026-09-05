@@ -27,6 +27,7 @@ const preflight: LivePreflightView = {
     { id: 'risk-limits', label: 'Risk limits', ok: true, message: 'Risk limits are valid.' },
     { id: 'strategy', label: 'Strategy', ok: true, message: 'Strategy revision is approved.' },
     { id: 'backtest', label: 'Backtest', ok: true, message: 'A completed Backtest is available.' },
+    { id: 'data-freshness', label: 'Data freshness', ok: true, message: 'Required data is fresh.' },
   ],
 };
 
@@ -53,6 +54,13 @@ describe('LiveReviewScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Review Live deployment' })).toBeTruthy();
     expect(screen.getByText('Hyperliquid testnet')).toBeTruthy();
+    expect(screen.getByText('DEX: Hyperliquid')).toBeTruthy();
+    expect(screen.getByText('Market access: All active perpetual markets')).toBeTruthy();
+    expect(screen.getByText(/Universe data.*fresh/i)).toBeTruthy();
+    expect(screen.getByText('Max total exposure')).toBeTruthy();
+    expect(screen.getByText('$5,000.00')).toBeTruthy();
+    expect(screen.getByText(/shared across every market/i)).toBeTruthy();
+    expect(screen.queryByText(/Market: ETH-PERP/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Run Paper instead' })).toBeTruthy();
     const start = screen.getByRole('button', { name: 'Start Live' });
     expect((start as HTMLButtonElement).disabled).toBe(true);

@@ -53,6 +53,12 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
 
   const canStart = preflight?.ready === true && confirmation === bot.name && !starting;
   const failedChecks = preflight?.checks.filter(({ ok }) => !ok) ?? [];
+  const freshnessCheck = preflight?.checks.find(({ id }) => id === 'data-freshness');
+  const freshnessSummary = preparing
+    ? 'Universe data: Checking freshness…'
+    : freshnessCheck?.ok === true
+      ? `Universe data is fresh. ${freshnessCheck.message}`
+      : `Universe data is stale or unavailable. ${freshnessCheck?.message ?? 'Freshness was not reported.'}`;
   return (
     <main className="live-review" aria-labelledby="live-review-title">
       <header className="live-review-header">
@@ -75,15 +81,23 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
             ]} />
           </ReviewSection>
           <ReviewSection eyebrow="2 · STRATEGY" title={`${revision.name} · v${revision.version}`}>
+            <div className="live-market-scope" aria-label="Deployment market scope">
+              <p>DEX: Hyperliquid</p>
+              <p>Market access: All active perpetual markets</p>
+              <p className={freshnessCheck?.ok === false ? 'live-freshness-stale' : undefined}>{freshnessSummary}</p>
+            </div>
             <DefinitionList rows={[
-              ['Bot', bot.name], ['DEX', bot.dex], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
+              ['Bot', bot.name], ['Strategy revision', `v${revision.version}`], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
             ]} />
           </ReviewSection>
-          <ReviewSection eyebrow="3 · RISK LIMITS" title="Hard execution boundaries">
+          <ReviewSection eyebrow="3 · RISK LIMITS" title="Shared portfolio boundaries">
+            <p className="live-section-note">These limits are shared across every market evaluated by this deployment.</p>
             <DefinitionList rows={[
               ['Max order', usd(riskLimits.maxOrderUsd)], ['Max position', usd(riskLimits.maxPositionUsd)],
+              ['Max total exposure', usd(riskLimits.maxTotalExposureUsd)],
               ['Max leverage', `${riskLimits.maxLeverage}×`], ['Max daily loss', usd(riskLimits.maxDailyLossUsd)],
-              ['Max drawdown', `${riskLimits.maxDrawdownPercent}%`], ['Order rate', `${riskLimits.maxOrdersPerMinute}/minute`],
+              ['Max drawdown', `${riskLimits.maxDrawdownPercent}%`], ['Allowed sides', riskLimits.allowedSides.join(', ')],
+              ['Order rate', `${riskLimits.maxOrdersPerMinute}/minute`],
             ]} />
           </ReviewSection>
         </div>

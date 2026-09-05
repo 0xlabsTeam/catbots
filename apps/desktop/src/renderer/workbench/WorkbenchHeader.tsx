@@ -19,8 +19,8 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
         <div>
           <p className="eyebrow">AI BOT WORKBENCH</p>
           <h1 id="bot-workbench-title">{state.bot.name}</h1>
+          <p className="workbench-scope-line">{dexName(state.bot.dex)} · Dynamic markets</p>
         </div>
-        <Badge variant="secondary">{state.bot.dex}</Badge>
         <Badge variant={revision?.status === 'approved' ? 'success' : 'info'}>{revision?.status === 'approved' ? 'Approved' : 'Draft'}</Badge>
       </div>
       <div className="workbench-header-actions">
@@ -51,4 +51,8 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
       </div>
     </header>
   );
+}
+
+function dexName(dex: WorkbenchState['bot']['dex']): string {
+  return dex === 'hyperliquid' ? 'Hyperliquid' : dex;
 }

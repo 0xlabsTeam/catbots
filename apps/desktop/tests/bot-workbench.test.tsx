@@ -91,6 +91,7 @@ describe('BotWorkbenchScreen', () => {
     render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
 
     expect(await screen.findByRole('heading', { name: 'BTC Flow' })).toBeTruthy();
+    expect(screen.getByText('Hyperliquid · Dynamic markets')).toBeTruthy();
     expect(screen.getByText('Describe your entry and exit rules.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Mock strategy graph' })).toBeTruthy();
     expect(document.body.textContent).not.toContain('schemaVersion');
