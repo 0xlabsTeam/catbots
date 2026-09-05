@@ -41,7 +41,7 @@ const state: WorkbenchState = {
 function api(): CatbotsDesktopApi['workbench'] {
   return {
     get: vi.fn().mockResolvedValue(state),
-    sendMessage: vi.fn().mockImplementation(async (_input) => ({
+    stopAgent: vi.fn(async () => undefined), sendMessage: vi.fn().mockImplementation(async (_input) => ({
       ...state,
       messages: [...state.messages, { id: '018f3f75-89ab-7def-8123-456789abcdeb', botId: state.bot.id, role: 'user' as const, content: 'Use ETF inflow', createdAt: '2026-09-04T00:01:00.000Z' }],
     })),
@@ -77,6 +77,7 @@ function deploymentApi(): CatbotsDesktopApi['deployments'] {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('ResizeObserver', class ResizeObserver {
     observe() {}
@@ -128,12 +129,24 @@ describe('BotWorkbenchScreen', () => {
     render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={paperApi} onBack={vi.fn()} />);
     expect(await screen.findByText('Paper runtime unavailable')).toBeTruthy();
     expect(screen.queryByText('Paper running')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Pause' }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByRole('tab', { name: 'Performance' }));
     expect(screen.getByText('Positions and orders were not restored. Durable deployment records and logs remain available.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(paperApi.stopPaper).toHaveBeenCalledWith({ deploymentId: paperView.deployment.id });
     expect(await screen.findByText('Paper deployment is stopped')).toBeTruthy();
   });
+  it('preserves the chat draft when hiding and reopening the panel', async () => {
+    const user = userEvent.setup();
+    render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'BTC Flow' });
+    await user.type(screen.getByRole('textbox', { name: 'Message Catbots AI' }), 'Keep this draft');
+    await user.click(screen.getByRole('button', { name: 'Hide chat' }));
+    expect(screen.queryByRole('textbox', { name: 'Message Catbots AI' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Show chat' }));
+    expect((screen.getByRole('textbox', { name: 'Message Catbots AI' }) as HTMLTextAreaElement).value).toBe('Keep this draft');
+  });
+
   it('loads chat and a visual flow without rendering canonical JSON', async () => {
     render(<BotWorkbenchScreen bot={state.bot} api={api()} deploymentApi={deploymentApi()} onBack={vi.fn()} />);
 
@@ -154,7 +167,7 @@ describe('BotWorkbenchScreen', () => {
     await user.type(screen.getByLabelText('Message Catbots AI'), 'Use ETF inflow');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
-    expect(workbenchApi.sendMessage).toHaveBeenCalledWith({ botId: state.bot.id, message: 'Use ETF inflow' });
+    expect(workbenchApi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ botId: state.bot.id, message: 'Use ETF inflow', requestId: expect.any(String) }));
     expect(await screen.findByText('Use ETF inflow')).toBeTruthy();
   });
 
@@ -169,7 +182,7 @@ describe('BotWorkbenchScreen', () => {
     await user.type(composer, 'Keep this requirement');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
-    expect(await screen.findByText('Catbots AI could not complete that request. Try again.')).toBeTruthy();
+    expect(await screen.findByText('The request did not finish. Review any saved changes before trying again.')).toBeTruthy();
     expect((composer as HTMLTextAreaElement).value).toBe('Keep this requirement');
     expect(document.body.textContent).not.toContain('provider secret detail');
   });

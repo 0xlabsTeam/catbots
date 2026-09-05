@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChatCircleIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
+import '../workbench/workspace.css';
 import { Badge, Banner, Button, LayerCard, Tabs } from '@cloudflare/kumo';
 import type { AgentToolActivity, AuditEventView, BotSummary, CatbotsDesktopApi, Deployment, PaperDeploymentView, RiskLimits, StrategyRevision, TraceDetail, TraceSummary, WorkbenchState } from '@catbots/contracts';
 import { toRendererSafeTraceDetails } from '../../shared/trace-projection';
@@ -24,8 +26,15 @@ export type BotWorkbenchScreenProps = Readonly<{
 export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSettings }: BotWorkbenchScreenProps) {
   const [state, setState] = useState<WorkbenchState | null>(null);
   const [selectedNode, setSelectedNode] = useState<StrategyRevision['nodes'][number] | null>(null);
+  const requestRef = useRef<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [activities, setActivities] = useState<AgentToolActivity[]>([]);
   const [activity, setActivity] = useState<AgentToolActivity | null>(null);
   const [tab, setTab] = useState('flow');
+  const [showChat, setShowChat] = useState(true);
+  const [showInspector, setShowInspector] = useState(false);
+  const inspectorVisible = showInspector && tab === 'flow';
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
   const [deployment, setDeployment] = useState<PaperDeploymentView | null>(null);
@@ -40,6 +49,10 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
     void api.get({ botId: bot.id }).then((next) => { if (active) setState(next); }).catch(() => { if (active) setError('We could not load this bot workspace.'); });
     const unsubscribe = api.subscribeActivity((next) => {
       if (next.botId !== bot.id) return;
+      if (requestRef.current && next.requestId !== requestRef.current) return;
+      if (next.phase === 'text_delta') { setStreamingText((text) => text + (next.delta ?? '')); return; }
+      if (next.phase === 'thinking') setStreamingText('');
+      setActivities((history) => [...(next.phase === 'backtest_progress' ? history.filter((item) => item.requestId !== next.requestId || item.phase !== 'backtest_progress') : history), next].slice(-40));
       setActivity(next.phase === 'completed' || next.phase === 'failed' ? null : next);
     });
     return () => { active = false; unsubscribe(); };
@@ -74,15 +87,30 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
 
   const send = async (message: string) => {
     setSending(true);
+    const requestId = crypto.randomUUID();
+    requestRef.current = requestId;
+    setActivities([]);
+    setStreamingText('');
     setError(null);
     try {
-      setState(await api.sendMessage({ botId: bot.id, message }));
+      setState(await api.sendMessage({ botId: bot.id, message, requestId }));
     } catch {
-      setError('Catbots AI could not complete that request. Try again.');
+      try { setState(await api.get({ botId: bot.id })); } catch { /* Keep current state on transport failure. */ }
+      setError('The request did not finish. Review any saved changes before trying again.');
       throw new Error('WORKBENCH_MESSAGE_FAILED');
     } finally {
       setSending(false);
+      setStreamingText('');
+      setStopping(false);
+      requestRef.current = null;
+      setActivity(null);
     }
+  };
+  const stopAgent = async () => {
+    if (!requestRef.current) return;
+    setStopping(true);
+    try { await api.stopAgent({ botId: bot.id, requestId: requestRef.current }); }
+    catch { setStopping(false); setError('Could not stop the agent. Try Stop again.'); }
   };
   const selectVersion = async (version: number) => {
     setError(null);
@@ -186,27 +214,22 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
     <section className="bot-workbench" aria-labelledby="bot-workbench-title">
       <WorkbenchHeader state={state} approving={approving} onBack={onBack} onSelectVersion={(version) => void selectVersion(version)} onApprove={approve} />
       {error === null ? null : <Banner variant="error" title="Workbench unavailable" description={error} />}
-      <div className="workbench-grid">
-        <ChatPanel messages={state.messages} activity={activity} sending={sending} onSend={send} />
+      <div className={`workbench-grid${showChat ? '' : ' chat-hidden'}${inspectorVisible ? '' : ' inspector-hidden'}`}>
+        <div id="workbench-chat" className="workbench-chat-region" hidden={!showChat}><ChatPanel streamingText={streamingText} key={bot.id} botId={bot.id} activities={activities} stopping={stopping} onStop={stopAgent} result={state.currentRevision ? <div className="chat-result"><Badge variant="secondary">Strategy v{state.currentRevision.version} · {state.currentRevision.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open strategy</Button>{state.backtests.some((run) => run.revisionVersion === state.currentRevision?.version) && <Button size="sm" variant="secondary" onClick={() => setTab('backtest')}>View backtest</Button>}</div> : null} messages={state.messages} activity={activity} sending={sending} onSend={send} /></div>
         <section className="workbench-canvas" aria-label="Strategy workspace">
-          <ExecutionControls
-            revision={state.currentRevision}
-            deployment={deployment}
-            liveDeployment={liveDeployment}
-            changing={changingDeployment}
-            onStart={() => setReviewingPaper(true)}
-            onPause={() => void changePaperStatus('pause')}
-            onStop={() => void changePaperStatus('stop')}
-            onReviewLive={() => setReviewingLive(true)}
-            onStopLive={() => void stopLive()}
-          />
-          <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
+      <div className="workbench-view-tools" aria-label="Workspace panels">
+        <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
+        <Button size="sm" variant="ghost" icon={ChatCircleIcon} title={showChat ? 'Hide chat' : 'Show chat'} aria-label={showChat ? 'Hide chat' : 'Show chat'} aria-pressed={showChat} aria-controls="workbench-chat" onClick={() => setShowChat(!showChat)}></Button>
+        <Button size="sm" variant="ghost" icon={SidebarSimpleIcon} disabled={tab !== 'flow'} title={showInspector ? 'Hide inspector' : 'Show inspector'} aria-label={showInspector ? 'Hide inspector' : 'Show inspector'} aria-pressed={inspectorVisible} aria-controls="workbench-inspector" onClick={() => setShowInspector(!showInspector)}></Button>
+      </div>
+
+
           {tab === 'performance' ? <PaperPerformance deployment={deployment} />
             : tab === 'logs' ? <PaperLogs deployment={deployment} />
             : tab === 'flow' ? (
             state.currentRevision === null
               ? <LayerCard className="workbench-empty"><h2>Start with a requirement</h2><p>Tell Catbots AI when to evaluate, which conditions to combine, and what action to take.</p></LayerCard>
-              : <StrategyGraph revision={state.currentRevision} onSelectNode={setSelectedNode} />
+              : <StrategyGraph revision={state.currentRevision} onSelectNode={(node) => { setSelectedNode(node); setShowInspector(true); }} />
           ) : state.currentRevision === null
             ? <LayerCard className="workbench-empty"><h2>Create a strategy first</h2><p>A valid revision is required before a Backtest can run.</p></LayerCard>
             : <BacktestPanel
@@ -218,8 +241,21 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
                 onCompleted={(backtest) => setState((previous) => previous === null ? previous : { ...previous, backtests: [backtest, ...previous.backtests] })}
               />}
         </section>
-        <InspectorPanel node={selectedNode} />
+        <div id="workbench-inspector" className="workbench-inspector-region" hidden={!inspectorVisible}><InspectorPanel node={selectedNode} /></div>
       </div>
+      <footer className="workbench-runtime">
+          <ExecutionControls
+            revision={state.currentRevision}
+            deployment={deployment}
+            liveDeployment={liveDeployment}
+            changing={changingDeployment}
+            onStart={() => setReviewingPaper(true)}
+            onPause={() => void changePaperStatus('pause')}
+            onStop={() => void changePaperStatus('stop')}
+            onReviewLive={() => setReviewingLive(true)}
+            onStopLive={() => void stopLive()}
+          />
+      </footer>
     </section>
   );
 }
@@ -237,15 +273,16 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
 }>) {
   const status = deployment?.deployment.status;
   const liveStatus = liveDeployment?.mode === 'live' ? liveDeployment.status : undefined;
+  const runtimeUnavailable = deployment?.state === null && status !== 'stopped';
   const canReviewDeployment = isDynamicDeploymentEligible(revision);
   const legacyApproved = revision?.status === 'approved' && !canReviewDeployment;
   return (
     <LayerCard className="paper-controls">
       <div>
-        <p className="eyebrow">EXECUTION</p>
+        <p className="eyebrow">Execution</p>
         <strong>{liveStatus === 'running' ? 'Live deployment is running' : status === undefined ? 'Paper is stopped'
           : deployment?.state === null && status !== 'stopped' ? 'Paper runtime unavailable' : `Paper deployment is ${status}`}</strong>
-        <p>{liveStatus === 'running' ? 'Hyperliquid testnet · risk checks and every flow event are logged.' : 'Local simulation · risk checks and every flow event are logged.'}</p>
+        <p>{liveStatus === 'running' ? 'Hyperliquid testnet · risk checks and every flow event are logged.' : runtimeUnavailable ? 'Runtime state was not restored. Logs remain available. Stop closes the saved deployment.' : 'Local simulation · risk checks and every flow event are logged.'}</p>
       </div>
       <div className="paper-control-actions">
         {legacyApproved ? <div className="deployment-upgrade-note"><Badge variant="info">Upgrade required</Badge><span>Create and approve a Strategy 2.0 dynamic-market revision in Chat.</span></div> : null}
@@ -254,7 +291,7 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
         {(status === undefined || status === 'stopped') && canReviewDeployment
           ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
           : null}
-        {status === 'running' ? <Button type="button" variant="secondary" disabled={changing} onClick={onPause}>Pause</Button> : null}
+        {status === 'running' ? <Button type="button" variant="secondary" disabled={changing || runtimeUnavailable} onClick={onPause}>Pause</Button> : null}
         {status === 'running' || status === 'paused'
           ? <Button type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
           : null}

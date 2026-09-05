@@ -35,7 +35,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
       <header className="backtest-toolbar">
         <div><p className="eyebrow">DETERMINISTIC REPLAY</p><h2 id="backtest-title">Backtest v{revision.version}</h2></div>
         {backtests.length > 0 ? (
-          <Select<string> label="Backtest run" value={selected?.id ?? backtests[0]!.id} onValueChange={(id) => setSelected(backtests.find((item) => item.id === id) ?? null)}>
+          <Select<string> items={backtests.map((run) => ({ value: run.id, label: new Date(run.startedAt).toLocaleString() }))} label="Backtest run" value={selected?.id ?? backtests[0]!.id} onValueChange={(id) => setSelected(backtests.find((item) => item.id === id) ?? null)}>
             {backtests.map((runItem) => <Select.Option key={runItem.id} value={runItem.id}>{new Date(runItem.startedAt).toLocaleString()}</Select.Option>)}
           </Select>
         ) : null}

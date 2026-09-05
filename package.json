@@ -7,15 +7,19 @@
   },
   "packageManager": "pnpm@10.17.1",
   "scripts": {
-    "dev": "pnpm --filter @catbots/desktop start",
-    "dev:web": "pnpm --filter @catbots/desktop dev:web",
-    "typecheck": "pnpm -r typecheck",
+    "dev": "node scripts/dev.mjs desktop",
+    "dev:web": "node scripts/dev.mjs web",
+    "typecheck": "pnpm check:design && pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:lmstudio": "CATBOTS_LMSTUDIO_E2E=1 pnpm --filter @catbots/desktop exec vitest run tests/lmstudio-workbench.e2e.test.ts --reporter=verbose",
     "check:release-node": "node scripts/check-release-node.mjs",
     "test:e2e": "pnpm check:release-node && pnpm --filter @catbots/desktop package && playwright test",
     "package": "pnpm check:release-node && pnpm --filter @catbots/desktop package",
-    "make": "pnpm check:release-node && pnpm --filter @catbots/desktop make"
+    "make": "pnpm check:release-node && pnpm --filter @catbots/desktop make",
+    "check:design": "node scripts/check-design-system.mjs",
+    "dev:desktop": "node scripts/dev.mjs desktop",
+    "dev:all": "node scripts/dev.mjs all",
+    "dev:preview": "pnpm --filter @catbots/desktop dev:web"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { BrandLogo } from '../components/BrandLogo';
 import { Banner, Button, Dialog, Input, LayerCard, Select, Switch, Tooltip } from '@cloudflare/kumo';
-import { DesktopTowerIcon, InfoIcon } from '@phosphor-icons/react';
+import { InfoIcon } from '@phosphor-icons/react';
 import {
   CompatibleProviderUrlSchema,
   hasSameLlmCredentialScope,
@@ -17,7 +18,7 @@ import { SecretField } from '../components/SecretField';
 
 type Provider = LocalConfig['llm']['provider'];
 type ReasoningEffortSetting = 'auto' | OpenAiReasoningEffort;
-type SettingsScreenProps = { api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; embedded?: boolean; onSaved?(config: RedactedLocalConfig): void };
+type SettingsScreenProps = { connections?: ReactNode; api: CatbotsDesktopApi['config']; config?: RedactedLocalConfig; repairIssues?: ReadonlyArray<{ path: string; message: string }>; onboarding?: boolean; embedded?: boolean; onSaved?(config: RedactedLocalConfig): void };
 type FormState = {
   profileName: string; telemetry: boolean; provider: Provider; baseUrl: string; apiKey: string;
   model: string; reasoningEffort: ReasoningEffortSetting;
@@ -111,7 +112,7 @@ function toSettingsPatch(state: FormState, config?: RedactedLocalConfig): LocalS
 
 function getSafeRepairPaths(issues: SettingsScreenProps['repairIssues']): string[] { return [...new Set((issues ?? []).flatMap((issue) => SAFE_REPAIR_PATHS.has(issue.path) ? [issue.path] : []))]; }
 
-export function SettingsScreen({ api, config, repairIssues, onboarding = false, embedded = false, onSaved }: SettingsScreenProps) {
+export function SettingsScreen({ connections, api, config, repairIssues, onboarding = false, embedded = false, onSaved }: SettingsScreenProps) {
   const [form, setForm] = useState<FormState>(() => formFromConfig(config));
   const [errors, setErrors] = useState<FormErrors>({});
   const [connection, setConnection] = useState<ConnectionTestState>({ state: 'idle' });
@@ -278,11 +279,12 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
   return (
     <Root className={onboarding ? 'setup-shell' : 'settings-shell'}>
       <section className="setup-intro" aria-labelledby="settings-heading">
-        <div className="local-mark" aria-hidden="true"><DesktopTowerIcon weight="duotone" /></div>
-        <p className="eyebrow">LOCAL DESKTOP</p>
+        <div className="local-mark" aria-hidden="true"><BrandLogo size="large" decorative /></div>
+        <p className="eyebrow">LOCAL WORKSPACE</p>
         <h1 id="settings-heading">{onboarding ? 'Connect your AI provider' : 'Settings'}</h1>
         <p className="lead">{onboarding ? 'Name this local workspace and add the AI provider Catbots will use to design and backtest your bots.' : 'Update the local profile and AI provider used by this Catbots installation.'}</p>
       </section>
+      {connections}
       <LayerCard render={<section aria-label={onboarding ? 'Local profile setup' : 'Local settings'} />} className="settings-card">
         {repairIssues === undefined ? null : <Banner variant="alert" title="Configuration repair" description={safeRepairPaths.length === 0 ? 'Re-enter the local profile and provider values to repair this configuration.' : <>Review these safe settings fields: {safeRepairPaths.map((path) => <code key={path}>{path}</code>)}</>} />}
         <header className="form-heading"><p className="eyebrow">AI PROVIDER</p><h2>{onboarding ? 'Set up Catbots' : 'Provider connection'}</h2><p>{onboarding ? 'Connect once to verify these details, save them locally, and open your bot workspace.' : 'A successful connection test is required before these provider values can be saved.'}</p></header>

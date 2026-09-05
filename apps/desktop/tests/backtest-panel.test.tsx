@@ -46,7 +46,7 @@ const legacyBacktest = {
 
 function api(): CatbotsDesktopApi['workbench'] {
   return {
-    get: vi.fn(), sendMessage: vi.fn(), approveRevision: vi.fn(), subscribeActivity: vi.fn(() => () => undefined),
+    get: vi.fn(), stopAgent: vi.fn(async () => undefined), sendMessage: vi.fn(), approveRevision: vi.fn(), subscribeActivity: vi.fn(() => () => undefined),
     runBacktest: vi.fn().mockResolvedValue(backtest),
     getTrace: vi.fn().mockImplementation(async ({ traceId }) => ({
       traceId,

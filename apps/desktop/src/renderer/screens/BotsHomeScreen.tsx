@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Banner, Button, Empty, LayerCard, Table } from '@cloudflare/kumo';
-import { PlusIcon, RobotIcon } from '@phosphor-icons/react';
+import { Banner, Button, Empty, LayerCard, Table, Input, Select } from '@cloudflare/kumo';
+import { PlusIcon, MagnifyingGlassIcon, ChatCircleTextIcon, GraphIcon, FlaskIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
+import { BrandLogo } from '../components/BrandLogo';
 import { StatusBadge } from '../components/StatusBadge';
 import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
@@ -24,6 +25,8 @@ function mergeBots(listedBots: readonly BotSummary[], locallyCreatedBots: Readon
 }
 
 export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const [bots, setBots] = useState<BotSummary[] | null>(null);
   const [hasListError, setHasListError] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -61,13 +64,14 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
     onOpenBot?.(created);
   };
 
+  const filteredBots = bots?.filter((bot) => bot.name.toLowerCase().includes(query.trim().toLowerCase()) && (status === 'all' || bot.status === status)) ?? [];
+
   return (
     <section className="bots-home" aria-labelledby="bots-home-title">
       <header className="bots-home-header">
         <div>
-          <p className="eyebrow">LOCAL BOTS</p>
           <h1 id="bots-home-title">Bots</h1>
-          <p>Draft and inspect your local bot workspaces. No trading activity is available in M0.</p>
+          <p>Turn a trading idea into a strategy you can inspect and test.</p>
         </div>
         <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
       </header>
@@ -80,7 +84,16 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
         </div>
       ) : null}
       {bots !== null && !hasListError && bots.length === 0 ? <EmptyBots onCreate={() => setIsCreateOpen(true)} /> : null}
-      {bots !== null && bots.length > 0 ? <BotsTable bots={bots} onOpenBot={onOpenBot} /> : null}
+      {bots !== null && bots.length > 0 ? <>
+        <div className="bots-toolbar">
+          <Input aria-label="Search bots" placeholder="Search bots…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Select<string> aria-label="Filter by status" value={status} onValueChange={(value) => setStatus(value ?? 'all')} items={{ all: 'All statuses', draft: 'Draft', paper: 'Paper', live: 'Live', paused: 'Paused', stopped: 'Stopped', error: 'Error', recovering: 'Recovering' }}>
+            <Select.Option value="all">All statuses</Select.Option>{['draft', 'paper', 'live', 'paused', 'stopped', 'error', 'recovering'].map((value) => <Select.Option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</Select.Option>)}
+          </Select>
+          <span className="bots-result-count" role="status">{filteredBots.length} of {bots.length} bots</span>
+        </div>
+        {filteredBots.length ? <BotsTable bots={filteredBots} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
+      </> : null}
 
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
     </section>
@@ -89,13 +102,18 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
 
 function EmptyBots({ onCreate }: { onCreate(): void }) {
   return (
-    <Empty
+    <div className="bots-welcome"><Empty
       className="bots-empty-state"
-      icon={<RobotIcon aria-hidden="true" size={48} weight="duotone" />}
+      icon={<BrandLogo size="large" decorative />}
       title="No bots yet"
-      description="Create a DEX-scoped strategy workspace for Hyperliquid perpetual markets."
+      description="Start with an idea. Build your strategy with AI, review the logic, and test it before deployment."
       contents={<Button type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>}
     />
+    <div className="getting-started" aria-label="How it works">
+      <div><ChatCircleTextIcon size={22} aria-hidden="true" /><h3>Describe your strategy</h3><p>Give your bot a name, then explain your trading idea in chat.</p></div>
+      <div><GraphIcon size={22} aria-hidden="true" /><h3>Review the logic</h3><p>Inspect triggers, conditions, and actions in a visual graph.</p></div>
+      <div><FlaskIcon size={22} aria-hidden="true" /><h3>Test before deploying</h3><p>Run a backtest and review the results before moving to paper trading.</p></div>
+    </div><p className="bots-market-note">Hyperliquid · Perpetual markets</p></div>
   );
 }
 

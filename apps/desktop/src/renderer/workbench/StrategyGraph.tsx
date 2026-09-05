@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { Button } from '@cloudflare/kumo';
 import {
+  type ReactFlowInstance,
   Background,
   BackgroundVariant,
   Controls,
@@ -22,23 +24,27 @@ export type StrategyGraphProps = Readonly<{
 const nodeTypes = { strategy: StrategyNodeCard };
 
 export function StrategyGraph({ revision, onSelectNode }: StrategyGraphProps) {
+  const instance = useRef<ReactFlowInstance<StrategyFlowNode> | null>(null);
   const graph = useMemo(() => buildStrategyGraph(revision), [revision]);
   return (
     <section className="strategy-graph-shell" aria-label={`Strategy flow for ${revision.name}`}>
       <header className="strategy-scope" aria-label="Market scope">
         <div><span>DEX</span><strong>Hyperliquid</strong></div>
         <div><span>Market scope</span><strong>{scopeDescription(revision)}</strong></div>
+      <div className="graph-toolbar"><div><Button size="sm" variant="ghost" onClick={() => void instance.current?.fitView({ padding: 0.15 })}>Fit all</Button><Button size="sm" variant="secondary" onClick={() => void instance.current?.zoomTo(1)}>100%</Button></div></div>
       </header>
       <div className="strategy-graph">
         <ReactFlow
+          key={`${revision.botId}:${revision.version}`}
           nodes={graph.nodes}
           edges={graph.edges}
           nodeTypes={nodeTypes}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
+          defaultViewport={{ x: 24, y: 24, zoom: 1 }}
+          colorMode="system"
+          onInit={(flow) => { instance.current = flow; }}
           onNodeClick={(_event, selected) => {
             const node = revision.nodes.find(({ id }) => id === selected.id);
             if (node !== undefined) onSelectNode(node);
@@ -68,7 +74,7 @@ function StrategyNodeCard({ data }: NodeProps<StrategyFlowNode>) {
       {data.kind !== 'trigger' ? <Handle type="target" position={Position.Left} id={data.kind === 'action' ? 'condition' : data.nodeType.startsWith('combine.') ? 'conditions' : 'activation'} /> : null}
       <span className="strategy-node-kind">{data.kind}</span>
       <strong>{data.title}</strong>
-      <span>{data.summary}</span>
+      <span title={data.summary}>{data.summary}</span>
       {data.kind !== 'action' ? <Handle type="source" position={Position.Right} id={data.kind === 'trigger' ? 'activation' : 'result'} /> : null}
     </div>
   );

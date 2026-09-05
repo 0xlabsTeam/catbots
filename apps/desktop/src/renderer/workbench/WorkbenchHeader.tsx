@@ -17,7 +17,6 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
       <Button type="button" variant="ghost" size="sm" icon={ArrowLeftIcon} onClick={onBack}>All bots</Button>
       <div className="workbench-title">
         <div>
-          <p className="eyebrow">AI BOT WORKBENCH</p>
           <h1 id="bot-workbench-title">{state.bot.name}</h1>
           <p className="workbench-scope-line">{dexName(state.bot.dex)} · {scopeName(revision)}</p>
         </div>
@@ -25,14 +24,8 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
       </div>
       <div className="workbench-header-actions">
         {revision === null ? null : (
-          <Select<string>
-            label="Strategy version"
-            value={String(revision.version)}
-            onValueChange={(value) => onSelectVersion(Number(value))}
-          >
-            {state.revisions.map((candidate) => (
-              <Select.Option key={candidate.version} value={String(candidate.version)}>v{candidate.version} · {candidate.status}</Select.Option>
-            ))}
+          <Select<string> size="sm" aria-label="Strategy version" value={String(revision.version)} onValueChange={(value) => onSelectVersion(Number(value))} items={state.revisions.map((candidate) => ({ value: String(candidate.version), label: `v${candidate.version} · ${candidate.status}` }))}>
+            {state.revisions.map((candidate) => <Select.Option key={candidate.version} value={String(candidate.version)}>v{candidate.version} · {candidate.status}</Select.Option>)}
           </Select>
         )}
         {revision === null || revision.status === 'approved' ? null : (

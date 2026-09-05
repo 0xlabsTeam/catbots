@@ -1,4 +1,4 @@
-import { LayerCard, Table } from '@cloudflare/kumo';
+import { Collapsible, Button, LayerCard, Table } from '@cloudflare/kumo';
 import type { BacktestSummary } from '@catbots/contracts';
 
 export function EquityCurve({ points }: { points: BacktestSummary['equityCurve'] }) {
@@ -15,11 +15,11 @@ export function EquityCurve({ points }: { points: BacktestSummary['equityCurve']
     <LayerCard className="equity-card">
       <h3>Equity curve</h3>
       <svg className="equity-curve" viewBox="0 0 600 180" role="img" aria-label="Equity curve"><title>Observed equity over this sample backtest period</title><polyline points={path} /></svg>
-      <details className="equity-table"><summary>View accessible equity data</summary>
+      <Collapsible.Root className="equity-table"><Collapsible.Trigger render={<Button variant="ghost" size="sm" />}>View accessible equity data</Collapsible.Trigger><Collapsible.Panel>
         <Table aria-label="Equity curve data"><Table.Header><Table.Row><Table.Head>Time</Table.Head><Table.Head>Equity</Table.Head></Table.Row></Table.Header><Table.Body>
           {points.map((point) => <Table.Row key={point.timestamp}><Table.Cell><time dateTime={point.timestamp}>{new Date(point.timestamp).toLocaleString()}</time></Table.Cell><Table.Cell>{point.equity}</Table.Cell></Table.Row>)}
         </Table.Body></Table>
-      </details>
+      </Collapsible.Panel></Collapsible.Root>
     </LayerCard>
   );
 }

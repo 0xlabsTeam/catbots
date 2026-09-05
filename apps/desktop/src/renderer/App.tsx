@@ -1,3 +1,5 @@
+import { NodesScreen } from './screens/NodesScreen';
+import { ProviderConnections } from './components/ProviderConnections';
 import { useEffect, useState } from 'react';
 import { Badge } from '@cloudflare/kumo';
 import type { BootstrapState, BotSummary, CatbotsDesktopApi, DatabaseState } from '@catbots/contracts';
@@ -11,11 +13,13 @@ import { DatabaseRepairScreen } from './screens/DatabaseRepairScreen';
 type AppProps = {
   api: CatbotsDesktopApi;
   preview?: boolean;
+  surface?: 'desktop' | 'web';
 };
 
-export default function App({ api, preview = false }: AppProps) {
+export default function App({ api, preview = false, surface = 'desktop' }: AppProps) {
   const [databaseState, setDatabaseState] = useState<DatabaseState | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
+  const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [destination, setDestination] = useState<AppDestination>('bots');
   const [selectedBot, setSelectedBot] = useState<BotSummary | null>(null);
   useEffect(() => {
@@ -34,6 +38,7 @@ export default function App({ api, preview = false }: AppProps) {
       try {
         const nextBootstrap = await api.config.getBootstrapState();
         if (active) setBootstrap(nextBootstrap);
+        if (api.providers) { const providers = await api.providers.command({ action: 'status' }); if (active) setSubscriptionReady(!!providers.selected); }
       } catch {
         if (active) setBootstrap({ state: 'repair', issues: [{ path: 'config', message: 'Configuration requires repair' }] });
       }
@@ -45,13 +50,14 @@ export default function App({ api, preview = false }: AppProps) {
   if (databaseState === null) screen = <main className="app-loading" aria-live="polite">Loading local workspace…</main>;
   else if (databaseState.status === 'repair') screen = <DatabaseRepairScreen api={api.app} />;
   else if (bootstrap === null) screen = <main className="app-loading" aria-live="polite">Loading local workspace…</main>;
-  else if (bootstrap.state === 'first-launch') screen = <FirstLaunchScreen api={api.config} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
+  else if (bootstrap.state === 'first-launch' && !subscriptionReady) screen = <>{api.providers && <ProviderConnections api={api.providers} onSelected={() => setSubscriptionReady(true)} />}<FirstLaunchScreen api={api.config} onSaved={(config) => setBootstrap({ state: 'ready', config })} /></>;
   else if (bootstrap.state === 'repair') screen = <SettingsScreen api={api.config} repairIssues={bootstrap.issues} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
   else screen = (
-    <AppShell destination={destination} onNavigate={setDestination}>
+    <AppShell focused={destination === 'bots' && selectedBot !== null} surface={surface} destination={destination} onNavigate={(next) => { setDestination(next); if (next === 'bots') setSelectedBot(null); }}>
       {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
       {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
-      {destination === 'settings' ? <SettingsScreen api={api.config} config={bootstrap.config} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
+      {destination === 'settings' ? <SettingsScreen connections={api.providers && <ProviderConnections api={api.providers} onSelected={() => setSubscriptionReady(true)} />} api={api.config} config={'config' in bootstrap ? bootstrap.config : undefined} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
+      {destination === 'nodes' && api.nodes ? <NodesScreen api={api.nodes} /> : null}
       {destination === 'data' ? <PlaceholderScreen title="Data" description="Installed indicators and local data products will appear here in a later milestone." /> : null}
       {destination === 'activity' ? <PlaceholderScreen title="Activity" description="Local alerts and execution traces will appear here in a later milestone." /> : null}
     </AppShell>

@@ -127,7 +127,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
                   {check.ok ? <CheckCircleIcon aria-hidden="true" weight="fill" /> : <XCircleIcon aria-hidden="true" weight="fill" />}
                   <div><strong>{check.label}</strong><span>{check.message}</span>
                     {!check.ok && check.repairTarget === 'settings'
-                      ? <a href="#settings" onClick={(event) => { event.preventDefault(); onOpenSettings?.(); }}>Open settings</a>
+                      ? <Button variant="ghost" size="sm" onClick={() => onOpenSettings?.()}>Open settings</Button>
                       : null}
                   </div>
                 </li>)}

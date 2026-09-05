@@ -63,8 +63,8 @@ describe('strategy graph', () => {
       { id: 'trigger', position: { x: 0, y: 0 } },
       { id: 'condition', position: { x: 320, y: 0 } },
       { id: 'condition-2', position: { x: 320, y: 150 } },
-      { id: 'combine', position: { x: 320, y: 300 } },
-      { id: 'action', position: { x: 640, y: 0 } },
+      { id: 'combine', position: { x: 640, y: 0 } },
+      { id: 'action', position: { x: 960, y: 0 } },
     ]);
     expect(graph.edges).toEqual([
       expect.objectContaining({ id: 'e1', source: 'trigger', target: 'condition' }),
@@ -84,7 +84,7 @@ describe('strategy graph', () => {
       nodesDraggable: false,
       nodesConnectable: false,
       elementsSelectable: true,
-      fitView: true,
+      defaultViewport: { x: 24, y: 24, zoom: 1 },
     });
     expect(screen.getByTestId('flow-controls')).toBeTruthy();
     expect(screen.getByTestId('flow-background')).toBeTruthy();

@@ -4,6 +4,9 @@ import App from './App';
 import { createWebPreviewApi } from './web-preview-api';
 import '@cloudflare/kumo/styles/standalone';
 import './app.css';
+import { syncSystemAppearance } from './design-system/appearance';
+
+syncSystemAppearance();
 
 const api = createWebPreviewApi();
 

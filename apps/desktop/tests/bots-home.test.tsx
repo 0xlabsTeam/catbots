@@ -58,7 +58,7 @@ function makeDesktopApi(bootstrap: Awaited<ReturnType<CatbotsDesktopApi['config'
     bots: makeApi(),
     workbench: {
       get: vi.fn(),
-      sendMessage: vi.fn(),
+      stopAgent: vi.fn(async () => undefined), sendMessage: vi.fn(),
       runBacktest: vi.fn(),
       approveRevision: vi.fn(),
       getTrace: vi.fn(),
@@ -95,6 +95,31 @@ async function connectFirstLaunchProvider(user: ReturnType<typeof userEvent.setu
 
 describe('BotsHomeScreen', () => {
   afterEach(cleanup);
+
+  it('combines name and status filters and clears an empty result', async () => {
+    const user = userEvent.setup();
+    render(<BotsHomeScreen api={makeApi({ list: vi.fn().mockResolvedValue([draftBot, { ...existingBot, status: 'paper' }]) })} />);
+    await screen.findByRole('button', { name: 'BTC Flow' });
+    await user.type(screen.getByRole('textbox', { name: 'Search bots' }), 'eth');
+    expect(screen.queryByRole('button', { name: 'BTC Flow' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'ETH Flow' })).toBeTruthy();
+    await user.click(screen.getByRole('combobox', { name: 'Filter by status' }));
+    await user.click(screen.getByRole('option', { name: 'Draft' }));
+    expect(screen.getByRole('heading', { name: 'No matching bots' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getByRole('button', { name: 'BTC Flow' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ETH Flow' })).toBeTruthy();
+  });
+
+  it('keeps navigation accessible while the sidebar is collapsed', async () => {
+    const user = userEvent.setup();
+    const navigate = vi.fn();
+    render(<AppShell destination="bots" onNavigate={navigate}>Workspace content</AppShell>);
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(navigate).toHaveBeenCalledWith('settings');
+  });
 
   it('shows only the approved accessible fields and submits the selected DEX from the keyboard', async () => {
     const user = userEvent.setup();
@@ -139,7 +164,7 @@ describe('BotsHomeScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
 
     expect(await screen.findByText('BTC Flow')).toBeTruthy();
-    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(within(screen.getByRole('table', { name: 'Local bots' })).getByText('Draft')).toBeTruthy();
     expect(api.createDraft).toHaveBeenCalledWith({ name: 'BTC Flow', dex: 'hyperliquid' });
     expect(screen.getByText('PnL unavailable')).toBeTruthy();
     expect(screen.getByText('Drawdown unavailable')).toBeTruthy();
@@ -159,7 +184,7 @@ describe('BotsHomeScreen', () => {
     const { rerender } = render(<BotsHomeScreen api={makeApi({ list })} />);
     const emptyHeading = await screen.findByRole('heading', { name: 'No bots yet' });
     expect(emptyHeading.parentElement?.className).toContain('border-kumo-fill');
-    expect(screen.getByText(/DEX-scoped strategy workspace/i)).toBeTruthy();
+    expect(screen.getByText(/Start with an idea/i)).toBeTruthy();
 
     rerender(<BotsHomeScreen api={makeApi({ list })} />);
     expect((await screen.findByRole('alert')).textContent).toContain('We could not load local bots. Try again.');

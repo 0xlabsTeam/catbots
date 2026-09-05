@@ -20,6 +20,7 @@ export default defineConfig(({ command }) => ({
   plugins: [contentSecurityPolicyPlugin(command === 'serve'), react()],
   root: resolve(__dirname, 'src/renderer'),
   base: './',
+  optimizeDeps: { exclude: ['@catbots/contracts', '@catbots/strategy-runtime'] },
   build: {
     outDir: resolve(__dirname, '.vite/renderer/main_window'),
   },
