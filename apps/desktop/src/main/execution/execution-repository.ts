@@ -404,7 +404,10 @@ export class ExecutionRepository {
     if (statuses.length === 0 || statuses.some((status) => (
       status === 'pending' || status === 'claimed' || status === 'unknown'
     ))) return null;
-    return statuses.some((status) => status === 'rejected') ? 'failed' : 'completed';
+    const rejectedRisk = this.database.prepare(`
+      SELECT 1 FROM audit_events WHERE trace_id = ? AND type = 'risk.rejected' LIMIT 1
+    `).get(traceId);
+    return rejectedRisk !== undefined || statuses.some((status) => status === 'rejected') ? 'failed' : 'completed';
   }
 
   recordReconciledOutcome(

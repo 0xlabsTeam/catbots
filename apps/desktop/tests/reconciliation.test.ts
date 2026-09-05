@@ -37,6 +37,41 @@ describe('ReconciliationService', () => {
     });
   });
 
+  it('repairs an open trace after its reconciled outbox became terminal before trace closure', async () => {
+    const fixture = createLiveFixture();
+    databases.push(fixture.database);
+    const venue: PerpDexAdapter = {
+      getMarkets: vi.fn(), getBalances: vi.fn(), getPositions: vi.fn().mockResolvedValue([]),
+      placeOrder: vi.fn().mockResolvedValue({ status: 'unknown', clientOrderId: liveClientOrderId }),
+      cancelOrder: vi.fn(), updateLeverage: vi.fn(), closePosition: vi.fn(),
+      getExecutionEvents: vi.fn().mockResolvedValue({
+        events: [{ id: 'fill-1', clientOrderId: liveClientOrderId, type: 'filled', occurredAt: '2026-09-05T00:00:02.000Z', filledQuantity: '0.005', averagePrice: '100000' }],
+        cursor: '2026-09-05T00:00:02.000Z',
+      }),
+    };
+    const executor = new OutboxExecutor({ repository: fixture.repository, adapter: venue });
+    await executor.runOnce(liveIdempotencyKey, new AbortController().signal).catch(() => undefined);
+    const service = new ReconciliationService({
+      repository: fixture.repository, adapter: venue,
+      account: '0x0123456789abcdef0123456789abcdef01234567',
+    });
+    const appendTerminal = vi.spyOn(fixture.repository, 'appendTerminalTrace')
+      .mockImplementationOnce(() => { throw new Error('simulated crash before trace closure'); });
+
+    await expect(service.reconcileDeployment(liveDeploymentId, new AbortController().signal)).rejects.toThrow(/simulated crash/i);
+    expect(fixture.repository.getOutboxItem(liveIdempotencyKey)).toMatchObject({ status: 'acknowledged' });
+    expect(fixture.repository.listAuditEvents(fixture.proposal.trace.id).some(({ type }) => type.startsWith('flow.'))).toBe(false);
+    appendTerminal.mockRestore();
+
+    await service.reconcileDeployment(liveDeploymentId, new AbortController().signal);
+
+    const types = fixture.repository.listAuditEvents(fixture.proposal.trace.id).map(({ type }) => type);
+    expect(types.filter((type) => type === 'execution.filled')).toHaveLength(1);
+    expect(types.filter((type) => type === 'flow.completed')).toHaveLength(1);
+    expect(venue.placeOrder).toHaveBeenCalledTimes(1);
+    expect(venue.getExecutionEvents).toHaveBeenCalledTimes(1);
+  });
+
   it('suspends Live execution when an unknown order cannot be proven safe', async () => {
     const fixture = createLiveFixture();
     databases.push(fixture.database);

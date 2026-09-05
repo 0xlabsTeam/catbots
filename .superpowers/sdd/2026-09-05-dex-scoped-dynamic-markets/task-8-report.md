@@ -77,3 +77,23 @@ Round-two GREEN verification under Node 22.23.2:
 - `git diff --check`: **PASS**.
 
 The broad desktop run reached 319 passing tests and one skipped test. Its sole failure remains the previously documented, unrelated `apps/desktop/tests/agent-tools.test.ts` malformed Strategy union diagnostic expectation; no Task 8 file participates in that failure.
+
+## Fix round 3
+
+Addressed both P2 re-review findings:
+
+1. Live child terminal derivation now considers durable risk decisions as well as every staged outbox. Once all approved outboxes are terminal, any persisted `risk.rejected` forces `flow.failed`, matching the runtime result for a mixed approved/rejected evaluation. A coordinated two-market regression executes each approved order to acknowledgement and verifies both mixed children close failed with their rejection evidence intact.
+2. Reconciliation now begins with an idempotent repair pass over acknowledged/rejected outboxes. If a process failure occurs after the reconciled outcome transaction commits but before the trace-closure transaction, the next pass derives the terminal state from durable outbox/audit data and closes the still-open trace without querying the venue again. Trace append plus status update remains one transaction, and closed traces are excluded on later passes. Fault injection verifies one submission, one reconciled fill event, and one terminal event across the retry.
+
+Round-three RED evidence was observed for a mixed child incorrectly closing completed after its approved order acknowledged, and for a reconciled acknowledged outbox whose open trace was ignored on the next reconciliation pass after simulated closure failure.
+
+Round-three GREEN verification under Node 22.23.2:
+
+- Focused repository, Live, outbox, and reconciliation: **PASS**, 4 files / 22 tests.
+- Task 8 repository, Paper, Live, outbox, reconciliation, cache, and Main lifecycle suites: **PASS**, 7 files / 53 tests.
+- Contracts: **PASS**, 4 files / 31 tests.
+- Strategy runtime: **PASS**, 11 files / 126 tests.
+- Execution core: **PASS**, 2 files / 21 tests.
+- Desktop typecheck: **PASS**.
+- Workspace typecheck: **PASS**.
+- `git diff --check`: **PASS**.

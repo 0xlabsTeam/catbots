@@ -7,6 +7,7 @@ import { createEvaluationContext, parseStrategyDocument } from '@catbots/strateg
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { DeploymentService } from '../src/main/execution/deployment-service';
 import { ExecutionRepository } from '../src/main/execution/execution-repository';
+import { OutboxExecutor } from '../src/main/execution/outbox-executor';
 import type { HyperliquidClientPort } from '../src/main/execution/hyperliquid/hyperliquid-client';
 import { openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
@@ -162,6 +163,26 @@ describe('DeploymentService Live gate', () => {
     expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
     expect(database.prepare('SELECT COUNT(DISTINCT client_order_id) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
     expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 3 });
+
+    const executor = new OutboxExecutor({
+      repository,
+      adapter: {
+        getMarkets: vi.fn(), getBalances: vi.fn(), getPositions: vi.fn(),
+        placeOrder: vi.fn(async (intent) => ({
+          status: 'acknowledged' as const, clientOrderId: intent.clientOrderId, venueOrderId: `venue:${intent.market}`,
+        })),
+        cancelOrder: vi.fn(), updateLeverage: vi.fn(), closePosition: vi.fn(), getExecutionEvents: vi.fn(),
+      },
+    });
+    for (const item of repository.listOutboxItems(deploymentId)) {
+      await executor.runOnce(item.idempotencyKey, new AbortController().signal);
+    }
+    const terminalRun = repository.listTriggerRun(first.parentTraceId);
+    expect(terminalRun.children.every(({ status, events }) => (
+      status === 'failed'
+      && events.some(({ type }) => type === 'risk.rejected')
+      && events.at(-1)?.type === 'flow.failed'
+    ))).toBe(true);
 
     database.exec(`CREATE TRIGGER force_live_outbox_failure BEFORE INSERT ON execution_outbox
       BEGIN SELECT RAISE(ABORT, 'forced live outbox failure'); END;`);

@@ -17,6 +17,13 @@ export class ReconciliationService {
   async reconcileDeployment(deploymentId: string, signal: AbortSignal): Promise<void> {
     const deployment = this.dependencies.repository.getDeployment(deploymentId);
     if (deployment.mode !== 'live') throw new Error('Live deployment required');
+    const terminal = [
+      ...this.dependencies.repository.listOutboxItems(deploymentId, 'acknowledged'),
+      ...this.dependencies.repository.listOutboxItems(deploymentId, 'rejected'),
+    ];
+    for (const item of terminal) {
+      this.finalizeTraceIfReady(item, 'Reconciliation repaired a terminal Live trace.');
+    }
     const uncertain = [
       ...this.dependencies.repository.listOutboxItems(deploymentId, 'claimed'),
       ...this.dependencies.repository.listOutboxItems(deploymentId, 'unknown'),
@@ -52,13 +59,17 @@ export class ReconciliationService {
     summary: string,
   ): void {
     this.dependencies.repository.recordReconciledOutcome(item.idempotencyKey, this.event(item, type, summary, venueEvent), status);
+    this.finalizeTraceIfReady(item, 'Reconciliation completed all Live actions.');
+  }
+
+  private finalizeTraceIfReady(item: ExecutionOutboxItem, summary: string): void {
     const terminal = this.dependencies.repository.liveTraceTerminalStatus(item.traceId);
     if (terminal !== null) {
       this.dependencies.repository.appendTerminalTrace(item.traceId, [
         this.event(
           item,
           terminal === 'completed' ? 'flow.completed' : 'flow.failed',
-          terminal === 'completed' ? 'All reconciled Live actions completed.' : 'One or more reconciled Live actions failed.',
+          terminal === 'completed' ? summary : 'One or more Live actions or risk decisions failed.',
         ),
       ]);
     }
