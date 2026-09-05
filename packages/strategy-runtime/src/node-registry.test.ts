@@ -55,7 +55,7 @@ describe('NodeRegistry', () => {
     expect(Object.isFrozen(listed)).toBe(true);
     expect(Object.isFrozen(listed[0])).toBe(true);
     expect(() => (listed as unknown[]).pop()).toThrow();
-    expect(registry.list()).toHaveLength(11);
+    expect(registry.list()).toHaveLength(12);
   });
 });
 
@@ -72,5 +72,22 @@ describe('built-in node definitions', () => {
       right: { literal: 30 },
     })).toBe('indicator.rsi.14.value < 30');
     expect(compare.requirements.data).toEqual(['dynamic:operand-refs']);
+  });
+
+  it('defaults Event triggers to market scope and permits explicit DEX scope', () => {
+    const registry = createBuiltinRegistry();
+    const baseNode = {
+      id: 'event-1', kind: 'trigger' as const, type: 'trigger.event', version: 1,
+      config: { eventType: 'data.etf_flow.updated', filters: {} },
+    };
+
+    expect(registry.validateConfig(baseNode)).toMatchObject({
+      success: true,
+      config: { scope: 'market' },
+    });
+    expect(registry.validateConfig({
+      ...baseNode,
+      config: { ...baseNode.config, scope: 'dex' },
+    })).toMatchObject({ success: true, config: { scope: 'dex' } });
   });
 });

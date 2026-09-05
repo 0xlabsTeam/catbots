@@ -78,6 +78,34 @@ describe('parseStrategyDocument', () => {
       edges: [{ ...validStrategy.edges[0], target: 'missing-condition' }],
     })).toThrow(/unknown target node: missing-condition/i);
   });
+
+  it('accepts Strategy 2.0 only with the exact dynamic DEX market scope', () => {
+    expect(parseStrategyDocument({
+      ...validStrategy,
+      schemaVersion: '2.0',
+      marketScope: { type: 'dex_universe' },
+    })).toMatchObject({
+      schemaVersion: '2.0',
+      marketScope: { type: 'dex_universe' },
+    });
+
+    expect(() => parseStrategyDocument({
+      ...validStrategy,
+      schemaVersion: '2.0',
+    })).toThrow();
+    expect(() => parseStrategyDocument({
+      ...validStrategy,
+      schemaVersion: '2.0',
+      marketScope: { type: 'fixed' },
+    })).toThrow();
+  });
+
+  it('keeps Strategy 1.0 strict and free of dynamic market scope', () => {
+    expect(() => parseStrategyDocument({
+      ...validStrategy,
+      marketScope: { type: 'dex_universe' },
+    })).toThrow();
+  });
 });
 
 describe('serializeStrategyDocument', () => {

@@ -30,9 +30,10 @@ function compiledStrategy(): CompiledStrategy {
   return result.compiled;
 }
 
-function context(rsi: number | undefined) {
+function context(rsi: number | undefined, currentMarket = 'BTC-PERP') {
   return createEvaluationContext({
     evaluatedAt: '2026-09-03T08:15:00.000Z',
+    currentMarket,
     values: {
       ...(rsi === undefined ? {} : {
         'indicator.rsi': {
@@ -48,6 +49,26 @@ function context(rsi: number | undefined) {
       },
     },
   });
+}
+
+function compiledMarketStrategy(): CompiledStrategy {
+  const document = parseStrategyDocument({
+    schemaVersion: '2.0',
+    strategy: { id: 'eth-rsi', name: 'ETH RSI', version: 1 },
+    marketScope: { type: 'dex_universe' },
+    nodes: [
+      { id: 't-15m', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+      { id: 'c-symbol', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'ETH-PERP' } } },
+      { id: 'a-long', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long' } },
+    ],
+    edges: [
+      { id: 'e1', source: 't-15m', sourcePort: 'activation', target: 'c-symbol', targetPort: 'activation' },
+      { id: 'e2', source: 'c-symbol', sourcePort: 'result', target: 'a-long', targetPort: 'condition' },
+    ],
+  });
+  const result = validateStrategy(document, createBuiltinRegistry());
+  if (!result.valid) throw new Error(`Fixture must compile: ${JSON.stringify(result.errors)}`);
+  return result.compiled;
 }
 
 const triggerInput = { kind: 'interval' as const, occurredAt: '2026-09-03T08:15:00.000Z' };
@@ -68,6 +89,42 @@ function filledExecution(): RuntimeExecutionPort {
 }
 
 describe('evaluateTrigger', () => {
+  it('binds symbol Conditions and proposed Actions to the immutable current market', () => {
+    const requestFor = (currentMarket: string) => ({
+      compiled: compiledMarketStrategy(),
+      triggerNodeId: 't-15m',
+      triggerInput,
+      context: context(25, currentMarket),
+      deployment: { id: 'backtest-1', mode: 'backtest' as const },
+      execution: filledExecution(),
+    });
+
+    const eth = evaluateTrigger(requestFor('ETH-PERP'));
+    const btc = evaluateTrigger(requestFor('BTC-PERP'));
+
+    expect(eth.effects).toEqual([expect.objectContaining({
+      market: 'ETH-PERP',
+      idempotencyKey: expect.stringContaining('ETH-PERP'),
+    })]);
+    expect(btc.effects).toHaveLength(0);
+  });
+
+  it('rejects an explicit market override on an Action at evaluation time', () => {
+    const compiled = compiledMarketStrategy();
+    const action = compiled.document.nodes.find((node) => node.id === 'a-long');
+    if (!action) throw new Error('Action fixture is missing');
+    action.config = { ...action.config, market: 'BTC-PERP' };
+
+    expect(() => evaluateTrigger({
+      compiled,
+      triggerNodeId: 't-15m',
+      triggerInput,
+      context: context(25, 'ETH-PERP'),
+      deployment: { id: 'backtest-1', mode: 'backtest' },
+      execution: filledExecution(),
+    })).toThrow(/action.*market/i);
+  });
+
   it('evaluates Conditions, proposes the Action, and records a complete ordered trace', () => {
     const result = evaluateTrigger({
       compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
@@ -77,7 +134,9 @@ describe('evaluateTrigger', () => {
 
     expect(result.effects).toEqual([expect.objectContaining({
       nodeId: 'a-long', type: 'execution.open_position',
+      market: 'BTC-PERP',
       config: { side: 'long', size: { type: 'equity_percent', value: 5 }, leverage: 2 },
+      idempotencyKey: 't-15m:interval:2026-09-03T08:15:00.000Z:market:BTC-PERP:action:a-long',
     })]);
     expect(result.trace.map((event) => event.type)).toEqual([
       'trigger.received',

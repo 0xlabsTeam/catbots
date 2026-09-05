@@ -16,6 +16,7 @@ export type ProposedEffect = Readonly<{
   nodeId: string;
   type: string;
   version: number;
+  market: string;
   config: Readonly<Record<string, JsonValue>>;
   idempotencyKey: string;
 }>;
@@ -155,6 +156,9 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
     if (!ownedNodes.has(nodeId)) continue;
     const node = compiled.document.nodes.find((candidate) => candidate.id === nodeId);
     if (!node || node.kind !== 'action') continue;
+    if ('market' in node.config) {
+      throw new Error(`Action ${node.id} cannot override currentMarket`);
+    }
     const controller = (compiled.incomingEdges.get(node.id) ?? [])
       .map((edge) => conditionResults.get(edge.source))
       .find((result) => result !== undefined);
@@ -164,8 +168,9 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
       nodeId: node.id,
       type: node.type,
       version: node.version,
+      market: context.currentMarket,
       config: node.config,
-      idempotencyKey: `${idempotencyKey}:action:${node.id}`,
+      idempotencyKey: `${idempotencyKey}:market:${context.currentMarket}:action:${node.id}`,
     });
     effects.push(effect);
     trace.append('action.proposed', { effect }, nodeIdentity(node));

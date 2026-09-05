@@ -4,6 +4,7 @@ export type IntervalTriggerConfig = Readonly<{ every: string; alignment: 'utc' }
 export type EventTriggerConfig = Readonly<{
   eventType: string;
   filters: Readonly<Record<string, boolean | number | string>>;
+  scope?: 'market' | 'dex';
 }>;
 
 export type TriggerInput =
@@ -48,6 +49,7 @@ export function intervalActivations(
 
 export function matchesEventTrigger(config: EventTriggerConfig, event: TriggerEvent): boolean {
   if (event.type !== config.eventType) return false;
+  if ((config.scope ?? 'market') === 'market' && event.market === undefined) return false;
   const envelope = event as unknown as Readonly<Record<string, unknown>>;
   return Object.entries(config.filters).every(([key, expected]) => {
     const actual = key in envelope ? envelope[key] : event.payload[key];

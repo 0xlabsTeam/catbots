@@ -29,8 +29,7 @@ export const StrategyEdgeSchema = z.object({
   targetPort: StableIdSchema,
 }).strict();
 
-export const StrategyDocumentSchema = z.object({
-  schemaVersion: z.literal('1.0'),
+const StrategyBaseSchema = z.object({
   strategy: z.object({
     id: StableIdSchema,
     name: z.string().trim().min(1).max(120),
@@ -38,7 +37,21 @@ export const StrategyDocumentSchema = z.object({
   }).strict(),
   nodes: z.array(StrategyNodeSchema).min(1),
   edges: z.array(StrategyEdgeSchema),
-}).strict().superRefine((document, context) => {
+});
+
+export const StrategyV1DocumentSchema = StrategyBaseSchema.extend({
+  schemaVersion: z.literal('1.0'),
+}).strict();
+
+export const StrategyV2DocumentSchema = StrategyBaseSchema.extend({
+  schemaVersion: z.literal('2.0'),
+  marketScope: z.object({ type: z.literal('dex_universe') }).strict(),
+}).strict();
+
+export const StrategyDocumentSchema = z.union([
+  StrategyV1DocumentSchema,
+  StrategyV2DocumentSchema,
+]).superRefine((document, context) => {
   const nodeIds = new Set<string>();
   for (const [index, node] of document.nodes.entries()) {
     if (nodeIds.has(node.id)) {
@@ -81,6 +94,8 @@ export const StrategyDocumentSchema = z.object({
 
 export type StrategyNode = z.infer<typeof StrategyNodeSchema>;
 export type StrategyEdge = z.infer<typeof StrategyEdgeSchema>;
+export type StrategyV1Document = z.infer<typeof StrategyV1DocumentSchema>;
+export type StrategyV2Document = z.infer<typeof StrategyV2DocumentSchema>;
 export type StrategyDocument = z.infer<typeof StrategyDocumentSchema>;
 
 export function parseStrategyDocument(input: unknown): StrategyDocument {

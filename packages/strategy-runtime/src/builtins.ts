@@ -76,6 +76,7 @@ export const builtinNodeDefinitions: readonly NodeDefinition[] = [
     configSchema: z.object({
       eventType: z.string().trim().regex(/^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$/),
       filters: z.record(z.string(), z.union([z.boolean(), z.number().finite(), z.string()])).default({}),
+      scope: z.enum(['market', 'dex']).default('market'),
     }).strict(),
     inputs: [], outputs: activationOutput,
     visualization: { title: 'Event', icon: 'broadcast', summary: () => 'When event arrives' },
@@ -105,6 +106,13 @@ export const builtinNodeDefinitions: readonly NodeDefinition[] = [
     configSchema: z.object({ state: z.enum(['flat', 'open', 'long', 'short']), market: z.string().min(1).optional() }).strict(),
     inputs: activationInput, outputs: conditionOutput,
     visualization: { title: 'Position', icon: 'wallet', summary: () => 'Check position state' },
+    requirements: { data: ['account.positions'], entitlements: [], permissions: [] },
+  }),
+  definition({
+    kind: 'condition', type: 'predicate.position_state', version: 2,
+    configSchema: z.object({ state: z.enum(['flat', 'open', 'long', 'short']) }).strict(),
+    inputs: activationInput, outputs: conditionOutput,
+    visualization: { title: 'Position', icon: 'wallet', summary: () => 'Check current-market position state' },
     requirements: { data: ['account.positions'], entitlements: [], permissions: [] },
   }),
   ...(['all', 'any'] as const).map((combiner) => definition({

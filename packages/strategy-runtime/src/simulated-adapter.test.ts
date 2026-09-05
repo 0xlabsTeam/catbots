@@ -7,6 +7,7 @@ import { SimulatedExecutionAdapter } from './simulated-adapter';
 function marketContext(mark: number, bid = mark, ask = mark) {
   return createEvaluationContext({
     evaluatedAt: '2026-09-03T08:15:00.000Z',
+    currentMarket: 'BTC-PERP',
     values: {
       'market.price': {
         value: { market: 'BTC-PERP', bid, ask, mark },
@@ -20,6 +21,7 @@ function marketContext(mark: number, bid = mark, ask = mark) {
 function openEffect(overrides: Record<string, unknown> = {}): ProposedEffect {
   return {
     nodeId: 'a-open', type: 'execution.open_position', version: 1,
+    market: 'BTC-PERP',
     config: { side: 'long', size: { type: 'quote', value: 1_000 }, leverage: 2, ...overrides },
     idempotencyKey: 'trigger-1:action:a-open',
   } as ProposedEffect;
@@ -57,7 +59,11 @@ describe('SimulatedExecutionAdapter', () => {
 
   it('rejects an order when required point-in-time price data is missing', () => {
     const simulation = adapter();
-    const context = createEvaluationContext({ evaluatedAt: '2026-09-03T08:15:00.000Z', values: {} });
+    const context = createEvaluationContext({
+      evaluatedAt: '2026-09-03T08:15:00.000Z',
+      currentMarket: 'BTC-PERP',
+      values: {},
+    });
 
     expect(simulation.execute(openEffect(), context).events).toEqual([
       { type: 'risk.approved', metadata: { decision: 'approved', evaluator: 'backtest.simulation' } },
@@ -84,6 +90,7 @@ describe('SimulatedExecutionAdapter', () => {
     simulation.applyFunding(0.01, marketContext(100));
     const close: ProposedEffect = {
       nodeId: 'a-close', type: 'execution.close_position', version: 1,
+      market: 'BTC-PERP',
       config: { percent: 100 }, idempotencyKey: 'trigger-2:action:a-close',
     };
     simulation.execute(close, marketContext(110));

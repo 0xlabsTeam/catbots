@@ -49,6 +49,7 @@ afterEach(() => database.close());
 function context(evaluatedAt = now) {
   return createEvaluationContext({
     evaluatedAt,
+    currentMarket: 'BTC-PERP',
     values: {
       'market.price': {
         value: { market: 'BTC-PERP', bid: 99, ask: 101, mark: 100 },

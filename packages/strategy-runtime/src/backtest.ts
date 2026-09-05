@@ -111,17 +111,20 @@ export function runBacktest(request: BacktestRequest): BacktestResult {
     clock.advanceTo(input.occurredAt);
     adapter.markToMarket(createEvaluationContext({
       evaluatedAt: clock.now(),
+      currentMarket: request.market,
       values: input.values,
     }));
     if (input.fundingRate !== undefined) {
       adapter.applyFunding(input.fundingRate, createEvaluationContext({
         evaluatedAt: clock.now(),
+        currentMarket: request.market,
         values: input.values,
       }));
     }
     const before = adapter.snapshot();
     const context = createEvaluationContext({
       evaluatedAt: clock.now(),
+      currentMarket: request.market,
       ...(input.triggerInput.kind === 'event' ? { triggerEvent: input.triggerInput.event } : {}),
       values: {
         ...input.values,

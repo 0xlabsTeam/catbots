@@ -4,6 +4,7 @@ import {
   createEvaluationContext,
   type EvaluationValue,
 } from './evaluation-context';
+import { createBuiltinRegistry } from './builtins';
 import {
   combineConditionResults,
   evaluateConditionNode,
@@ -44,6 +45,7 @@ describe('createEvaluationContext', () => {
     const source = value({ value: 25 });
     const context = createEvaluationContext({
       evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
       values: { 'indicator.rsi.14': source },
     });
 
@@ -52,12 +54,38 @@ describe('createEvaluationContext', () => {
     expect(context.values['indicator.rsi.14']?.value).toEqual({ value: 25 });
     expect(Object.isFrozen(context.values['indicator.rsi.14']?.value)).toBe(true);
   });
+
+  it('binds and freezes a verified market symbol from the current market', () => {
+    const context = createEvaluationContext({
+      evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
+      values: {},
+    });
+
+    expect(context.currentMarket).toBe('ETH-PERP');
+    expect(context.values['market.symbol']).toMatchObject({
+      value: 'ETH-PERP',
+      quality: { status: 'verified' },
+      freshnessSeconds: 0,
+    });
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(Object.isFrozen(context.values['market.symbol'])).toBe(true);
+  });
+
+  it('rejects a caller-supplied market symbol that conflicts with the current market', () => {
+    expect(() => createEvaluationContext({
+      evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
+      values: { 'market.symbol': value('BTC-PERP') },
+    })).toThrow(/market\.symbol.*currentMarket/i);
+  });
 });
 
 describe('evaluateConditionNode', () => {
   it('evaluates a referenced field against a literal and records provenance', () => {
     const context = createEvaluationContext({
       evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
       values: { 'indicator.rsi.14': value({ value: 25 }) },
     });
 
@@ -86,6 +114,7 @@ describe('evaluateConditionNode', () => {
   ] as const)('returns unknown for %s data', (_label, values, reason) => {
     const context = createEvaluationContext({
       evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
       values,
     });
 
@@ -95,6 +124,7 @@ describe('evaluateConditionNode', () => {
   it('does not substitute another reference when the requested field is absent', () => {
     const context = createEvaluationContext({
       evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
       values: {
         'indicator.rsi.14': value({ other: 25 }),
         'indicator.rsi.fallback': value({ value: 25 }),
@@ -120,12 +150,38 @@ describe('evaluateConditionNode', () => {
       ...compareNode,
       config: { left: { literal: left }, operator, right: { literal: right } },
     };
-    const context = createEvaluationContext({ evaluatedAt: '2026-09-03T08:00:30.000Z', values: {} });
+    const context = createEvaluationContext({
+      evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
+      values: {},
+    });
 
     expect(evaluateConditionNode(node, context).value).toBe(expected);
   });
 
-  it('evaluates the requested market position without treating another market as open', () => {
+  it('evaluates only the current-market position', () => {
+    const node: StrategyNode = {
+      id: 'c-position',
+      kind: 'condition',
+      type: 'predicate.position_state',
+      version: 2,
+      config: { state: 'flat' },
+    };
+    const context = createEvaluationContext({
+      evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
+      values: {
+        'account.positions': value([{ market: 'BTC-PERP', side: 'long' }]),
+      },
+    });
+
+    expect(evaluateConditionNode(node, context)).toMatchObject({
+      value: true,
+      reason: 'predicate.matched',
+    });
+  });
+
+  it('uses currentMarket even when a legacy position predicate carries a fixed-market hint', () => {
     const node: StrategyNode = {
       id: 'c-position',
       kind: 'condition',
@@ -135,8 +191,9 @@ describe('evaluateConditionNode', () => {
     };
     const context = createEvaluationContext({
       evaluatedAt: '2026-09-03T08:00:30.000Z',
+      currentMarket: 'ETH-PERP',
       values: {
-        'account.positions': value([{ market: 'ETH-PERP', side: 'long' }]),
+        'account.positions': value([{ market: 'BTC-PERP', side: 'long' }]),
       },
     });
 
@@ -144,6 +201,18 @@ describe('evaluateConditionNode', () => {
       value: true,
       reason: 'predicate.matched',
     });
+  });
+
+  it('rejects explicit market config in the new position predicate definition', () => {
+    const result = createBuiltinRegistry().validateConfig({
+      id: 'c-position',
+      kind: 'condition',
+      type: 'predicate.position_state',
+      version: 2,
+      config: { state: 'flat', market: 'BTC-PERP' },
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

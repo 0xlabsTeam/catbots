@@ -12,6 +12,7 @@ import type { TriggerEvent } from './evaluation-context';
 const etfEvent: TriggerEvent = {
   id: 'evt-etf-1',
   type: 'data.etf_flow.updated',
+  market: 'BTC-PERP',
   occurredAt: '2026-09-03T08:15:00.000Z',
   receivedAt: '2026-09-03T08:15:03.000Z',
   source: 'provider.etf_flow',
@@ -66,6 +67,17 @@ describe('matchesEventTrigger', () => {
       eventType: 'data.etf_flow.updated',
       filters: { asset: 'ETH' },
     }, etfEvent)).toBe(false);
+  });
+
+  it('requires a market for market-scoped Events and permits DEX-scoped Events without one', () => {
+    const dexEvent = { ...etfEvent, market: undefined };
+
+    expect(matchesEventTrigger({
+      eventType: 'data.etf_flow.updated', filters: { asset: 'BTC' },
+    }, dexEvent)).toBe(false);
+    expect(matchesEventTrigger({
+      eventType: 'data.etf_flow.updated', filters: { asset: 'BTC' }, scope: 'dex',
+    }, dexEvent)).toBe(true);
   });
 });
 

@@ -14,6 +14,7 @@ export type EvaluationValue<T = JsonValue> = Readonly<{
 export type TriggerEvent = Readonly<{
   id: string;
   type: string;
+  market?: string;
   occurredAt: string;
   receivedAt: string;
   source: string;
@@ -23,12 +24,14 @@ export type TriggerEvent = Readonly<{
 
 export type EvaluationContext = Readonly<{
   evaluatedAt: string;
+  currentMarket: string;
   triggerEvent?: TriggerEvent;
   values: Readonly<Record<string, EvaluationValue>>;
 }>;
 
 export type EvaluationContextInput = Readonly<{
   evaluatedAt: string;
+  currentMarket: string;
   triggerEvent?: TriggerEvent;
   values: Readonly<Record<string, EvaluationValue<never> | EvaluationValue<unknown>>>;
 }>;
@@ -42,6 +45,27 @@ function deepFreeze<T>(value: T): T {
 }
 
 export function createEvaluationContext(input: EvaluationContextInput): EvaluationContext {
-  const snapshot = structuredClone(input) as EvaluationContext;
+  if (input.currentMarket.length === 0 || input.currentMarket !== input.currentMarket.trim()) {
+    throw new Error('currentMarket must be a non-empty normalized market symbol');
+  }
+  const suppliedMarketSymbol = input.values['market.symbol'];
+  if (suppliedMarketSymbol !== undefined && suppliedMarketSymbol.value !== input.currentMarket) {
+    throw new Error('market.symbol must match currentMarket');
+  }
+
+  const snapshot = structuredClone({
+    ...input,
+    values: {
+      ...input.values,
+      'market.symbol': {
+        value: input.currentMarket,
+        provider: 'strategy-runtime',
+        observedAt: input.evaluatedAt,
+        freshnessSeconds: 0,
+        quality: { status: 'verified' as const },
+        integrityHash: `bound:market.symbol:${input.currentMarket}`,
+      },
+    },
+  }) as EvaluationContext;
   return deepFreeze(snapshot);
 }

@@ -26,6 +26,7 @@ export function btcEtfRsiBacktestRequest(): BacktestRequest {
   const etfEvent: TriggerEvent = {
     id: 'evt-etf-negative',
     type: 'data.etf_flow.updated',
+    market: 'BTC-PERP',
     occurredAt: '2026-09-03T08:45:00.000Z',
     receivedAt: '2026-09-03T08:45:02.000Z',
     source: 'fixture.etf_flow',
