@@ -42,6 +42,11 @@ type FakeProvider = {
   server: Server;
 };
 
+function secretScan(serialized: string, secret: string): string[] {
+  return [secret, '"agentPrivateKey"', '"apiKey"', '"authorization"']
+    .filter((needle) => serialized.includes(needle));
+}
+
 async function findPackagedExecutable(directory: string): Promise<string> {
   const executable = join(directory, `Catbots-darwin-${process.arch}`, 'Catbots.app', 'Contents', 'MacOS', 'Catbots');
   try {
@@ -305,7 +310,24 @@ test('packaged local workflow persists an approved dynamic Paper run across rest
     expect(seeded.auditEvents.every(({ id, traceId, sequence }) => (
       id.length > 0 && traceId.length > 0 && Number.isInteger(sequence) && sequence > 0
     ))).toBe(true);
-    expect(JSON.stringify(seeded)).not.toContain(secret);
+    const dynamicChildTrace = seeded.auditEvents.filter(({ market }) => market === 'ETH-PERP');
+    const dynamicChildTypes = dynamicChildTrace.map(({ type }) => type);
+    const requiredChildSequence = [
+      'trigger.received',
+      'condition.evaluated',
+      'action.proposed',
+      'risk.approved',
+      'execution.queued',
+      'execution.filled',
+      'flow.completed',
+    ];
+    expect(dynamicChildTypes).toEqual(expect.arrayContaining(requiredChildSequence));
+    const requiredChildPositions = requiredChildSequence.map((type) => dynamicChildTypes.indexOf(type));
+    expect(requiredChildPositions.every((position, index) => (
+      position >= 0 && (index === 0 || position > requiredChildPositions[index - 1]!)
+    ))).toBe(true);
+    expect(secretScan(JSON.stringify(dynamicChildTrace), secret)).toEqual([]);
+    expect(secretScan(JSON.stringify(seeded), secret)).toEqual([]);
     expect(JSON.stringify(seeded)).not.toContain('catbots.e2e-fixture');
     const rendererBeforeRestart = await restored.evaluate(async ({ targetBotId }) => ({
       workbench: await window.catbots.workbench.get({ botId: targetBotId }),

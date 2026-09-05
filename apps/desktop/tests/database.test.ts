@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExecutionRepository } from '../src/main/execution/execution-repository';
 import { ApplicationDatabase, openDatabase } from '../src/main/storage/database';
 import { migrateDatabase } from '../src/main/storage/migrations';
+import { WorkbenchRepository } from '../src/main/workbench/workbench-repository';
 
 const databases: Database.Database[] = [];
 const temporaryDirectories: string[] = [];
@@ -44,7 +45,12 @@ function seedVersion3Database(): Database.Database {
       bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
       version INTEGER NOT NULL,
       strategy_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      document_json TEXT NOT NULL,
+      document_hash TEXT NOT NULL,
       status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      approved_at TEXT,
       PRIMARY KEY (bot_id, version)
     );
     CREATE TABLE deployments (
@@ -84,7 +90,9 @@ function seedVersion3Database(): Database.Database {
       '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'
     );
     INSERT INTO strategy_revisions VALUES (
-      '018f47a2-4a2a-7c5d-9b61-3a83f64406a8', 1, 'legacy-strategy', 'approved'
+      '018f47a2-4a2a-7c5d-9b61-3a83f64406a8', 1, 'legacy-strategy', 'Legacy strategy',
+      '{"schemaVersion":"1.0","strategy":{"id":"legacy-strategy","name":"Legacy strategy","version":1},"nodes":[{"id":"clock","kind":"trigger","type":"trigger.interval","version":1,"config":{"every":"15m","alignment":"utc"}},{"id":"flat","kind":"condition","type":"predicate.position_state","version":1,"config":{"state":"flat","market":"BTC-PERP"}}],"edges":[{"id":"e1","source":"clock","sourcePort":"activation","target":"flat","targetPort":"activation"}]}',
+      'sha256:legacy-strategy', 'approved', '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'
     );
     INSERT INTO deployments VALUES (
       '${legacyDeploymentId}', '018f47a2-4a2a-7c5d-9b61-3a83f64406a8', 'legacy-strategy', 1,
@@ -190,19 +198,28 @@ describe('migrateDatabase', () => {
   it('migrates version 3 bot identity and deployment scope without rewriting legacy deployment JSON', () => {
     const db = seedVersion3Database();
     const repository = new ExecutionRepository(db);
+    const workbench = new WorkbenchRepository(db);
     const bindingsBefore = db.prepare('SELECT market_bindings_json FROM deployments WHERE id = ?')
       .get(legacyDeploymentId);
 
     migrateDatabase(db);
 
-    expect(db.prepare('SELECT dex, legacy_market_hint FROM bots').get()).toEqual({
-      dex: 'hyperliquid', legacy_market_hint: 'BTC-PERP',
+    const migratedBot = workbench.getStoredIdentity('018f47a2-4a2a-7c5d-9b61-3a83f64406a8');
+    const migratedLegacyStrategy = workbench.getStrategyDocument(migratedBot.summary.id, 1);
+    const migratedLegacyDeployment = repository.getDeployment(legacyDeploymentId);
+    expect(migratedBot.summary).toMatchObject({ dex: 'hyperliquid' });
+    expect(migratedBot).toMatchObject({
+      summary: { dex: 'hyperliquid' }, legacyMarketHint: 'BTC-PERP',
     });
+    expect(migratedLegacyStrategy.schemaVersion).toBe('1.0');
     expect(db.prepare('SELECT market_bindings_json FROM deployments WHERE id = ?').get(legacyDeploymentId))
       .toEqual(bindingsBefore);
-    expect(repository.getDeployment(legacyDeploymentId)).toMatchObject({
+    expect(migratedLegacyDeployment).toMatchObject({
       recordVersion: 1, marketBindings: ['BTC-PERP'], status: 'running',
     });
+    expect(migratedLegacyDeployment.recordVersion).toBe(1);
+    if (migratedLegacyDeployment.recordVersion !== 1) throw new Error('Expected a legacy deployment');
+    expect(migratedLegacyDeployment.marketBindings).toEqual(['BTC-PERP']);
     expect(() => repository.requestStop(legacyDeploymentId, '2026-09-05T01:00:00.000Z')).not.toThrow();
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });

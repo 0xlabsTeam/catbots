@@ -16,6 +16,16 @@ function adapter(receipt: Awaited<ReturnType<PerpDexAdapter['placeOrder']>>): Pe
 }
 
 describe('OutboxExecutor', () => {
+  it('keeps every dynamic action on its immutable child market without secret-bearing fields', () => {
+    const fixture = createLiveFixture();
+    databases.push(fixture.database);
+    const dynamicChildTrace = fixture.repository.getAuditTraceContext(fixture.proposal.trace.id);
+    const dynamicAction = fixture.repository.getOutboxItem(liveIdempotencyKey)?.intent;
+
+    expect(dynamicAction?.market).toBe(dynamicChildTrace.market);
+    expect(JSON.stringify(dynamicChildTrace)).not.toMatch(/agentPrivateKey|apiKey|secret-sentinel/);
+  });
+
   it('derives dynamic order identity from parent, child, market, and action', () => {
     const identity = {
       deploymentId: 'deployment-1', strategyId: 'strategy-1', strategyVersion: 2,
