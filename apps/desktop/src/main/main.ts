@@ -5,7 +5,7 @@ import { BotRepository } from './bots/bot-repository';
 import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
 import { isUnsignedDevelopmentBuild, isUnsignedE2ETestProcess, resolveApplicationDataDirectory } from './data-directory';
-import { registerIpcHandlers } from './ipc/register-ipc';
+import { registerDatabaseRepairIpcHandlers, registerIpcHandlers } from './ipc/register-ipc';
 import { installM0PermissionPolicy } from './install-permission-policy';
 import { testLlmConnection } from './llm/test-llm-connection';
 import { registerAppProtocol } from './register-app-protocol';
@@ -55,7 +55,7 @@ void app.whenReady()
       temporaryRoot: tmpdir(),
     });
     startupPhase = 'database';
-    const connection = database.start(dataDirectory);
+    const databaseResult = database.start(dataDirectory);
 
     startupPhase = 'application-protocol';
     registerAppProtocol({
@@ -63,7 +63,21 @@ void app.whenReady()
       developmentServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
     });
 
+    if (databaseResult.status === 'repair') {
+      startupPhase = 'database-repair-ipc';
+      disposeIpcHandlers = registerDatabaseRepairIpcHandlers({
+        app: { quitApplication: requestQuit },
+      });
+      startupPhase = 'tray';
+      installTray();
+      startupPhase = 'main-window';
+      await openMainWindow();
+      startupPhase = 'database-repair';
+      return;
+    }
+
     startupPhase = 'services';
+    const connection = databaseResult.database;
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
     const workbenchRepository = new WorkbenchRepository(connection);
@@ -91,15 +105,7 @@ void app.whenReady()
       testLlmConnection,
     });
     startupPhase = 'tray';
-    tray = createTray({
-      iconPath: app.isPackaged
-        ? join(process.resourcesPath, 'trayTemplate.png')
-        : join(__dirname, '..', '..', 'assets', 'trayTemplate.png'),
-      showWindow: openMainWindow,
-      quit: requestQuit,
-      getRuntimeStatus: () => runtime.getStatus(),
-      subscribeRuntimeStatus: (listener) => runtime.subscribeStatus(listener),
-    });
+    installTray();
     if (e2eAllowed) {
       Object.assign(globalThis, {
         __catbotsE2E: {
@@ -130,6 +136,18 @@ app.on('before-quit', (event) => {
 
 // Subscribing preserves the process after the final window closes. Tray controls own explicit exit.
 app.on('window-all-closed', () => undefined);
+
+function installTray(): void {
+  tray = createTray({
+    iconPath: app.isPackaged
+      ? join(process.resourcesPath, 'trayTemplate.png')
+      : join(__dirname, '..', '..', 'assets', 'trayTemplate.png'),
+    showWindow: openMainWindow,
+    quit: requestQuit,
+    getRuntimeStatus: () => runtime.getStatus(),
+    subscribeRuntimeStatus: (listener) => runtime.subscribeStatus(listener),
+  });
+}
 
 async function showMainWindow(): Promise<void> {
   if (mainWindow === undefined || mainWindow.isDestroyed()) {

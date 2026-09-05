@@ -32,9 +32,11 @@ describe('BotRepository', () => {
       updatedAt: '2026-09-03T12:00:00.000Z',
     });
     expect(created.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    expect(created).not.toHaveProperty('market');
+    expect(created).not.toHaveProperty('legacyMarketHint');
     expect(bots.list()).toEqual([created]);
-    expect(database.prepare('SELECT market, dex, legacy_market_hint FROM bots WHERE id = ?').get(created.id)).toEqual({
-      market: '', dex: 'hyperliquid', legacy_market_hint: null,
+    expect(database.prepare('SELECT dex, legacy_market_hint FROM bots WHERE id = ?').get(created.id)).toEqual({
+      dex: 'hyperliquid', legacy_market_hint: '',
     });
   });
 
@@ -51,8 +53,8 @@ describe('BotRepository', () => {
   it('validates stored bot rows through the shared summary schema', () => {
     const db = createDatabase();
     db.prepare(
-      'INSERT INTO bots (id, name, market, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run('not-a-uuid', 'BTC Flow', 'BTC-PERP', 'draft', '2026-09-03T12:00:00.000Z', '2026-09-03T12:00:00.000Z');
+      'INSERT INTO bots (id, name, dex, legacy_market_hint, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('not-a-uuid', 'BTC Flow', 'hyperliquid', 'BTC-PERP', 'draft', '2026-09-03T12:00:00.000Z', '2026-09-03T12:00:00.000Z');
 
     expect(() => new BotRepository(db).list()).toThrow();
   });

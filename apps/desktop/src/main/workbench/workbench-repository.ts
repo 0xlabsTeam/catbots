@@ -7,6 +7,7 @@ import {
   StrategyRevisionSchema,
   WorkbenchStateSchema,
   type BacktestSummary,
+  type BotSummary,
   type ChatMessage,
   type StrategyRevision,
   type WorkbenchState,
@@ -32,6 +33,11 @@ type RevisionRow = {
   created_at: unknown;
   approved_at: unknown;
 };
+
+export type StoredBotIdentity = Readonly<{
+  summary: BotSummary;
+  legacyMarketHint: string | null;
+}>;
 
 const registry = createBuiltinRegistry();
 
@@ -188,10 +194,25 @@ export class WorkbenchRepository {
     });
   }
 
-  getLegacyMarketHint(botId: string): string | null {
-    const row = this.database.prepare('SELECT legacy_market_hint FROM bots WHERE id = ?').get(botId) as { legacy_market_hint: unknown } | undefined;
+  getStoredIdentity(botId: string): StoredBotIdentity {
+    const row = this.database.prepare(`
+      SELECT id, name, dex, legacy_market_hint, status, created_at, updated_at
+      FROM bots WHERE id = ?
+    `).get(botId) as Record<string, unknown> | undefined;
     if (row === undefined) throw new Error('Bot not found');
-    return typeof row.legacy_market_hint === 'string' && row.legacy_market_hint.length > 0 ? row.legacy_market_hint : null;
+    return {
+      summary: BotSummarySchema.parse({
+        id: row.id,
+        name: row.name,
+        dex: row.dex,
+        status: row.status,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+      legacyMarketHint: typeof row.legacy_market_hint === 'string' && row.legacy_market_hint.length > 0
+        ? row.legacy_market_hint
+        : null,
+    };
   }
 
   private getRevision(botId: string, version: number): StrategyRevision {

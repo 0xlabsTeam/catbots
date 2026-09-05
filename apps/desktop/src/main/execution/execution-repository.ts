@@ -48,7 +48,6 @@ export class ExecutionRepository {
 
   createDeployment(input: Deployment): Deployment {
     const deployment = DeploymentSchema.parse(input);
-    if (deployment.recordVersion !== 1) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
     const revision = this.database.prepare(`
       SELECT strategy_id, status FROM strategy_revisions
       WHERE bot_id = ? AND version = ?
@@ -58,19 +57,24 @@ export class ExecutionRepository {
     }
     this.database.prepare(`
       INSERT INTO deployments (
-        id, bot_id, strategy_id, strategy_version, mode, venue, network, masked_account,
-        market_bindings_json, risk_limits_json, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, bot_id, strategy_id, strategy_version, record_version, dex, mode, venue, execution_venue,
+        network, masked_account, market_bindings_json, market_access_json, risk_limits_json,
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       deployment.id,
       deployment.botId,
       deployment.strategyId,
       deployment.strategyVersion,
+      deployment.recordVersion,
+      deployment.recordVersion === 2 ? deployment.dex : null,
       deployment.mode,
-      deployment.venue,
-      deployment.network,
+      deployment.recordVersion === 1 ? deployment.venue : deployment.executionVenue,
+      deployment.recordVersion === 2 ? deployment.executionVenue : null,
+      deployment.recordVersion === 1 ? deployment.network : deployment.mode === 'live' ? deployment.network : 'paper',
       deployment.mode === 'live' ? deployment.maskedAccount : null,
-      JSON.stringify(deployment.marketBindings),
+      JSON.stringify(deployment.recordVersion === 1 ? deployment.marketBindings : []),
+      deployment.recordVersion === 2 ? JSON.stringify(deployment.marketAccess) : null,
       JSON.stringify(deployment.riskLimits),
       deployment.status,
       deployment.createdAt,
@@ -412,6 +416,26 @@ function validateProposal(input: LiveActionProposal, deployment: Deployment): vo
 }
 
 function toDeployment(row: DeploymentRow): Deployment {
+  if (row.record_version === 2) {
+    const common = {
+      id: row.id,
+      botId: row.bot_id,
+      strategyId: row.strategy_id,
+      strategyVersion: row.strategy_version,
+      recordVersion: 2,
+      dex: row.dex,
+      mode: row.mode,
+      executionVenue: row.execution_venue,
+      marketAccess: parseStoredJson(row.market_access_json),
+      riskLimits: parseStoredJson(row.risk_limits_json),
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+    return DeploymentSchema.parse(row.mode === 'live'
+      ? { ...common, network: row.network, maskedAccount: row.masked_account }
+      : common);
+  }
   const common = {
     id: row.id,
     botId: row.bot_id,

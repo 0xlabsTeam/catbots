@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@cloudflare/kumo';
-import type { BootstrapState, BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
+import type { BootstrapState, BotSummary, CatbotsDesktopApi, DatabaseState } from '@catbots/contracts';
 import { FirstLaunchScreen } from './screens/FirstLaunchScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { AppShell, type AppDestination } from './components/AppShell';
 import { BotsHomeScreen } from './screens/BotsHomeScreen';
 import { BotWorkbenchScreen } from './screens/BotWorkbenchScreen';
+import { DatabaseRepairScreen } from './screens/DatabaseRepairScreen';
 
 type AppProps = {
   api: CatbotsDesktopApi;
@@ -13,17 +14,37 @@ type AppProps = {
 };
 
 export default function App({ api, preview = false }: AppProps) {
+  const [databaseState, setDatabaseState] = useState<DatabaseState | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
   const [destination, setDestination] = useState<AppDestination>('bots');
   const [selectedBot, setSelectedBot] = useState<BotSummary | null>(null);
   useEffect(() => {
     let active = true;
-    void api.config.getBootstrapState().then((state) => { if (active) setBootstrap(state); }).catch(() => { if (active) setBootstrap({ state: 'repair', issues: [{ path: 'config', message: 'Configuration requires repair' }] }); });
+    void (async () => {
+      let state: DatabaseState;
+      try {
+        state = await api.runtime.getDatabaseState();
+      } catch {
+        if (active) setDatabaseState({ status: 'repair', code: 'DATABASE_MIGRATION_FAILED' });
+        return;
+      }
+      if (!active) return;
+      setDatabaseState(state);
+      if (state.status === 'repair') return;
+      try {
+        const nextBootstrap = await api.config.getBootstrapState();
+        if (active) setBootstrap(nextBootstrap);
+      } catch {
+        if (active) setBootstrap({ state: 'repair', issues: [{ path: 'config', message: 'Configuration requires repair' }] });
+      }
+    })();
     return () => { active = false; };
   }, [api]);
 
   let screen;
-  if (bootstrap === null) screen = <main className="app-loading" aria-live="polite">Loading local workspace…</main>;
+  if (databaseState === null) screen = <main className="app-loading" aria-live="polite">Loading local workspace…</main>;
+  else if (databaseState.status === 'repair') screen = <DatabaseRepairScreen api={api.app} />;
+  else if (bootstrap === null) screen = <main className="app-loading" aria-live="polite">Loading local workspace…</main>;
   else if (bootstrap.state === 'first-launch') screen = <FirstLaunchScreen api={api.config} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
   else if (bootstrap.state === 'repair') screen = <SettingsScreen api={api.config} repairIssues={bootstrap.issues} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
   else screen = (

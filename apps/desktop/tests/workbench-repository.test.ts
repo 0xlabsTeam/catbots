@@ -81,6 +81,20 @@ beforeEach(() => {
 afterEach(() => database.close());
 
 describe('WorkbenchRepository', () => {
+  it('keeps legacy market identity private while returning public DEX-scoped workbench state', () => {
+    const stored = repository.getStoredIdentity(botId);
+    const dynamicBotId = new BotRepository(database, () => now)
+      .createDraft({ name: 'Universe bot', dex: 'hyperliquid' }).id;
+
+    expect(stored).toMatchObject({
+      summary: { id: botId, name: 'My BTC bot', dex: 'hyperliquid' },
+      legacyMarketHint: 'BTC-PERP',
+    });
+    expect(stored.summary).not.toHaveProperty('market');
+    expect(repository.getState(botId).bot).not.toHaveProperty('legacyMarketHint');
+    expect(repository.getStoredIdentity(dynamicBotId).legacyMarketHint).toBeNull();
+  });
+
   it('creates validated immutable revisions with repository-assigned versions', () => {
     const input = strategy();
     const first = repository.createValidatedRevision(botId, input);

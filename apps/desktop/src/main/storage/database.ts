@@ -4,6 +4,9 @@ import { migrateDatabase } from './migrations';
 
 export type DatabaseOpener = (path: string) => Database.Database;
 export type DatabaseMigrator = (database: Database.Database) => void;
+export type DatabaseOpenResult =
+  | Readonly<{ status: 'ready'; database: Database.Database }>
+  | Readonly<{ status: 'repair'; code: 'DATABASE_MIGRATION_FAILED' }>;
 
 export function openDatabase(path: string): Database.Database {
   const database = new Database(path);
@@ -26,16 +29,16 @@ export class ApplicationDatabase {
     private readonly migrate: DatabaseMigrator = migrateDatabase,
   ) {}
 
-  start(dataDirectory: string): Database.Database {
+  start(dataDirectory: string): DatabaseOpenResult {
     const database = this.open(join(dataDirectory, 'catbots.db'));
 
     try {
       this.migrate(database);
       this.database = database;
-      return database;
-    } catch (error) {
+      return { status: 'ready', database };
+    } catch {
       database.close();
-      throw error;
+      return { status: 'repair', code: 'DATABASE_MIGRATION_FAILED' };
     }
   }
 

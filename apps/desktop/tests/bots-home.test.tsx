@@ -283,4 +283,20 @@ describe('App', () => {
     await saveProviderSettings(user);
     expect(await screen.findByRole('heading', { name: 'Bots' })).toBeTruthy();
   });
+
+  it('shows fixed database repair guidance and exposes only Quit when migration failed', async () => {
+    const user = userEvent.setup();
+    const api = makeDesktopApi({ state: 'ready', config: redactedConfig });
+    vi.mocked(api.runtime.getDatabaseState).mockResolvedValue({
+      status: 'repair', code: 'DATABASE_MIGRATION_FAILED',
+    });
+    render(<App api={api} />);
+
+    expect(await screen.findByRole('heading', { name: 'Local database needs repair' })).toBeTruthy();
+    expect(screen.getByText('Your local records were left unchanged.')).toBeTruthy();
+    expect(api.config.getBootstrapState).not.toHaveBeenCalled();
+    expect(screen.queryByRole('navigation', { name: 'Global navigation' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Quit Catbots' }));
+    expect(api.app.quitApplication).toHaveBeenCalledOnce();
+  });
 });

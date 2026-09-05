@@ -65,6 +65,28 @@ function liveDeployment(): Deployment {
   };
 }
 
+function dynamicPaperDeployment(): Deployment {
+  return {
+    id: deploymentId,
+    botId,
+    strategyId: 'btc-risk',
+    strategyVersion: 1,
+    recordVersion: 2,
+    dex: 'hyperliquid',
+    mode: 'paper',
+    executionVenue: 'paper',
+    marketAccess: { mode: 'all_active_perpetuals' },
+    riskLimits: {
+      maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
+      maxDailyLossUsd: '300', maxDrawdownPercent: 12,
+      allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+    },
+    status: 'preflight',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function event(id: string, sequence: number, type: AuditEventView['type']): AuditEventView {
   return {
     id,
@@ -113,6 +135,25 @@ function proposal(): LiveActionProposal {
 }
 
 describe('ExecutionRepository', () => {
+  it('persists explicit version 2 DEX scope without fixed market bindings', () => {
+    const created = repository.createDeployment(dynamicPaperDeployment());
+
+    expect(created).toEqual(dynamicPaperDeployment());
+    expect(created).not.toHaveProperty('marketBindings');
+    expect(database.prepare(`
+      SELECT record_version, dex, execution_venue, market_access_json, market_bindings_json
+      FROM deployments WHERE id = ?
+    `).get(deploymentId)).toEqual({
+      record_version: 2,
+      dex: 'hyperliquid',
+      execution_venue: 'paper',
+      market_access_json: '{"mode":"all_active_perpetuals"}',
+      market_bindings_json: '[]',
+    });
+    expect(() => database.prepare('UPDATE deployments SET dex = ? WHERE id = ?').run('hyperliquid', deploymentId))
+      .toThrow(/immutable/i);
+  });
+
   it('persists only a deployment bound to an approved immutable strategy revision', () => {
     const created = repository.createDeployment(liveDeployment());
 

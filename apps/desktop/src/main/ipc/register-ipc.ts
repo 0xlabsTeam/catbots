@@ -62,6 +62,10 @@ type ApplicationPort = {
   quitApplication(): void | Promise<void>;
 };
 
+type DatabaseRepairIpcDependencies = {
+  app: Pick<ApplicationPort, 'quitApplication'>;
+};
+
 export type IpcHandlerDependencies = {
   app: ApplicationPort;
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
@@ -80,6 +84,40 @@ type RegisteredIpcHandlers = {
 };
 
 let activeRegistration: RegisteredIpcHandlers | undefined;
+
+export function registerDatabaseRepairIpcHandlers(dependencies: DatabaseRepairIpcDependencies): () => void {
+  const channels: ReadonlyArray<readonly [string, (event: IpcMainInvokeEvent) => unknown]> = [
+    ['app:quit-application', async (event) => {
+      assertTrustedAppSenderUrl(event.senderFrame?.url);
+      try {
+        await dependencies.app.quitApplication();
+      } catch {
+        throw new IpcRequestError('APP_QUIT_APPLICATION_FAILED');
+      }
+    }],
+    ['runtime:get-database-state', async (event) => {
+      assertTrustedAppSenderUrl(event.senderFrame?.url);
+      return DatabaseStateSchema.parse({ status: 'repair', code: 'DATABASE_MIGRATION_FAILED' });
+    }],
+  ];
+  const registeredChannels: string[] = [];
+  try {
+    for (const [channel, handler] of channels) {
+      ipcMain.handle(channel, handler);
+      registeredChannels.push(channel);
+    }
+  } catch (error) {
+    removeOwnedHandlers(registeredChannels);
+    throw error;
+  }
+
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    removeOwnedHandlers(registeredChannels);
+  };
+}
 
 export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
   const assertSender = (event: IpcMainInvokeEvent): void => {

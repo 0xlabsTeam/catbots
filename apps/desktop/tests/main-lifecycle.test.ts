@@ -74,7 +74,8 @@ const applicationDatabase = vi.hoisted(() => {
     }),
     close,
     reset: () => {
-      start.mockClear();
+      start.mockReset();
+      start.mockReturnValue({ status: 'ready', database: {} });
       close.mockClear();
     },
     start,
@@ -422,6 +423,32 @@ describe('main window lifecycle', () => {
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith('Catbots fatal startup error (database)');
     expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
+  });
+
+  it('opens a trusted repair renderer with only fixed-status and Quit IPC when migration fails', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    report.mockClear();
+    applicationDatabase.start.mockReturnValueOnce({
+      status: 'repair', code: 'DATABASE_MIGRATION_FAILED',
+    });
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(electron.app.quit).not.toHaveBeenCalled();
+    expect(runtime.start).not.toHaveBeenCalled();
+    expect(tray.create).toHaveBeenCalledOnce();
+    expect(electron.handle.mock.calls.map(([channel]) => channel)).toEqual([
+      'app:quit-application',
+      'runtime:get-database-state',
+    ]);
+    const getDatabaseState = electron.handle.mock.calls.find(([channel]) => channel === 'runtime:get-database-state')?.[1] as
+      ((event: Electron.IpcMainInvokeEvent) => Promise<unknown>) | undefined;
+    await expect(getDatabaseState?.(
+      { senderFrame: { url: 'catbots://app/index.html' } } as Electron.IpcMainInvokeEvent,
+    )).resolves.toEqual({ status: 'repair', code: 'DATABASE_MIGRATION_FAILED' });
+    expect(report).not.toHaveBeenCalledWith(expect.stringContaining('Catbots fatal startup error'));
   });
 
 });

@@ -150,7 +150,7 @@ export class WorkbenchService {
   }
 
   private requireLegacyMarketHint(botId: string): string {
-    const market = this.dependencies.repository.getLegacyMarketHint(botId);
+    const market = this.dependencies.repository.getStoredIdentity(botId).legacyMarketHint;
     if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
     return market;
   }

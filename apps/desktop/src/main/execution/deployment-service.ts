@@ -66,7 +66,7 @@ export class DeploymentService {
 
   constructor(private readonly dependencies: Readonly<{
     executionRepository: ExecutionRepository;
-    workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument' | 'getLegacyMarketHint'>;
+    workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument' | 'getStoredIdentity'>;
     configRepository?: Readonly<{ load(): Promise<LocalConfig | null> }>;
     runtimeReady?: () => boolean;
     createHyperliquidClient?: (options: Readonly<{ agentPrivateKey: string }>) => HyperliquidClientPort;
@@ -227,7 +227,7 @@ export class DeploymentService {
   }
 
   private requireLegacyMarketHint(botId: string): string {
-    const market = this.dependencies.workbenchRepository.getLegacyMarketHint(botId);
+    const market = this.dependencies.workbenchRepository.getStoredIdentity(botId).legacyMarketHint;
     if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
     return market;
   }

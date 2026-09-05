@@ -158,6 +158,28 @@ const migrations: readonly Migration[] = [
       WHERE market <> '' AND legacy_market_hint IS NULL;
     `,
   },
+  {
+    version: 5,
+    sql: `
+      UPDATE bots
+      SET legacy_market_hint = COALESCE(NULLIF(legacy_market_hint, ''), NULLIF(market, ''), '');
+      ALTER TABLE bots DROP COLUMN market;
+
+      ALTER TABLE deployments ADD COLUMN record_version INTEGER CHECK (record_version IN (1, 2));
+      ALTER TABLE deployments ADD COLUMN dex TEXT CHECK (dex IN ('hyperliquid'));
+      ALTER TABLE deployments ADD COLUMN execution_venue TEXT CHECK (execution_venue IN ('paper', 'hyperliquid'));
+      ALTER TABLE deployments ADD COLUMN market_access_json TEXT;
+
+      DROP TRIGGER deployments_strategy_binding_is_immutable;
+      CREATE TRIGGER deployments_strategy_binding_is_immutable
+      BEFORE UPDATE OF bot_id, strategy_id, strategy_version, record_version, mode, venue, execution_venue,
+        network, masked_account, market_bindings_json, market_access_json, dex, risk_limits_json, created_at
+      ON deployments
+      BEGIN
+        SELECT RAISE(ABORT, 'deployment binding is immutable');
+      END;
+    `,
+  },
 ];
 
 export function migrateDatabase(database: Database.Database): void {
@@ -174,6 +196,8 @@ export function migrateDatabase(database: Database.Database): void {
     for (const migration of migrations) {
       if (hasMigration.get(migration.version) !== undefined) continue;
       database.exec(migration.sql);
+      const foreignKeyViolations = database.pragma('foreign_key_check') as unknown[];
+      if (foreignKeyViolations.length > 0) throw new Error('Database foreign key verification failed');
       recordMigration.run(migration.version, new Date().toISOString());
     }
   })();

@@ -59,7 +59,7 @@ describe('DeploymentService Live gate', () => {
       workbenchRepository: {
         getState: () => ({ ...baseState, backtests: [backtest] }),
         getStrategyDocument: (requestedBotId, version) => workbench.getStrategyDocument(requestedBotId, version),
-        getLegacyMarketHint: (requestedBotId) => workbench.getLegacyMarketHint(requestedBotId),
+        getStoredIdentity: (requestedBotId) => workbench.getStoredIdentity(requestedBotId),
       },
       configRepository: { load: async () => config }, runtimeReady: () => true,
       createHyperliquidClient: () => client, resolveSignerAddress: async () => '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',

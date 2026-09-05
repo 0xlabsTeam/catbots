@@ -14,9 +14,7 @@ type LegacyDraftBotInput = Readonly<{ name: string; market: string }>;
 type BotRow = {
   id: unknown;
   name: unknown;
-  market: unknown;
   dex: unknown;
-  legacy_market_hint: unknown;
   status: unknown;
   created_at: unknown;
   updated_at: unknown;
@@ -38,12 +36,12 @@ export class BotRepository {
     const timestamp = this.clock().toISOString();
 
     this.database.prepare(`
-      INSERT INTO bots (id, name, market, dex, legacy_market_hint, status, created_at, updated_at)
-      VALUES (?, ?, '', ?, ?, 'draft', ?, ?)
-    `).run(id, draft.name, draft.dex, legacy?.market ?? null, timestamp, timestamp);
+      INSERT INTO bots (id, name, dex, legacy_market_hint, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?)
+    `).run(id, draft.name, draft.dex, legacy?.market ?? '', timestamp, timestamp);
 
     const row = this.database.prepare(`
-      SELECT id, name, market, dex, legacy_market_hint, status, created_at, updated_at
+      SELECT id, name, dex, status, created_at, updated_at
       FROM bots
       WHERE id = ?
     `).get(id);
@@ -54,7 +52,7 @@ export class BotRepository {
 
   list(): BotSummary[] {
     const rows = this.database.prepare(`
-      SELECT id, name, market, dex, legacy_market_hint, status, created_at, updated_at
+      SELECT id, name, dex, status, created_at, updated_at
       FROM bots
       ORDER BY created_at ASC, rowid ASC
     `).all();
