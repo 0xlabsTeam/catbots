@@ -21,6 +21,15 @@ type NumericPosition = {
 };
 
 type MarketPrice = { market: string; bid: number; ask: number; mark: number };
+export type MarketMarkUnavailableReason = 'missing' | 'stale' | 'unauthorized' | 'invalid';
+export type PortfolioMarkResult = Readonly<{
+  liquidated: boolean;
+  markedMarkets: readonly string[];
+  unavailableMarks: readonly Readonly<{
+    market: string;
+    reason: MarketMarkUnavailableReason;
+  }>[];
+}>;
 
 function decimal(value: number): string {
   if (!Number.isFinite(value)) throw new Error('Simulation produced a non-finite number');
@@ -32,18 +41,30 @@ function numeric(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function marketPrice(context: EvaluationContext, expectedMarket: string): MarketPrice | undefined {
+function assessMarketPrice(
+  context: EvaluationContext,
+  expectedMarket: string,
+): Readonly<{ price: MarketPrice }> | Readonly<{ reason: MarketMarkUnavailableReason }> {
   const source = context.values['market.price'];
-  if (!source || source.quality.status !== 'verified' || source.freshnessSeconds < 0) return undefined;
+  if (!source) return { reason: 'missing' };
+  if (source.quality.status !== 'verified') return { reason: source.quality.status };
+  if (source.freshnessSeconds < 0) return { reason: 'invalid' };
   const value = source.value;
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return { reason: 'invalid' };
   const market = value.market;
   const bid = numeric(value.bid);
   const ask = numeric(value.ask);
   const mark = numeric(value.mark);
-  if (market !== expectedMarket || bid === undefined || ask === undefined || mark === undefined) return undefined;
-  if (bid <= 0 || ask <= 0 || mark <= 0) return undefined;
-  return { market, bid, ask, mark };
+  if (market !== expectedMarket || bid === undefined || ask === undefined || mark === undefined) {
+    return { reason: 'invalid' };
+  }
+  if (bid <= 0 || ask <= 0 || mark <= 0) return { reason: 'invalid' };
+  return { price: { market, bid, ask, mark } };
+}
+
+function marketPrice(context: EvaluationContext, expectedMarket: string): MarketPrice | undefined {
+  const assessed = assessMarketPrice(context, expectedMarket);
+  return 'price' in assessed ? assessed.price : undefined;
 }
 
 function validateAssumptions(assumptions: BacktestAssumptions): number {
@@ -123,15 +144,24 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     return this.#liquidate(context.evaluatedAt);
   }
 
-  markPortfolio(contexts: readonly EvaluationContext[]): Readonly<{ liquidated: boolean }> {
-    const prices = contexts.map((context) => {
-      const price = marketPrice(context, context.currentMarket);
-      if (!price) throw new Error('Mark-to-market requires a valid point-in-time price');
-      return { context, price };
-    });
+  markPortfolio(contexts: readonly EvaluationContext[]): PortfolioMarkResult {
+    const prices: { context: EvaluationContext; price: MarketPrice }[] = [];
+    const unavailableMarks: { market: string; reason: MarketMarkUnavailableReason }[] = [];
+    for (const context of [...contexts].sort((left, right) => left.currentMarket.localeCompare(right.currentMarket))) {
+      const assessed = assessMarketPrice(context, context.currentMarket);
+      if ('price' in assessed) prices.push({ context, price: assessed.price });
+      else unavailableMarks.push({ market: context.currentMarket, reason: assessed.reason });
+    }
     for (const { context, price } of prices) this.#lastMarks.set(context.currentMarket, price.mark);
     const timestamp = contexts.at(-1)?.evaluatedAt;
-    return timestamp ? this.#liquidate(timestamp) : { liquidated: false };
+    const liquidation = timestamp && prices.length > 0
+      ? this.#liquidate(timestamp)
+      : { liquidated: false };
+    return Object.freeze({
+      ...liquidation,
+      markedMarkets: Object.freeze(prices.map(({ context }) => context.currentMarket)),
+      unavailableMarks: Object.freeze(unavailableMarks.map((issue) => Object.freeze(issue))),
+    });
   }
 
   #liquidate(timestamp: string): Readonly<{ liquidated: boolean }> {

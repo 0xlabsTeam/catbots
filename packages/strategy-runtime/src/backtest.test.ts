@@ -181,6 +181,28 @@ function portfolioRoundTripRequest(): BacktestRequest {
 }
 
 describe('runBacktest', () => {
+  it.each([
+    ['non-parseable', 'not-a-timestamp'],
+    ['future-dated', '2026-09-03T08:31:00.000Z'],
+  ])('rejects a %s universe snapshot before replay or portfolio mutation', (_label, observedAt) => {
+    const base = twoMarketRequest();
+    const second = base.inputs[1]!;
+    const shouldCancel = vi.fn(() => false);
+    const onProgress = vi.fn();
+
+    expect(() => runBacktest({
+      ...base,
+      inputs: [base.inputs[0]!, {
+        ...second,
+        universe: { ...second.universe, observedAt },
+      }],
+      shouldCancel,
+      onProgress,
+    })).toThrow('BACKTEST_FRAME_UNIVERSE_TIME_INVALID');
+    expect(shouldCancel).not.toHaveBeenCalled();
+    expect(onProgress.mock.calls.map(([progress]) => progress.phase)).toEqual(['validating']);
+  });
+
   it('replays the point-in-time dataset universe instead of a current live universe', () => {
     const result = runBacktest(twoMarketRequest());
     const marketsAt = (timestamp: string) => result.traces
@@ -289,6 +311,75 @@ describe('runBacktest', () => {
     });
 
     expect(result.warnings).toEqual(['missing_market_coverage', 'stale_data:BTC-PERP']);
+  });
+
+  it.each([
+    ['missing', undefined, ['stale_mark:BTC-PERP:missing']],
+    ['invalid', 'invalid', ['stale_mark:BTC-PERP:invalid']],
+    ['unauthorized', 'unauthorized', ['stale_mark:BTC-PERP:unauthorized']],
+    ['stale', 'stale', ['stale_data:BTC-PERP', 'stale_mark:BTC-PERP:stale']],
+  ] as const)(
+    'warns when an inactive held market falls back from a %s current-frame price',
+    (_label, status, expectedWarnings) => {
+      const base = twoMarketRequest();
+      const first = base.inputs[0]!;
+      const second = base.inputs[1]!;
+      const currentPrice = second.marketValues['BTC-PERP']!['market.price']!;
+      const marketPrice: Record<string, EvaluationValue<unknown>> = {};
+      if (status !== undefined) {
+        marketPrice['market.price'] = { ...currentPrice, quality: { status } };
+      }
+      const result = runBacktest({
+        ...base,
+        datasetCoverage: { ...base.datasetCoverage, markets: ['BTC-PERP'] },
+        inputs: [first, {
+          ...second,
+          universe: {
+            dex: 'hyperliquid', revision: 'universe:inactive', observedAt: second.occurredAt,
+            markets: [{
+              symbol: 'BTC-PERP', active: false, sizeDecimals: 4, maximumLeverage: 20,
+            }],
+          },
+          marketValues: {
+            'BTC-PERP': {
+              ...marketPrice,
+              'indicator.rsi': second.marketValues['BTC-PERP']!['indicator.rsi']!,
+            },
+          },
+        }],
+      });
+
+      expect(result.snapshot).toMatchObject({
+        equity: '10000',
+        positions: [expect.objectContaining({ market: 'BTC-PERP', entryPrice: '100' })],
+      });
+      expect(result.traces[1]?.children).toEqual([]);
+      expect(result.warnings).toEqual(expectedWarnings);
+    },
+  );
+
+  it('marks an inactive held market when its current-frame price is usable', () => {
+    const base = twoMarketRequest();
+    const second = base.inputs[1]!;
+    const result = runBacktest({
+      ...base,
+      datasetCoverage: { ...base.datasetCoverage, markets: ['BTC-PERP'] },
+      inputs: [base.inputs[0]!, {
+        ...second,
+        universe: {
+          dex: 'hyperliquid', revision: 'universe:inactive-priced', observedAt: second.occurredAt,
+          markets: [{ symbol: 'BTC-PERP', active: false, sizeDecimals: 4, maximumLeverage: 20 }],
+        },
+        marketValues: { 'BTC-PERP': second.marketValues['BTC-PERP']! },
+      }],
+    });
+
+    expect(result.snapshot).toMatchObject({
+      equity: '10100',
+      positions: [expect.objectContaining({ market: 'BTC-PERP' })],
+    });
+    expect(result.traces[1]?.children).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   it('replays point-in-time inputs and returns metrics, trades, and complete traces', () => {

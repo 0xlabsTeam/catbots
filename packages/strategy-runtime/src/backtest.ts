@@ -203,9 +203,23 @@ function warningsFor(
   return Object.freeze([...warnings].sort());
 }
 
-function hasVerifiedMarketPrice(values: Readonly<Record<string, EvaluationValue<unknown>>>): boolean {
-  const price = values['market.price'];
-  return price?.quality.status === 'verified';
+function validateFrameUniverseTimes(inputs: readonly BacktestInput[]): void {
+  for (const input of inputs) {
+    const observedAt = Date.parse(input.universe.observedAt);
+    const frameTime = Date.parse(input.occurredAt);
+    const evaluationTime = Date.parse(
+      input.triggerInput.kind === 'event'
+        ? input.triggerInput.event.occurredAt
+        : input.triggerInput.occurredAt,
+    );
+    if (!Number.isFinite(observedAt)
+      || !Number.isFinite(frameTime)
+      || !Number.isFinite(evaluationTime)
+      || observedAt > frameTime
+      || observedAt > evaluationTime) {
+      throw new Error('BACKTEST_FRAME_UNIVERSE_TIME_INVALID');
+    }
+  }
 }
 
 export function runBacktest(request: BacktestRequest): BacktestResult {
@@ -215,6 +229,7 @@ export function runBacktest(request: BacktestRequest): BacktestResult {
   if (!validation.valid) {
     throw new Error(`Backtest strategy is invalid: ${validation.errors.map((error) => error.code).join(', ')}`);
   }
+  validateFrameUniverseTimes(request.inputs);
   const coverage = normalizeCoverage(request.datasetCoverage);
   const selected = selectedMarkets(request.marketUniverse, coverage);
 
@@ -227,6 +242,7 @@ export function runBacktest(request: BacktestRequest): BacktestResult {
     contributions: Object.freeze(Object.fromEntries([...selected].sort().map((market) => [market, '0']))),
   }];
   const traces: CoordinatedEvaluation[] = [];
+  const replayWarnings = new Set<string>();
   let status: 'completed' | 'cancelled' = 'completed';
   request.onProgress?.({ phase: 'replaying', completed: 0, total });
 
@@ -240,15 +256,25 @@ export function runBacktest(request: BacktestRequest): BacktestResult {
     const marketsWithValues = Object.keys(input.marketValues)
       .filter((market) => selected.has(market))
       .sort();
+    const heldMarkets = new Set(adapter.snapshot().positions.map(({ market }) => market));
     const marketContexts = new Map<string, ReturnType<typeof createEvaluationContext>>();
     for (const market of marketsWithValues) {
       const values = input.marketValues[market];
-      if (!values || !hasVerifiedMarketPrice(values)) continue;
+      if (!values) continue;
       const context = createEvaluationContext({ evaluatedAt: clock.now(), currentMarket: market, values });
       marketContexts.set(market, context);
     }
-    adapter.markPortfolio([...marketContexts.values()]);
+    const markResult = adapter.markPortfolio([...marketContexts.values()]);
+    const markedMarkets = new Set(markResult.markedMarkets);
+    const unavailableMarks = new Map(
+      markResult.unavailableMarks.map(({ market, reason }) => [market, reason]),
+    );
+    for (const market of [...heldMarkets].sort()) {
+      if (markedMarkets.has(market)) continue;
+      replayWarnings.add(`stale_mark:${market}:${unavailableMarks.get(market) ?? 'missing'}`);
+    }
     for (const [market, context] of marketContexts) {
+      if (!markedMarkets.has(market)) continue;
       const fundingRate = input.fundingRates?.[market];
       if (fundingRate !== undefined) adapter.applyFunding(fundingRate, context);
     }
@@ -306,7 +332,9 @@ export function runBacktest(request: BacktestRequest): BacktestResult {
     totalFees: snapshot.totalFees,
     totalFunding: snapshot.totalFunding,
   });
-  const warnings = warningsFor(request, coverage, selected);
+  const warnings = Object.freeze([
+    ...new Set([...warningsFor(request, coverage, selected), ...replayWarnings]),
+  ].sort());
   const perMarket = calculatePerMarketBacktestMetrics({
     startingCapital: request.assumptions.startingCapital,
     markets: [...selected],
