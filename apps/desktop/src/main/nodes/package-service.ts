@@ -1,8 +1,11 @@
+import { FlowJournal } from './flow-journal';
+import { randomUUID } from 'node:crypto';
+import { createPackageExample, exampleContext } from '@catbots/strategy-runtime';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { NodePackageCommandSchema, type InstalledNodePackage, type NodePackageStatus } from '@catbots/contracts';
-import { CommunityNodeCatalog, serializeCanonicalJson, validateNodePackage, type JsonValue } from '@catbots/strategy-runtime';
+import { CommunityNodeCatalog, listRuntimePackages, serializeCanonicalJson, validateNodePackage, type JsonValue } from '@catbots/strategy-runtime';
 export class NodePackageService {
   private packages: InstalledNodePackage[];
   constructor(private path: string) {
@@ -17,7 +20,27 @@ export class NodePackageService {
   catalog() { return new CommunityNodeCatalog(this.packages); }
   command(input: unknown): NodePackageStatus {
     const command = NodePackageCommandSchema.parse(input);
-    if (command.action === 'list') return { packages: structuredClone(this.packages) };
+    if (command.action === 'list') return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages() };
+    if (command.action === 'simulate') {
+      const journal = new FlowJournal(`${this.path}.simulations.json`);
+      const runId = randomUUID();
+      const document = createPackageExample(command.example);
+      const prices = command.example === 'dca' ? [100,100,94,94,99,99] : [100,100,100,100,102,102];
+      let previous: ReturnType<FlowJournal['evaluate']> | undefined;
+      const pending = new Map<string, NonNullable<typeof previous>['orders'][number]>();
+      const steps = prices.map((price,index) => {
+        const context = exampleContext(runId,index,price);
+        // Demonstrates acknowledgement on the next step, explicitly using synthetic fills.
+        for (const order of previous?.orders ?? []) pending.set(order.clientOrderId, order);
+        for (const id of previous?.cancelOrderIds ?? []) pending.delete(id);
+        context.fills = [...pending.values()].filter(order => order.limitPrice === undefined || (order.side === 'buy' ? price <= order.limitPrice : price >= order.limitPrice)).map(order => ({ id: `${order.clientOrderId}:fill`, clientOrderId: order.clientOrderId, side: order.side, quantity: order.quantity, price: order.limitPrice ?? price, fee: 0 }));
+        for (const fill of context.fills) pending.delete(fill.clientOrderId);
+        context.cancelledOrderIds = previous?.cancelOrderIds ?? [];
+        previous = journal.evaluate(document,context);
+        return { price, proposed: previous.orders.length, cancellations: previous.cancelOrderIds.length, state: previous.trace.find(item => item.nodeId === 'strategy')?.outputs.status.value, outputs: Object.fromEntries(previous.trace.map(item => [item.nodeId,item.outputs])) };
+      });
+      return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages(), simulation: { example: command.example, runId, steps } };
+    }
     let next = structuredClone(this.packages);
     if (command.action === 'install') {
       const manifest = validateNodePackage(JSON.parse(command.source)); const integrity = digest(manifest);
@@ -33,7 +56,7 @@ export class NodePackageService {
     new CommunityNodeCatalog(next);
     mkdirSync(dirname(this.path), { recursive: true });
     writeFileSync(`${this.path}.tmp`, JSON.stringify(next), { mode: 0o600 }); renameSync(`${this.path}.tmp`, this.path); this.packages = next;
-    return { packages: structuredClone(this.packages) };
+    return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages() };
   }
 }
 function digest(value: unknown) { return `sha256:${createHash('sha256').update(serializeCanonicalJson(value as JsonValue)).digest('hex')}`; }

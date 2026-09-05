@@ -6,6 +6,7 @@ import {
 } from '@catbots/contracts';
 import {
   createBuiltinRegistry,
+  listRuntimePackages,
   StrategyV2DocumentSchema,
   validateStrategy,
 } from '@catbots/strategy-runtime';
@@ -151,7 +152,7 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
       try {
         if (name === 'list_nodes') {
           noArguments.parse(argumentsValue);
-          return { ok: true, nodes: registry.list().map((node) => ({
+          return { ok: true, simulationPackages: listRuntimePackages(), simulationNotice: 'Runtime v3 packages are simulation-only in Nodes. Only nodes in the nodes array may be used with validate_strategy or deployed.', nodes: registry.list().map((node) => ({
             kind: node.kind,
             type: node.type,
             version: node.version,
