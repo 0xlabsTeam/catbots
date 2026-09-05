@@ -23,7 +23,7 @@ vi.mock('@xyflow/react', () => ({
   Position: { Left: 'left', Right: 'right' },
 }));
 
-import { buildStrategyGraph } from '../src/renderer/workbench/graph-model';
+import { buildStrategyGraph, readableRule } from '../src/renderer/workbench/graph-model';
 import { StrategyGraph } from '../src/renderer/workbench/StrategyGraph';
 
 const revision: StrategyRevision = {
@@ -59,13 +59,20 @@ describe('strategy graph', () => {
     const before = structuredClone(revision);
     const graph = buildStrategyGraph(revision);
 
-    expect(graph.nodes.map(({ id, position }) => ({ id, position }))).toEqual([
-      { id: 'trigger', position: { x: 0, y: 0 } },
-      { id: 'condition', position: { x: 320, y: 0 } },
-      { id: 'condition-2', position: { x: 320, y: 150 } },
-      { id: 'combine', position: { x: 640, y: 0 } },
-      { id: 'action', position: { x: 960, y: 0 } },
-    ]);
+    expect(buildStrategyGraph(revision)).toEqual(graph);
+    for (const edge of graph.edges) {
+      const source = graph.nodes.find((node) => node.id === edge.source)!;
+      const target = graph.nodes.find((node) => node.id === edge.target)!;
+      expect(target.position.x).toBeGreaterThan(source.position.x + source.width!);
+      expect(edge.type).toBe('default');
+    }
+    for (const [index, node] of graph.nodes.entries()) {
+      for (const other of graph.nodes.slice(index + 1)) {
+        const separateX = Math.abs(node.position.x - other.position.x) >= 240;
+        const separateY = Math.abs(node.position.y - other.position.y) >= 112;
+        expect(separateX || separateY).toBe(true);
+      }
+    }
     expect(graph.edges).toEqual([
       expect.objectContaining({ id: 'e1', source: 'trigger', target: 'condition' }),
       expect.objectContaining({ id: 'e2', source: 'trigger', target: 'condition-2' }),
@@ -74,6 +81,32 @@ describe('strategy graph', () => {
       expect.objectContaining({ id: 'e5', source: 'combine', target: 'action' }),
     ]);
     expect(revision).toEqual(before);
+  });
+
+  it('keeps interleaved independent rule branches together', () => {
+    const predicate = revision.nodes[1];
+    const combine = revision.nodes[3];
+    const nodes = [revision.nodes[0], ...['a1', 'b1', 'a2', 'b2'].map((id) => ({ ...predicate, id })),
+      { ...combine, id: 'a' }, { ...combine, id: 'b' }];
+    const edges = ['a1', 'b1', 'a2', 'b2'].flatMap((id) => [
+      { id: `start-${id}`, source: 'trigger', sourcePort: 'activation', target: id, targetPort: 'activation' },
+      { id: `join-${id}`, source: id, sourcePort: 'result', target: id[0], targetPort: 'conditions' },
+    ]);
+    const graph = buildStrategyGraph({ ...revision, nodes, edges });
+    const y = (id: string) => graph.nodes.find((node) => node.id === id)!.position.y;
+    const a = [y('a1'), y('a2')];
+    const b = [y('b1'), y('b2')];
+    expect(Math.max(...a) < Math.min(...b) || Math.max(...b) < Math.min(...a)).toBe(true);
+    expect(graph.edges).toHaveLength(edges.length);
+  });
+
+  it('preserves actual port IDs including single-input NOT and labels boolean edges truthfully', () => {
+    const graph = buildStrategyGraph({ ...revision, nodes: revision.nodes.map((node) => node.id === 'combine' ? { ...node, type: 'combine.not' } : node) });
+    expect(graph.nodes.find((node) => node.id === 'combine')?.data.inputPorts).toEqual(['condition']);
+    expect(graph.edges.find((edge) => edge.id === 'e3')?.label).toBe('Result');
+    expect(graph.edges.find((edge) => edge.id === 'e5')?.label).toBe('If true');
+    expect(readableRule('indicator.rsi.14.value < 30')).toBe('RSI (14) < 30');
+    expect(readableRule('custom.metric > 5')).toBe('custom.metric > 5');
   });
 
   it('renders a read-only selectable React Flow canvas with navigation aids', () => {
@@ -86,7 +119,8 @@ describe('strategy graph', () => {
       elementsSelectable: true,
       defaultViewport: { x: 24, y: 24, zoom: 1 },
     });
-    expect(screen.getByTestId('flow-controls')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fit all' })).toBeTruthy();
+    expect(flow.props?.fitView).toBe(true);
     expect(screen.getByTestId('flow-background')).toBeTruthy();
     expect(screen.getByTestId('flow-minimap')).toBeTruthy();
     expect(screen.getByText('All active perpetual markets')).toBeTruthy();

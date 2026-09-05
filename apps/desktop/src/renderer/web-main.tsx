@@ -11,5 +11,5 @@ syncSystemAppearance();
 const root = createRoot(document.getElementById('root')!);
 root.render(<main className="app-loading" role="status">Connecting to local backend…</main>);
 void createWebApi().then((api) => root.render(<StrictMode><App api={api} surface="web" /></StrictMode>)).catch(() => {
-  root.render(<main className="app-loading"><h1>Local backend unavailable</h1><p>Start Catbots with pnpm dev:web or pnpm dev:all, then reconnect.</p><Button onClick={() => window.location.reload()}>Reconnect</Button></main>);
+  root.render(<main className="app-loading"><h1>Local backend unavailable</h1><p>Start Catbots with pnpm dev:web or pnpm dev:all, then reconnect.</p><Button size="base" onClick={() => window.location.reload()}>Reconnect</Button></main>);
 });

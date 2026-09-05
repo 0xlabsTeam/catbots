@@ -30,13 +30,13 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
         )}
         {revision === null || revision.status === 'approved' ? null : (
           <Dialog.Root>
-            <Dialog.Trigger render={(props) => <Button {...props} type="button" variant="primary" icon={CheckCircleIcon} disabled={approving}>Approve v{revision.version}</Button>} />
+            <Dialog.Trigger render={(props) => <Button {...props} type="button" variant="primary" size="sm" icon={CheckCircleIcon} disabled={approving}>Approve v{revision.version}</Button>} />
             <Dialog className="workbench-approval-dialog">
               <Dialog.Title>Approve strategy v{revision.version}?</Dialog.Title>
               <Dialog.Description>This locks your approval to this exact revision. It does not start Paper or Live trading.</Dialog.Description>
               <div className="workbench-dialog-actions">
-                <Dialog.Close render={(props) => <Button {...props} type="button" variant="secondary">Cancel</Button>} />
-                <Dialog.Close render={(props) => <Button {...props} type="button" variant="primary" loading={approving} onClick={() => void onApprove()}>Confirm approval</Button>} />
+                <Dialog.Close render={(props) => <Button size="base" {...props} type="button" variant="secondary">Cancel</Button>} />
+                <Dialog.Close render={(props) => <Button size="base" {...props} type="button" variant="primary" loading={approving} onClick={() => void onApprove()}>Confirm approval</Button>} />
               </div>
             </Dialog>
           </Dialog.Root>

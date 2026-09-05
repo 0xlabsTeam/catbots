@@ -78,7 +78,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
         <Dialog.Title>Create a local draft</Dialog.Title>
         <Dialog.Description>Create a strategy workspace for Hyperliquid perpetual markets.</Dialog.Description>
         <form className="draft-form" onSubmit={submit}>
-          <Input
+          <Input size="base"
             id="bot-name"
             label="Bot name"
             value={form.name}
@@ -90,7 +90,7 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
             autoFocus
           />
           {errors.name === undefined ? null : <p id="bot-name-error" role="alert">{errors.name}</p>}
-          <Select<DraftForm['dex']>
+          <Select<DraftForm['dex']> size="base"
             label="DEX"
             value={form.dex}
             onValueChange={(dex) => { if (dex !== null) updateForm('dex', dex); }}
@@ -101,8 +101,8 @@ export function CreateDraftBotDialog({ api, open, onOpenChange, onCreated }: Cre
           </Select>
           {error ? <Banner variant="error" role="alert" title="Draft not created" description="We could not create this draft. Review the local values and try again." /> : null}
           <div className="draft-form-actions">
-            <Button type="button" variant="secondary" onClick={close} disabled={isCreating}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
+            <Button size="base" type="button" variant="secondary" onClick={close} disabled={isCreating}>Cancel</Button>
+            <Button size="base" type="submit" variant="primary" loading={isCreating} disabled={isCreating}>Create draft</Button>
           </div>
         </form>
       </Dialog>

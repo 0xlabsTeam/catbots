@@ -35,18 +35,18 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
       <header className="backtest-toolbar">
         <div><p className="eyebrow">DETERMINISTIC REPLAY</p><h2 id="backtest-title">Backtest v{revision.version}</h2></div>
         {backtests.length > 0 ? (
-          <Select<string> items={backtests.map((run) => ({ value: run.id, label: new Date(run.startedAt).toLocaleString() }))} label="Backtest run" value={selected?.id ?? backtests[0]!.id} onValueChange={(id) => setSelected(backtests.find((item) => item.id === id) ?? null)}>
+          <Select<string> size="base" items={backtests.map((run) => ({ value: run.id, label: new Date(run.startedAt).toLocaleString() }))} label="Backtest run" value={selected?.id ?? backtests[0]!.id} onValueChange={(id) => setSelected(backtests.find((item) => item.id === id) ?? null)}>
             {backtests.map((runItem) => <Select.Option key={runItem.id} value={runItem.id}>{new Date(runItem.startedAt).toLocaleString()}</Select.Option>)}
           </Select>
         ) : null}
-        <Button type="button" variant="primary" icon={PlayIcon} loading={running} disabled={running} onClick={() => void run()}>Run backtest</Button>
+        <Button size="base" type="button" variant="primary" icon={PlayIcon} loading={running} disabled={running} onClick={() => void run()}>Run backtest</Button>
       </header>
       <div className="backtest-assumption-form" aria-label="Backtest assumptions">
-        <Input label="From" type="date" value={assumptions.from.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, from: `${event.currentTarget.value}T00:00:00.000Z` }))} />
-        <Input label="To" type="date" value={assumptions.to.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, to: `${event.currentTarget.value}T00:00:00.000Z` }))} />
-        <Input label="Starting capital" inputMode="decimal" value={assumptions.startingCapital} onChange={(event) => setAssumptions((value) => ({ ...value, startingCapital: event.currentTarget.value }))} />
-        <Input label="Fee (bps)" type="number" min="0" step="0.1" value={assumptions.feeRateBps} onChange={(event) => setAssumptions((value) => ({ ...value, feeRateBps: Number(event.currentTarget.value) }))} />
-        <Input label="Slippage (bps)" type="number" min="0" step="0.1" value={assumptions.slippageBps} onChange={(event) => setAssumptions((value) => ({ ...value, slippageBps: Number(event.currentTarget.value) }))} />
+        <Input size="base" label="From" type="date" value={assumptions.from.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, from: `${event.currentTarget.value}T00:00:00.000Z` }))} />
+        <Input size="base" label="To" type="date" value={assumptions.to.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, to: `${event.currentTarget.value}T00:00:00.000Z` }))} />
+        <Input size="base" label="Starting capital" inputMode="decimal" value={assumptions.startingCapital} onChange={(event) => setAssumptions((value) => ({ ...value, startingCapital: event.currentTarget.value }))} />
+        <Input size="base" label="Fee (bps)" type="number" min="0" step="0.1" value={assumptions.feeRateBps} onChange={(event) => setAssumptions((value) => ({ ...value, feeRateBps: Number(event.currentTarget.value) }))} />
+        <Input size="base" label="Slippage (bps)" type="number" min="0" step="0.1" value={assumptions.slippageBps} onChange={(event) => setAssumptions((value) => ({ ...value, slippageBps: Number(event.currentTarget.value) }))} />
       </div>
       {error ? <Banner variant="error" title="Backtest failed" description="The local backtest could not be completed. Review the revision and try again." /> : null}
       {selected === null ? (

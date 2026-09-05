@@ -45,10 +45,10 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
 
   if (!isDynamicDeploymentEligible(revision)) {
     return (
-      <main className="live-review" aria-labelledby="paper-upgrade-title">
+      <main className="live-review page-container" aria-labelledby="paper-upgrade-title">
         <header className="live-review-header">
           <div><p className="eyebrow">PAPER EXECUTION REVIEW</p><h1 id="paper-upgrade-title">Upgrade required for Paper</h1></div>
-          <Button type="button" variant="secondary" onClick={onCancel}>Back to bot</Button>
+          <Button size="base" type="button" variant="secondary" onClick={onCancel}>Back to bot</Button>
         </header>
         <LayerCard className="live-review-section deployment-upgrade-card">
           <h2>Strategy 2.0 dynamic scope required</h2>
@@ -60,7 +60,7 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
   }
 
   return (
-    <main className="live-review" aria-labelledby="paper-review-title">
+    <main className="live-review page-container" aria-labelledby="paper-review-title">
       <header className="live-review-header">
         <div>
           <p className="eyebrow">PAPER EXECUTION REVIEW</p>
@@ -88,23 +88,23 @@ export function PaperReviewScreen({ bot, revision, initialRiskLimits, onCancel, 
             <h2>Portfolio boundaries</h2>
             <p>These limits apply across every market evaluated by this deployment.</p>
             <div className="paper-risk-form">
-              <Input type="number" min="0" step="any" id="paper-max-order" label="Max order (USD)" value={form.maxOrderUsd} error={validation.fieldErrors.maxOrderUsd} onChange={(event) => update('maxOrderUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" step="any" id="paper-max-position" label="Max position (USD)" value={form.maxPositionUsd} error={validation.fieldErrors.maxPositionUsd} onChange={(event) => update('maxPositionUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" step="any" id="paper-max-total-exposure" label="Max total exposure (USD)" value={form.maxTotalExposureUsd} error={validation.fieldErrors.maxTotalExposureUsd} onChange={(event) => update('maxTotalExposureUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="1" max="50" step="1" id="paper-max-leverage" label="Max leverage" value={form.maxLeverage} error={validation.fieldErrors.maxLeverage} onChange={(event) => update('maxLeverage', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" step="any" id="paper-max-daily-loss" label="Max daily loss (USD)" value={form.maxDailyLossUsd} error={validation.fieldErrors.maxDailyLossUsd} onChange={(event) => update('maxDailyLossUsd', event.currentTarget.value)} disabled={starting} />
-              <Input type="number" min="0" max="100" step="any" id="paper-max-drawdown" label="Max drawdown (%)" value={form.maxDrawdownPercent} error={validation.fieldErrors.maxDrawdownPercent} onChange={(event) => update('maxDrawdownPercent', event.currentTarget.value)} disabled={starting} />
-              <Select<RiskForm['allowedSides']> label="Allowed sides" value={form.allowedSides} onValueChange={(value) => { if (value !== null) update('allowedSides', value); }} disabled={starting}>
+              <Input size="base" type="number" min="0" step="any" id="paper-max-order" label="Max order (USD)" value={form.maxOrderUsd} error={validation.fieldErrors.maxOrderUsd} onChange={(event) => update('maxOrderUsd', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="0" step="any" id="paper-max-position" label="Max position (USD)" value={form.maxPositionUsd} error={validation.fieldErrors.maxPositionUsd} onChange={(event) => update('maxPositionUsd', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="0" step="any" id="paper-max-total-exposure" label="Max total exposure (USD)" value={form.maxTotalExposureUsd} error={validation.fieldErrors.maxTotalExposureUsd} onChange={(event) => update('maxTotalExposureUsd', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="1" max="50" step="1" id="paper-max-leverage" label="Max leverage" value={form.maxLeverage} error={validation.fieldErrors.maxLeverage} onChange={(event) => update('maxLeverage', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="0" step="any" id="paper-max-daily-loss" label="Max daily loss (USD)" value={form.maxDailyLossUsd} error={validation.fieldErrors.maxDailyLossUsd} onChange={(event) => update('maxDailyLossUsd', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="0" max="100" step="any" id="paper-max-drawdown" label="Max drawdown (%)" value={form.maxDrawdownPercent} error={validation.fieldErrors.maxDrawdownPercent} onChange={(event) => update('maxDrawdownPercent', event.currentTarget.value)} disabled={starting} />
+              <Select<RiskForm['allowedSides']> size="base" label="Allowed sides" value={form.allowedSides} onValueChange={(value) => { if (value !== null) update('allowedSides', value); }} disabled={starting}>
                 <Select.Option value="both">Long and short</Select.Option>
                 <Select.Option value="long">Long only</Select.Option>
                 <Select.Option value="short">Short only</Select.Option>
               </Select>
-              <Input type="number" min="1" max="600" step="1" id="paper-order-rate" label="Max orders per minute" value={form.maxOrdersPerMinute} error={validation.fieldErrors.maxOrdersPerMinute} onChange={(event) => update('maxOrdersPerMinute', event.currentTarget.value)} disabled={starting} />
+              <Input size="base" type="number" min="1" max="600" step="1" id="paper-order-rate" label="Max orders per minute" value={form.maxOrdersPerMinute} error={validation.fieldErrors.maxOrdersPerMinute} onChange={(event) => update('maxOrdersPerMinute', event.currentTarget.value)} disabled={starting} />
             </div>
             {validation.riskLimits === null ? <p className="paper-risk-error" role="alert">Review the highlighted risk limits before starting Paper.</p> : null}
             <div className="live-confirm-actions">
-              <Button type="button" variant="secondary" disabled={starting} onClick={onCancel}>Cancel</Button>
-              <Button type="button" variant="primary" disabled={validation.riskLimits === null} loading={starting} onClick={() => void start()}>Start Paper</Button>
+              <Button size="base" type="button" variant="secondary" disabled={starting} onClick={onCancel}>Cancel</Button>
+              <Button size="base" type="button" variant="primary" disabled={validation.riskLimits === null} loading={starting} onClick={() => void start()}>Start Paper</Button>
             </div>
           </LayerCard>
         </aside>

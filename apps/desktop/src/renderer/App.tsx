@@ -67,5 +67,5 @@ export default function App({ api, preview = false, surface = 'desktop' }: AppPr
 }
 
 function PlaceholderScreen({ title, description }: { title: string; description: string }) {
-  return <section className="destination-placeholder" aria-labelledby={`${title.toLowerCase()}-title`}><p className="eyebrow">LOCAL WORKSPACE</p><h1 id={`${title.toLowerCase()}-title`}>{title}</h1><p>{description}</p></section>;
+  return <section className="destination-placeholder page-container" aria-labelledby={`${title.toLowerCase()}-title`}><p className="eyebrow">LOCAL WORKSPACE</p><h1 id={`${title.toLowerCase()}-title`}>{title}</h1><p>{description}</p></section>;
 }

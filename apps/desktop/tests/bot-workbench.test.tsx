@@ -171,7 +171,7 @@ describe('BotWorkbenchScreen', () => {
     expect(await screen.findByText('Use ETF inflow')).toBeTruthy();
   });
 
-  it('preserves the Chat draft when the Agent request fails', async () => {
+  it('restores a failed Chat message for review without resending', async () => {
     const workbenchApi = api();
     workbenchApi.sendMessage = vi.fn().mockRejectedValue(new Error('provider secret detail'));
     const user = userEvent.setup();
@@ -183,7 +183,10 @@ describe('BotWorkbenchScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByText('The request did not finish. Review any saved changes before trying again.')).toBeTruthy();
+    expect((composer as HTMLTextAreaElement).value).toBe('');
+    await user.click(screen.getByRole('button', { name: 'Review & retry' }));
     expect((composer as HTMLTextAreaElement).value).toBe('Keep this requirement');
+    expect(workbenchApi.sendMessage).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).not.toContain('provider secret detail');
   });
 

@@ -64,10 +64,10 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
       : `Universe data is stale or unavailable. ${freshnessCheck?.message ?? 'Freshness was not reported.'}`;
   if (!isDynamicDeploymentEligible(revision)) {
     return (
-      <main className="live-review" aria-labelledby="live-upgrade-title">
+      <main className="live-review page-container" aria-labelledby="live-upgrade-title">
         <header className="live-review-header">
           <div><p className="eyebrow">LIVE EXECUTION SAFETY GATE</p><h1 id="live-upgrade-title">Upgrade required for Live</h1></div>
-          <Button type="button" variant="secondary" onClick={onBack}>Back to bot</Button>
+          <Button size="base" type="button" variant="secondary" onClick={onBack}>Back to bot</Button>
         </header>
         <LayerCard className="live-review-section deployment-upgrade-card">
           <h2>Strategy 2.0 dynamic scope required</h2>
@@ -78,7 +78,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
     );
   }
   return (
-    <main className="live-review" aria-labelledby="live-review-title">
+    <main className="live-review page-container" aria-labelledby="live-review-title">
       <header className="live-review-header">
         <div>
           <p className="eyebrow">LIVE EXECUTION SAFETY GATE</p>
@@ -86,7 +86,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
           <p>Confirm the connection, immutable strategy revision, risk limits, and testnet account before any order can be submitted.</p>
         </div>
         <div className="live-review-heading-actions">
-          <Button type="button" variant="secondary" onClick={onBack}>Back to bot</Button>
+          <Button size="base" type="button" variant="secondary" onClick={onBack}>Back to bot</Button>
           <Badge variant="error"><WarningDiamondIcon aria-hidden="true" weight="fill" /> Live</Badge>
         </div>
       </header>
@@ -138,10 +138,10 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
             <p className="eyebrow">5 · CONFIRMATION</p>
             <h2>Type the bot name</h2>
             <p>This is case-sensitive. Enter <strong>{bot.name}</strong> to enable Live execution.</p>
-            <Input id="live-confirmation" label="Type bot name to confirm" value={confirmation} onChange={(event) => setConfirmation(event.currentTarget.value)} autoComplete="off" disabled={starting || preflight?.ready !== true} />
+            <Input size="base" id="live-confirmation" label="Type bot name to confirm" value={confirmation} onChange={(event) => setConfirmation(event.currentTarget.value)} autoComplete="off" disabled={starting || preflight?.ready !== true} />
             <div className="live-confirm-actions">
-              <Button type="button" variant="secondary" onClick={onRunPaper}>Run Paper instead</Button>
-              <Button type="button" variant="destructive" disabled={!canStart} loading={starting} onClick={() => void start()}>Start Live</Button>
+              <Button size="base" type="button" variant="secondary" onClick={onRunPaper}>Run Paper instead</Button>
+              <Button size="base" type="button" variant="destructive" disabled={!canStart} loading={starting} onClick={() => void start()}>Start Live</Button>
             </div>
             {failedChecks.length > 0 ? <p className="live-blocked-note">Resolve all {failedChecks.length} failed check{failedChecks.length === 1 ? '' : 's'} before starting.</p> : null}
           </LayerCard>

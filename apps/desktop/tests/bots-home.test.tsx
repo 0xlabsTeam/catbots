@@ -289,9 +289,9 @@ describe('AppShell', () => {
     render(<AppShell destination="bots" onNavigate={onNavigate}><p>Workspace</p></AppShell>);
 
     expect(screen.getByRole('navigation', { name: 'Global navigation' })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Global navigation' }).querySelectorAll('button').length).toBe(4);
+    expect(screen.getByRole('navigation', { name: 'Global navigation' }).querySelectorAll('button').length).toBe(5);
     expect(screen.getByRole('button', { name: 'Bots' }).getAttribute('aria-current')).toBe('page');
-    for (const destination of ['Bots', 'Data', 'Activity', 'Settings']) {
+    for (const destination of ['Bots', 'Nodes', 'Data', 'Activity', 'Settings']) {
       expect(screen.getByRole('button', { name: destination })).toBeTruthy();
     }
     await user.click(screen.getByRole('button', { name: 'Settings' }));

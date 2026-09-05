@@ -31,36 +31,36 @@ export function ProviderConnections({ api, onSelected }: Props) {
     <header><h2 id="provider-connections-title">AI providers</h2><p>Connect a subscription or API key, then choose the model for chat.</p></header>
     {status?.selected ? <p><Badge variant="secondary">Active</Badge> {status.selected.provider} · {status.selected.model}</p> : <p>Chat uses your compatible API settings until you select a connected model.</p>}
     {error && <Banner variant="error" title="Provider connection" description={error} />}
-    <Select className="provider-select" label="Subscription provider" renderValue={(id) => status?.providers.find((item) => item.id === id)?.name ?? String(id)} value={provider} onValueChange={(next) => { setProvider(String(next)); setModel(''); }} disabled={busy || waiting}>
+    <Select size="base" className="provider-select" label="Subscription provider" renderValue={(id) => status?.providers.find((item) => item.id === id)?.name ?? String(id)} value={provider} onValueChange={(next) => { setProvider(String(next)); setModel(''); }} disabled={busy || waiting}>
       {(status?.providers ?? []).map((item) => <Select.Option key={item.id} value={item.id}>{item.name}{item.connected ? ' · Connected' : ''}</Select.Option>)}
     </Select>
     {provider === 'anthropic' && <p>Claude Pro/Max access uses extra usage billed per token, separately from plan limits.</p>}
     {provider === 'openrouter' && <p>Sign-in creates an API key billed from your OpenRouter credits. Signing out here removes the local key; revoke it in OpenRouter to invalidate it.</p>}
     {provider === 'openai-codex' && <p>Connect your ChatGPT Plus/Pro account through Codex sign-in.</p>}
     <div className="provider-actions">
-      {current?.oauth && <Button variant="primary" disabled={busy || waiting} onClick={() => void command({ action: 'login', provider: providerId, method: 'oauth' })}>Sign in{current.connected ? ' again' : ''}</Button>}
-      {current?.apiKey && <Button variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'login', provider: providerId, method: 'api_key' })}>Use API key</Button>}
-      {current?.connected && <Button variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'logout', provider: providerId })}>Sign out</Button>}
+      {current?.oauth && <Button size="base" variant="primary" disabled={busy || waiting} onClick={() => void command({ action: 'login', provider: providerId, method: 'oauth' })}>Sign in{current.connected ? ' again' : ''}</Button>}
+      {current?.apiKey && <Button size="base" variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'login', provider: providerId, method: 'api_key' })}>Use API key</Button>}
+      {current?.connected && <Button size="base" variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'logout', provider: providerId })}>Sign out</Button>}
     </div>
     {login && <LayerCard className="provider-login">
       <p role="status">{login.message}</p>
-      {waiting && login.url && <Button variant="secondary" disabled={busy} onClick={() => void command({ action: 'open-login', sessionId: login.id })}>Open provider sign-in</Button>}
+      {waiting && login.url && <Button size="base" variant="secondary" disabled={busy} onClick={() => void command({ action: 'open-login', sessionId: login.id })}>Open provider sign-in</Button>}
       {waiting && login.userCode && <p>Verification code: <strong>{login.userCode}</strong></p>}
       {waiting && login.prompt && <form className="provider-login-form" onSubmit={(event) => { event.preventDefault(); void command({ action: 'reply', sessionId: login.id, promptId: login.prompt!.id, value }); setValue(''); }}>
-        {login.prompt.type === 'select' ? <Select className="provider-select" label={login.prompt.message} placeholder="Choose a sign-in method" renderValue={(id) => login.prompt?.options?.find((option) => option.id === id)?.label ?? String(id)} value={value} onValueChange={(next) => setValue(String(next))}>
+        {login.prompt.type === 'select' ? <Select size="base" className="provider-select" label={login.prompt.message} placeholder="Choose a sign-in method" renderValue={(id) => login.prompt?.options?.find((option) => option.id === id)?.label ?? String(id)} value={value} onValueChange={(next) => setValue(String(next))}>
           {login.prompt.options?.map((option) => <Select.Option key={option.id} value={option.id}>{option.label}</Select.Option>)}
-        </Select> : <Input label={login.prompt.message} type={login.prompt.type === 'secret' ? 'password' : 'text'} value={value} onChange={(event) => setValue(event.target.value)} autoComplete="off" />}
-        <Button type="submit" variant="primary" disabled={busy || (login.prompt.type === 'select' && !value)}>Continue</Button>
+        </Select> : <Input size="base" label={login.prompt.message} type={login.prompt.type === 'secret' ? 'password' : 'text'} value={value} onChange={(event) => setValue(event.target.value)} autoComplete="off" />}
+        <Button size="base" type="submit" variant="primary" disabled={busy || (login.prompt.type === 'select' && !value)}>Continue</Button>
       </form>}
-      {waiting && <Button variant="secondary" disabled={busy} onClick={() => void command({ action: 'cancel', sessionId: login.id })}>Cancel sign-in</Button>}
+      {waiting && <Button size="base" variant="secondary" disabled={busy} onClick={() => void command({ action: 'cancel', sessionId: login.id })}>Cancel sign-in</Button>}
     </LayerCard>}
     {current?.connected && <>
-      <Select className="provider-select" label="Chat model" placeholder="Choose a model" renderValue={(id) => current.models.find((item) => item.id === id)?.name ?? String(id)} value={model} onValueChange={(next) => setModel(String(next))}>
+      <Select size="base" className="provider-select" label="Chat model" placeholder="Choose a model" renderValue={(id) => current.models.find((item) => item.id === id)?.name ?? String(id)} value={model} onValueChange={(next) => setModel(String(next))}>
         {current.models.map((item) => <Select.Option key={item.id} value={item.id}>{item.name}</Select.Option>)}
       </Select>
-      <div className="provider-actions"><Button variant="primary" disabled={busy || waiting || !model} onClick={() => void command({ action: 'select', provider: providerId, model })}>Use for chat</Button><Button variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'refresh' })}>Refresh models</Button></div>
+      <div className="provider-actions"><Button size="base" variant="primary" disabled={busy || waiting || !model} onClick={() => void command({ action: 'select', provider: providerId, model })}>Use for chat</Button><Button size="base" variant="secondary" disabled={busy || waiting} onClick={() => void command({ action: 'refresh' })}>Refresh models</Button></div>
     </>}
-    {status?.selected && <Button variant="ghost" disabled={busy || waiting} onClick={() => void command({ action: 'compatible' })}>Use compatible API settings instead</Button>}
+    {status?.selected && <Button size="base" variant="ghost" disabled={busy || waiting} onClick={() => void command({ action: 'compatible' })}>Use compatible API settings instead</Button>}
     <p>Credentials are encrypted in this Catbots profile and shared by its web and desktop interfaces.</p>
   </LayerCard>;
 }

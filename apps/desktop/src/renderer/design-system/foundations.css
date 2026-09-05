@@ -1,7 +1,7 @@
 /* Element defaults apply in dialogs/portals as well as the main workspace. */
 html { font-family: var(--font-sans); font-synthesis: none; }
 body { font-size: var(--cb-text-body); line-height: var(--cb-leading-body); }
-button, input, select, textarea { font-family: inherit; font-size: var(--cb-text-body); line-height: var(--cb-leading-body); }
+button, input, select, textarea { font-family: inherit; }
 h1, h2, h3 { font-weight: var(--cb-weight-semibold); line-height: var(--cb-leading-tight); }
 small { font-size: var(--cb-text-caption); }
 ::placeholder { color: var(--text-color-kumo-placeholder); opacity: 1; }

@@ -1,3 +1,4 @@
+import ts from 'typescript';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,16 @@ async function inspect(directory) {
         if (!/^(?:var\(--[\w-]+\)|inherit|normal|0)$/.test(value.trim())) report(file, `${property} must use a shared token (found ${value.trim()}).`);
       }
     } else {
+      const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      function checkControls(node) {
+        if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+          && ['Button', 'Input', 'Select'].includes(node.tagName.getText(ast))
+          && !node.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(ast) === 'size')) {
+          report(file, `${node.tagName.getText(ast)} must declare a Kumo size (sm for compact toolbars, base for forms).`);
+        }
+        ts.forEachChild(node, checkControls);
+      }
+      checkControls(ast);
       if (/<(?:button|input|textarea|select|option|dialog|details|summary|a)\b/.test(source)) report(file, 'Use Kumo components for interactive controls; native custom controls are not allowed.');
       if (/\b(?:fontSize|fontFamily|fontWeight|lineHeight|letterSpacing)\s*:/.test(source)) report(file, 'Use CSS typography tokens instead of inline typography.');
       if (/\btext-\[/.test(source)) report(file, 'Use the shared type scale instead of arbitrary text utilities.');

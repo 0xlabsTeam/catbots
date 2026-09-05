@@ -16,7 +16,7 @@ export function SecretField({ id = 'api-key', label = 'API key', value, onValueC
   const errorId = `${id}-error`;
   return (
     <div className="secret-field">
-      <Input
+      <Input size="base"
         id={id}
         label={label}
         type="password"

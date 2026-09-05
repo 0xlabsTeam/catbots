@@ -36,7 +36,7 @@ export function AppShell({ destination, onNavigate, children, surface = 'desktop
         <p className="sidebar-section-label">Workspace</p>
         <nav className="app-navigation" aria-label="Global navigation">
           {navigationItems.map(({ destination: itemDestination, label, icon }) => (
-            <Button
+            <Button size="base"
               key={itemDestination}
               type="button"
               variant={destination === itemDestination ? 'secondary' : 'ghost'}

@@ -47,7 +47,7 @@ export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api 
               const expanded = expandedParentId === group.parentTraceId;
               const panelId = `trace-run-${index}`;
               return <div className="trace-run" key={group.parentTraceId}>
-                <Button
+                <Button size="base"
                   type="button"
                   variant="ghost"
                   aria-expanded={expanded}
@@ -70,7 +70,7 @@ export function TraceTimeline({ backtestId, botId, revisionVersion, traces, api 
                   </dl>
                   <div className="trace-market-list" role="group" aria-label="Market evaluations">
                     {group.traces.map((trace) => (
-                      <Button
+                      <Button size="base"
                         key={trace.traceId}
                         type="button"
                         variant="ghost"

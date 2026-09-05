@@ -88,12 +88,14 @@ describe('LiveReviewScreen', () => {
         : check),
     });
     const user = userEvent.setup();
-    render(<LiveReviewScreen bot={bot} revision={revision} riskLimits={riskLimits} api={api} onBack={vi.fn()} onRunPaper={vi.fn()} onStarted={vi.fn()} />);
+    const onOpenSettings = vi.fn();
+    render(<LiveReviewScreen bot={bot} revision={revision} riskLimits={riskLimits} api={api} onOpenSettings={onOpenSettings} onBack={vi.fn()} onRunPaper={vi.fn()} onStarted={vi.fn()} />);
 
     await screen.findByText('Use an approved Agent/API Wallet.');
     await user.type(screen.getByLabelText('Type bot name to confirm'), bot.name);
     expect((screen.getByRole('button', { name: 'Start Live' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole('link', { name: 'Open settings' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 
   it('does not preflight or expose dynamic access for an approved legacy fixed-market revision', () => {

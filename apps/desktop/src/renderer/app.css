@@ -1125,7 +1125,7 @@ body { margin: 0; }
 h1 { font-size: var(--cb-text-page); line-height: var(--cb-leading-tight); letter-spacing: var(--cb-tracking-heading); }
 h2 { font-size: var(--cb-text-section); }
 h1, h2, h3 { text-wrap: balance; }
-button, input, select, textarea { font: inherit; }
+button, input, select, textarea { font-family: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--text-color-kumo-brand); outline-offset: 3px; }
 .app-shell { grid-template-columns: 15rem minmax(0, 1fr); }
@@ -1338,3 +1338,35 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .provider-login-form { display: grid; gap: var(--cb-space-3); min-width: 0; }
 .provider-actions { display: flex; flex-wrap: wrap; gap: var(--cb-space-2); }
 .package-integrity { overflow-wrap: anywhere; font-size: var(--cb-text-caption); }
+
+.graph-reading-guide { margin: 0; padding: var(--cb-space-2) var(--cb-space-3); color: var(--text-color-kumo-subtle); font-size: var(--cb-text-body); }
+.strategy-graph .graph-edge-focused .react-flow__edge-path { stroke: var(--text-color-kumo-brand); stroke-width: 3; }
+.strategy-graph .graph-edge-muted { opacity: 0.25; }
+.strategy-graph .react-flow__edge-text { fill: var(--text-color-kumo-default); }
+.strategy-graph .react-flow__edge-textbg { fill: var(--color-kumo-base); }
+
+/* Keep the measured card bounds equal to the graph layout bounds. */
+.strategy-graph .strategy-node { box-sizing: border-box; width: 240px; height: 112px; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
+.strategy-graph .strategy-node strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Shared page envelope: tables, settings, packages, placeholders and reviews. */
+.page-container,
+.app-content .page-container {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--cb-page-max-width);
+  min-width: 0;
+  min-height: 0;
+  margin: 0 auto;
+  padding: var(--cb-page-padding-block) var(--cb-page-gutter);
+}
+.settings-shell.page-container { display: flex; flex-direction: column; gap: var(--cb-space-6); }
+.app-content .settings-shell.page-container { display: flex; }
+.page-container > .setup-intro { padding: 0; }
+.page-container > .bots-home-header { padding-bottom: var(--cb-space-6); }
+.page-container > .setup-intro h1,
+.page-container > .bots-home-header h1,
+.page-container > .live-review-header h1,
+.destination-placeholder.page-container > h1 { font-size: var(--cb-text-page); margin-top: 0; }
+.page-container > .settings-card { box-sizing: border-box; width: 100%; margin: 0; }
+.app-topbar { padding-inline: max(var(--cb-page-gutter), calc((100% - var(--cb-page-max-width)) / 2 + var(--cb-page-gutter))); }

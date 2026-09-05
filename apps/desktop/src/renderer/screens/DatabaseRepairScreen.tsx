@@ -31,7 +31,7 @@ export function DatabaseRepairScreen({ api }: DatabaseRepairScreenProps) {
         <p>Your local records were left unchanged.</p>
         <p>Quit Catbots and restore or repair the local database before opening the workspace again.</p>
         {quitFailed ? <p role="alert">Catbots could not open the Quit confirmation. Try again.</p> : null}
-        <Button type="button" variant="primary" disabled={quitting} onClick={() => { void quit(); }}>
+        <Button size="base" type="button" variant="primary" disabled={quitting} onClick={() => { void quit(); }}>
           {quitting ? 'Opening Quit confirmation…' : 'Quit Catbots'}
         </Button>
       </section>

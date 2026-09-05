@@ -1,3 +1,4 @@
+import { graphlib, layout } from '@dagrejs/dagre';
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { StrategyRevision } from '@catbots/contracts';
 
@@ -9,6 +10,8 @@ export type StrategyFlowNodeData = Record<string, unknown> & Readonly<{
   title: string;
   summary: string;
   accessibleName: string;
+  inputPorts: string[];
+  outputPorts: string[];
 }>;
 
 export type StrategyFlowNode = Node<StrategyFlowNodeData, 'strategy'>;
@@ -18,41 +21,53 @@ export type StrategyGraphModel = Readonly<{
   edges: Edge[];
 }>;
 
+export function readableRule(summary: string): string {
+  return summary
+    .replace(/indicator\.rsi\.(\d+)(?:\.value)?/g, 'RSI ($1)')
+    .replace(/market\.symbol/g, 'Market')
+    .replace(/market\.funding(?:\.rate)?/g, 'Funding rate')
+    .replace(/market\.price/g, 'Price')
+    .replace(/market\.rank(?:\.value)?/g, 'Market rank')
+    .replace(/account\.equity/g, 'Account equity');
+}
+
+export function nodeLabel(node: WorkbenchNode): string {
+  const labels: Record<string, string> = {
+    'combine.all': 'All conditions (AND)', 'combine.any': 'Any condition (OR)',
+    'combine.not': 'Reverse result (NOT)', 'combine.at_least': 'Minimum matches',
+  };
+  return labels[node.type] ?? node.title;
+}
+
 export function buildStrategyGraph(revision: StrategyRevision): StrategyGraphModel {
-  // Longest-path layers keep combining predicates after their inputs, not stacked
-  // in one ever-taller condition column. Disconnected nodes retain a stable order.
-  const depth = new Map(revision.nodes.map((node) => [node.id, 0]));
-  const incoming = new Map(revision.nodes.map((node) => [node.id, 0]));
-  const outgoing = new Map<string, string[]>();
+  // Dagre orders connected branches together and minimizes crossings between ranks.
+  // Fixed card bounds keep routing independent of text wrapping and browser font size.
+  const diagram = new graphlib.Graph({ multigraph: true });
+  diagram.setGraph({ rankdir: 'LR', ranksep: 160, nodesep: 64, edgesep: 32, marginx: 24, marginy: 24 });
+  diagram.setDefaultEdgeLabel(() => ({}));
+  for (const node of revision.nodes) diagram.setNode(node.id, { width: 240, height: 112 });
   for (const edge of revision.edges) {
-    if (!incoming.has(edge.source) || !incoming.has(edge.target)) continue;
-    incoming.set(edge.target, incoming.get(edge.target)! + 1);
-    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target]);
-  }
-  const queue = revision.nodes.filter((node) => incoming.get(node.id) === 0).map((node) => node.id);
-  for (let index = 0; index < queue.length; index++) {
-    const id = queue[index];
-    for (const target of outgoing.get(id) ?? []) {
-      depth.set(target, Math.max(depth.get(target)!, depth.get(id)! + 1));
-      incoming.set(target, incoming.get(target)! - 1);
-      if (incoming.get(target) === 0) queue.push(target);
+    if (diagram.hasNode(edge.source) && diagram.hasNode(edge.target)) {
+      diagram.setEdge(edge.source, edge.target, {}, edge.id);
     }
   }
-  const rows = new Map<number, number>();
+  layout(diagram);
   const nodes = revision.nodes.map((node): StrategyFlowNode => {
-    const column = depth.get(node.id)!;
-    const row = rows.get(column) ?? 0;
-    rows.set(column, row + 1);
+    const position = diagram.node(node.id);
     return {
       id: node.id,
       type: 'strategy',
-      position: { x: column * 320, y: row * 150 },
+      position: { x: position.x - 120, y: position.y - 56 },
+      width: 240,
+      height: 112,
       data: {
         kind: node.kind,
         nodeType: node.type,
-        title: node.title,
-        summary: node.summary,
-        accessibleName: `${node.kind}: ${node.title}. ${node.summary}`,
+        title: nodeLabel(node),
+        summary: readableRule(node.summary),
+        inputPorts: [...new Set(revision.edges.filter((edge) => edge.target === node.id).map((edge) => edge.targetPort))],
+        outputPorts: [...new Set(revision.edges.filter((edge) => edge.source === node.id).map((edge) => edge.sourcePort))],
+        accessibleName: `${node.kind}: ${nodeLabel(node)}. ${readableRule(node.summary)}`,
       },
     };
   });
@@ -63,7 +78,9 @@ export function buildStrategyGraph(revision: StrategyRevision): StrategyGraphMod
     target: edge.target,
     targetHandle: edge.targetPort,
     markerEnd: { type: MarkerType.ArrowClosed },
-    type: 'smoothstep',
+    type: 'default',
+    ariaLabel: `${edge.source} to ${edge.target}`,
+    label: revision.nodes.find((node) => node.id === edge.source)?.kind === 'trigger' ? 'Run' : revision.nodes.find((node) => node.id === edge.target)?.kind === 'action' ? 'If true' : 'Result',
   }));
   return { nodes, edges };
 }

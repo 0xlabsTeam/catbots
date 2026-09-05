@@ -1,5 +1,8 @@
 /* Single source for Catbots design decisions. Kumo aliases keep primitives in sync. */
 :root {
+  --cb-page-max-width: 76rem;
+  --cb-page-gutter: clamp(1rem, 3vw, 2rem);
+  --cb-page-padding-block: 2rem;
   color-scheme: light dark;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --cb-text-caption: .75rem;

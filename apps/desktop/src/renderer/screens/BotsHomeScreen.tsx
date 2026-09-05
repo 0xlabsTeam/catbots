@@ -67,32 +67,32 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
   const filteredBots = bots?.filter((bot) => bot.name.toLowerCase().includes(query.trim().toLowerCase()) && (status === 'all' || bot.status === status)) ?? [];
 
   return (
-    <section className="bots-home" aria-labelledby="bots-home-title">
+    <section className="bots-home page-container" aria-labelledby="bots-home-title">
       <header className="bots-home-header">
         <div>
           <h1 id="bots-home-title">Bots</h1>
           <p>Turn a trading idea into a strategy you can inspect and test.</p>
         </div>
-        <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
+        <Button size="base" type="button" variant="primary" icon={PlusIcon} onClick={() => setIsCreateOpen(true)}>Create new bot</Button>
       </header>
 
       {bots === null ? <div className="bots-state" role="status" aria-live="polite">Loading local bots…</div> : null}
       {hasListError ? (
         <div className="bots-list-error" role="alert">
           <Banner variant="error" title="Local bots unavailable" description="We could not load local bots. Try again." />
-          <Button type="button" variant="secondary" onClick={() => { void loadBots(); }}>Try again</Button>
+          <Button size="base" type="button" variant="secondary" onClick={() => { void loadBots(); }}>Try again</Button>
         </div>
       ) : null}
       {bots !== null && !hasListError && bots.length === 0 ? <EmptyBots onCreate={() => setIsCreateOpen(true)} /> : null}
       {bots !== null && bots.length > 0 ? <>
         <div className="bots-toolbar">
-          <Input aria-label="Search bots" placeholder="Search bots…" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <Select<string> aria-label="Filter by status" value={status} onValueChange={(value) => setStatus(value ?? 'all')} items={{ all: 'All statuses', draft: 'Draft', paper: 'Paper', live: 'Live', paused: 'Paused', stopped: 'Stopped', error: 'Error', recovering: 'Recovering' }}>
+          <Input size="base" aria-label="Search bots" placeholder="Search bots…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Select<string> size="base" aria-label="Filter by status" value={status} onValueChange={(value) => setStatus(value ?? 'all')} items={{ all: 'All statuses', draft: 'Draft', paper: 'Paper', live: 'Live', paused: 'Paused', stopped: 'Stopped', error: 'Error', recovering: 'Recovering' }}>
             <Select.Option value="all">All statuses</Select.Option>{['draft', 'paper', 'live', 'paused', 'stopped', 'error', 'recovering'].map((value) => <Select.Option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</Select.Option>)}
           </Select>
           <span className="bots-result-count" role="status">{filteredBots.length} of {bots.length} bots</span>
         </div>
-        {filteredBots.length ? <BotsTable bots={filteredBots} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
+        {filteredBots.length ? <BotsTable bots={filteredBots} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button size="base" variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
       </> : null}
 
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
@@ -107,7 +107,7 @@ function EmptyBots({ onCreate }: { onCreate(): void }) {
       icon={<BrandLogo size="large" decorative />}
       title="No bots yet"
       description="Start with an idea. Build your strategy with AI, review the logic, and test it before deployment."
-      contents={<Button type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>}
+      contents={<Button size="base" type="button" variant="secondary" icon={PlusIcon} onClick={onCreate}>Create new bot</Button>}
     />
     <div className="getting-started" aria-label="How it works">
       <div><ChatCircleTextIcon size={22} aria-hidden="true" /><h3>Describe your strategy</h3><p>Give your bot a name, then explain your trading idea in chat.</p></div>
@@ -134,7 +134,7 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
         <Table.Body>
           {bots.map((bot) => (
             <Table.Row key={bot.id}>
-              <Table.Cell><Button type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
+              <Table.Cell><Button size="base" type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
               <Table.Cell>{DEX_DISPLAY_NAMES[bot.dex]}</Table.Cell>
               <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
               <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>

@@ -289,17 +289,17 @@ function ExecutionControls({ revision, deployment, liveDeployment, changing, onS
         {status === 'running' && deployment?.state !== null ? <Badge variant="success">Paper running</Badge> : null}
         {liveStatus === 'running' ? <Badge variant="error">Live · Hyperliquid testnet</Badge> : null}
         {(status === undefined || status === 'stopped') && canReviewDeployment
-          ? <Button type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
+          ? <Button size="sm" type="button" variant="primary" loading={changing} onClick={onStart}>Run Paper</Button>
           : null}
-        {status === 'running' ? <Button type="button" variant="secondary" disabled={changing || runtimeUnavailable} onClick={onPause}>Pause</Button> : null}
+        {status === 'running' ? <Button size="sm" type="button" variant="secondary" disabled={changing || runtimeUnavailable} onClick={onPause}>Pause</Button> : null}
         {status === 'running' || status === 'paused'
-          ? <Button type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
+          ? <Button size="sm" type="button" variant="destructive" disabled={changing} onClick={onStop}>Stop</Button>
           : null}
         {canReviewDeployment && liveStatus !== 'running'
-          ? <Button type="button" variant="secondary" disabled={changing || status === 'running'} onClick={onReviewLive}>Review Live</Button>
+          ? <Button size="sm" type="button" variant="secondary" disabled={changing || status === 'running'} onClick={onReviewLive}>Review Live</Button>
           : null}
         {liveStatus === 'running'
-          ? <Button type="button" variant="destructive" disabled={changing} onClick={onStopLive}>Stop Live</Button>
+          ? <Button size="sm" type="button" variant="destructive" disabled={changing} onClick={onStopLive}>Stop Live</Button>
           : null}
       </div>
     </LayerCard>

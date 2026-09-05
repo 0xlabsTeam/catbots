@@ -64,3 +64,20 @@ In a bot workspace, the bot header replaces the global breadcrumb bar. Workspace
 ### Agent interaction states
 
 The real web and desktop transports expose request-scoped Stop. The service rejects overlapping turns for the same bot; Stop aborts only the matching request and preserves completed changes. Synchronous backtests can finish before the event loop handles Stop. The composer remains editable while a request runs, and uses per-bot local draft storage. The activity disclosure contains up to 40 events from the current mounted session; it is not a durable execution audit. Result actions navigate to persisted strategy/backtest data. Review & retry restores the failed prompt for review and never automatically replays tools. Approval remains revision-specific in the existing confirmation dialog, separate from starting Paper/Live.
+
+### Control sizes
+
+Use Kumo's `size` prop explicitly on every Button, Input and Select.
+Use `sm` for compact workbench and graph toolbars, and `base` for forms, dialogs,
+settings, provider connections and page actions. Controls within an action row
+use the same size. Multiline Textarea height follows its content; Switch and
+Checkbox retain their native Kumo dimensions. Do not override control typography
+or height with global CSS. Labelled fields align at the control's bottom edge.
+
+### Page containers
+
+All standard workspace pages (Bots, Nodes, Settings, Data, Activity, Paper/Live review)
+use `page-container`: the shared 76rem maximum width, responsive 16–32px horizontal
+gutter and 32px vertical padding. The three `--cb-page-*` tokens own these values.
+Workbench uses a full-width canvas; onboarding and dialogs have their own dedicated layouts.
+Do not add per-page outer width or padding overrides.
