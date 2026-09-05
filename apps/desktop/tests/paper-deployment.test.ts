@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { RiskLimits } from '@catbots/contracts';
+import type { LegacyRiskLimits, RiskLimits } from '@catbots/contracts';
 import { createEvaluationContext, parseStrategyDocument } from '@catbots/strategy-runtime';
 
 import { BotRepository } from '../src/main/bots/bot-repository';
@@ -17,6 +17,11 @@ const limits: RiskLimits = {
   maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
   maxDailyLossUsd: '300', maxDrawdownPercent: 12,
   allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+};
+const legacyLimits: LegacyRiskLimits = {
+  maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+  maxDailyLossUsd: '300', maxDrawdownPercent: 12,
+  allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
 };
 
 let database: Database.Database;
@@ -300,6 +305,44 @@ describe('Paper deployment', () => {
 });
 
 describe('Dynamic-market Paper adapter', () => {
+  it('rejects when the staged evaluation market differs from the effect and execution context', () => {
+    const adapter = dynamicPaperAdapter();
+    adapter.updateMarketUniverse({
+      universe: {
+        dex: 'hyperliquid',
+        revision: 'sha256:universe-2',
+        observedAt: '2026-09-05T08:16:00.000Z',
+        markets: [
+          {
+            symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 50,
+          },
+          {
+            symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 40,
+          },
+        ],
+      },
+      fresh: true,
+    });
+    const before = adapter.snapshot();
+    adapter.beginEvaluation({
+      dex: 'hyperliquid',
+      currentMarket: 'ETH-PERP',
+      universeRevision: 'sha256:universe-2',
+    });
+
+    const result = adapter.execute(
+      openEffect('BTC-PERP', 'effect:wrong-staged-market'),
+      dynamicContext('BTC-PERP'),
+    );
+    adapter.commitEvaluation();
+
+    expect(result.events).toEqual([{
+      type: 'risk.rejected',
+      metadata: { violatedRuleIds: ['evaluation-market-mismatch'] },
+    }]);
+    expect(adapter.snapshot()).toEqual(before);
+  });
+
   it('uses effect.market and keeps positions and orders market-keyed as the DEX snapshot refreshes', () => {
     const adapter = dynamicPaperAdapter();
     executeDynamic(adapter, openEffect('ETH-PERP', 'effect:eth'), 'sha256:universe-1');
@@ -413,6 +456,38 @@ describe('Dynamic-market Paper adapter', () => {
       '2026-09-05T08:17:00.000Z',
     ).events).toContainEqual({
       type: 'risk.rejected', metadata: { violatedRuleIds: ['market-metadata-stale'] },
+    });
+  });
+});
+
+describe('Legacy Paper adapter compatibility', () => {
+  it('rejects a close above 100 percent without changing the position or recording an order', () => {
+    const adapter = new PaperAdapter({
+      deploymentId: randomUUID(),
+      strategyId: 'legacy-paper',
+      strategyVersion: 1,
+      market: 'BTC-PERP',
+      riskLimits: legacyLimits,
+    });
+    adapter.beginEvaluation();
+    adapter.execute(openEffect('BTC-PERP', 'legacy:open'), dynamicContext('BTC-PERP'));
+    adapter.commitEvaluation();
+    const before = adapter.snapshot();
+
+    adapter.beginEvaluation();
+    const result = adapter.execute(
+      closeEffect('BTC-PERP', 'legacy:over-close', 150),
+      dynamicContext('BTC-PERP', '2026-09-05T08:16:00.000Z'),
+    );
+    adapter.commitEvaluation();
+
+    expect(result.events).toEqual([{
+      type: 'risk.rejected',
+      metadata: { violatedRuleIds: ['risk-state-unavailable'] },
+    }]);
+    expect(adapter.snapshot()).toEqual(before);
+    expect(adapter.snapshot().positions[0]).toMatchObject({
+      market: 'BTC-PERP', side: 'long', notionalUsd: '500',
     });
   });
 });

@@ -177,6 +177,9 @@ export class PaperAdapter implements RuntimeExecutionPort {
     if (!isDynamic(deployment) || identity === undefined || universeState === undefined) {
       return { approved: false as const, violatedRuleIds: ['risk-state-unavailable'] as const };
     }
+    if (identity.currentMarket !== context.currentMarket) {
+      return { approved: false as const, violatedRuleIds: ['evaluation-market-mismatch'] as const };
+    }
     const selected = universeState.universe.markets.find(({ symbol }) => symbol === effect.market);
     const metadata = selected === undefined ? undefined : {
       market: selected.symbol,
@@ -191,7 +194,7 @@ export class PaperAdapter implements RuntimeExecutionPort {
       botDex: deployment.botDex,
       deploymentDex: deployment.deploymentDex,
       evaluationDex: identity.dex,
-      currentMarket: context.currentMarket,
+      currentMarket: identity.currentMarket,
       effectMarket: effect.market,
       evaluationUniverseRevision: identity.universeRevision,
       marketMetadataRevision: universeState.universe.revision,
@@ -227,6 +230,7 @@ function toIntent(
   if (effect.type === 'execution.close_position') {
     const percent = typeof effect.config.percent === 'number' ? effect.config.percent : 100;
     const market = isDynamic(deployment) ? effect.market : deployment.market;
+    if (!isDynamic(deployment) && (!Number.isFinite(percent) || percent <= 0 || percent > 100)) return undefined;
     return typeof percent === 'number'
       ? { type: 'close_position', market, percent, clientOrderId: orderId }
       : undefined;
