@@ -85,3 +85,68 @@ Before native E2E, process inspection found no running Catbots Electron applicat
 
 - The Web Preview remains intentionally in-memory and synthetic; both the global preview badge and Backtest provenance/warning make that limitation explicit.
 - The one transient Settings select failure did not reproduce in isolation or on the next full run. It is recorded above rather than attributed to Task 12.
+
+## Fix Round 1 — 2026-09-05
+
+### Outcome
+
+- Web Preview now replays the canonical bundled coverage window (`2026-08-01` through `2026-09-01`) and the same point-in-time membership revisions as the real Workbench fixture: BTC alone on August 10, then BTC and ETH from the August 20 listing frame onward. Parent trace IDs use each fixture frame's observation time and universe revision rather than the request start.
+- Preview range filtering is inclusive and honest. A request entirely outside coverage completes with no traces or trades, zero performance, and the real runner's `insufficient_history` and `missing_market_coverage` warnings. Dataset coverage remains the fixed source coverage rather than being rewritten to the request.
+- Tests cover August 1–15 BTC-only evaluation with no ETH execution, an August 15–25 range crossing the ETH listing boundary, and January–February 2027 outside coverage.
+- The preview assistant now describes the actual Strategy 2.0 graph: dynamic Hyperliquid scope, ETH-PERP guard, RSI 14 below 20 opening a long, RSI 14 above 80 closing that long, and no implicit short entry.
+- The packaged restart test now creates a DEX-scoped Bot through the renderer, then uses the existing unsigned-test-only Main seam to save/validate a deterministic Strategy 2.0 revision, run the real bundled Backtest, approve the revision, start a record-v2 Paper deployment against a local fixed universe, and persist coordinated BTC/ETH audit events. Before and after relaunch with the same user-data directory, it verifies the approved revision, completed Backtest, running dynamic deployment, and identical audit log. Normal renderer IPC independently verifies persisted Workbench and active-deployment DTOs on both sides of the restart.
+- The deterministic workflow does not call the configured LLM, Hyperliquid, or any external service. The setup/read surface is attached only when the pre-existing `e2eAllowed` gate validates test mode, a temporary E2E data directory, and an unsigned development build; it is not exposed through preload or production IPC.
+
+### TDD evidence
+
+Preview RED:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop test -- tests/web-preview-api.test.ts
+```
+
+Result: four new tests failed as expected. The old preview emitted ETH before listing, stamped traces at the request start, fabricated traces outside coverage, and described an unrelated ETF-flow strategy.
+
+Packaged restart RED:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test:e2e -- --grep 'approved dynamic Paper run'
+```
+
+Result: the new packaged test reached the existing test-only seam and failed because the deterministic workflow methods did not yet exist. During GREEN, the first focused packaged run then correctly caught a misaligned 08:15 fixture timestamp for an hourly UTC trigger; changing the fixture to 08:00 made the real trigger validator pass.
+
+Focused GREEN:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/web-preview-api.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/ipc-security.test.ts tests/preload.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop package
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm exec playwright test e2e/desktop-smoke.spec.ts --grep 'approved dynamic Paper run'
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm exec playwright test e2e/web-preview-workflow.spec.ts
+```
+
+Results: preview 10/10, IPC security 47/47, packaged restart 1/1, and Web Preview E2E 1/1 passed.
+
+### Full verification and native ABI
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test:e2e
+PATH=/opt/homebrew/opt/node@22/bin:$PATH node -e "require('better-sqlite3')(':memory:').close(); console.log('better-sqlite3 host ABI OK on', process.version)"
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/database.test.ts
+git diff --check
+```
+
+Results:
+
+- Workspace tests passed: contracts 32, strategy runtime 126, execution core 21, desktop 348; the opt-in LM Studio test remained skipped.
+- Workspace typecheck passed.
+- Packaged E2E passed 4/4, including Web Preview, fresh install, durable dynamic workflow restart, and native close/quit lifecycle.
+- The repository packaging orchestrator rebuilt the Electron native module and restored the host binding. Direct Node 22.23.2 loading succeeded, and the post-package database suite passed 10/10.
+- No Catbots Electron or `pnpm dev` process was running before the native suite. The user's existing Web Preview Vite process was left intact; no process was killed.
+- `git diff --check` passed.
+
+### Fix Round 1 concerns
+
+- Paper adapter positions and orders remain runtime-owned and are not rehydrated after restart. This test therefore asserts durable deployment status and persisted audit events directly through the already-gated Main E2E seam; it does not claim that an interrupted Paper adapter resumes evaluation automatically.

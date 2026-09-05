@@ -36,7 +36,7 @@ test('web preview completes Create → Chat → Flow → Backtest → Paper → 
   await expect(page.getByRole('heading', { name: 'By market' })).toBeVisible();
   await expect(page.getByRole('row', { name: /BTC-PERP/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /ETH-PERP/ })).toBeVisible();
-  await page.getByRole('button', { name: /interval run/i }).click();
+  await page.getByRole('button', { name: /interval run.*2 markets/i }).first().click();
   const marketEvaluations = page.getByRole('group', { name: 'Market evaluations' });
   await expect(marketEvaluations.getByRole('button', { name: /BTC-PERP/ })).toBeVisible();
   await marketEvaluations.getByRole('button', { name: /ETH-PERP/ }).click();

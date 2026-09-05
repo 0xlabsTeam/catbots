@@ -9,6 +9,15 @@ import { cleanupApplication } from './cleanup';
 type LifecycleTestSeam = {
   openMainWindow(): Promise<void>;
   requestQuit(response: number): Promise<void>;
+  seedDynamicWorkflow(botId: string): Promise<DurableWorkflowSnapshot>;
+  getDynamicWorkflow(botId: string): Promise<DurableWorkflowSnapshot>;
+};
+
+type DurableWorkflowSnapshot = {
+  revision: { version: number; schemaVersion: string; status: string; marketScope?: { type: string } };
+  backtest: { status: string; datasetCoverage: { markets: string[] }; traces: Array<{ market: string }> };
+  deployment: { id: string; recordVersion: number; dex?: string; mode: string; status: string; marketAccess?: { mode: string } };
+  auditEvents: Array<{ type: string; summary: string; market?: string; dex?: string; universeRevision?: string }>;
 };
 
 type RunningApplication = {
@@ -150,7 +159,7 @@ test('fresh install reaches local-profile onboarding', async () => {
   }
 });
 
-test('packaged local workflow persists tested settings and a Draft Bot across restarts', async () => {
+test('packaged local workflow persists an approved dynamic Paper run across restarts', async () => {
   test.setTimeout(120_000);
   const secret = 'e2e-provider-secret-sentinel';
   const provider = await startOpenAiProvider(secret);
@@ -254,6 +263,44 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     await expect(restored.getByRole('heading', { name: 'E2E Dynamic Draft' })).toBeVisible();
     await expect(restored.getByText('Hyperliquid · Dynamic markets')).toBeVisible();
     await expect(restored.getByText('Draft', { exact: true })).toBeVisible();
+    const botId = await restored.evaluate(async () => {
+      const bot = (await window.catbots.bots.list()).find(({ name }) => name === 'E2E Dynamic Draft');
+      if (bot === undefined) throw new Error('E2E dynamic Bot was not created');
+      return bot.id;
+    });
+    const seeded = await running.app.evaluate(async (_electron, { botId: targetBotId }) => {
+      const seam = (globalThis as typeof globalThis & { __catbotsE2E?: LifecycleTestSeam }).__catbotsE2E;
+      if (seam === undefined) throw new Error('E2E lifecycle seam unavailable');
+      return seam.seedDynamicWorkflow(targetBotId);
+    }, { botId });
+    expect(seeded.revision).toMatchObject({ version: 1, schemaVersion: '2.0', status: 'approved', marketScope: { type: 'dex_universe' } });
+    expect(seeded.backtest).toMatchObject({ status: 'completed', datasetCoverage: { markets: ['BTC-PERP', 'ETH-PERP'] } });
+    expect(new Set(seeded.backtest.traces.map(({ market }) => market))).toEqual(new Set(['BTC-PERP', 'ETH-PERP']));
+    expect(seeded.deployment).toMatchObject({
+      recordVersion: 2,
+      dex: 'hyperliquid',
+      mode: 'paper',
+      status: 'running',
+      marketAccess: { mode: 'all_active_perpetuals' },
+    });
+    expect(seeded.auditEvents.map(({ type }) => type)).toEqual(expect.arrayContaining([
+      'universe.resolved',
+      'market.evaluation_completed',
+      'flow.completed',
+    ]));
+    expect(seeded.auditEvents.some(({ market }) => market === 'ETH-PERP')).toBe(true);
+    expect(seeded.auditEvents.some(({ dex, universeRevision }) => (
+      dex === 'hyperliquid' && universeRevision === 'e2e:dynamic-universe'
+    ))).toBe(true);
+    expect(JSON.stringify(seeded)).not.toContain(secret);
+    expect(JSON.stringify(seeded)).not.toContain('catbots.e2e-fixture');
+    const rendererBeforeRestart = await restored.evaluate(async ({ targetBotId }) => ({
+      workbench: await window.catbots.workbench.get({ botId: targetBotId }),
+      deployment: await window.catbots.deployments.getActive({ botId: targetBotId }),
+    }), { targetBotId: botId });
+    expect(rendererBeforeRestart.workbench.currentRevision).toMatchObject({ schemaVersion: '2.0', status: 'approved' });
+    expect(rendererBeforeRestart.workbench.backtests[0]).toMatchObject({ status: 'completed' });
+    expect(rendererBeforeRestart.deployment).toMatchObject({ id: seeded.deployment.id, status: 'running' });
     await requestConfirmedQuit(running);
     running = undefined;
 
@@ -264,6 +311,22 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     await expect(persisted.getByText('E2E Dynamic Draft')).toBeVisible();
     await expect(persisted.getByText('Hyperliquid')).toBeVisible();
     await expect(persisted.getByText('BTC-PERP')).toHaveCount(0);
+    const durable = await running.app.evaluate(async (_electron, { botId: targetBotId }) => {
+      const seam = (globalThis as typeof globalThis & { __catbotsE2E?: LifecycleTestSeam }).__catbotsE2E;
+      if (seam === undefined) throw new Error('E2E lifecycle seam unavailable');
+      return seam.getDynamicWorkflow(targetBotId);
+    }, { botId });
+    expect(durable.revision).toEqual(seeded.revision);
+    expect(durable.backtest).toEqual(seeded.backtest);
+    expect(durable.deployment).toEqual(seeded.deployment);
+    expect(durable.auditEvents).toEqual(seeded.auditEvents);
+    const rendererAfterRestart = await persisted.evaluate(async ({ targetBotId }) => ({
+      workbench: await window.catbots.workbench.get({ botId: targetBotId }),
+      deployment: await window.catbots.deployments.getActive({ botId: targetBotId }),
+    }), { targetBotId: botId });
+    expect(rendererAfterRestart.workbench.currentRevision).toMatchObject({ schemaVersion: '2.0', status: 'approved' });
+    expect(rendererAfterRestart.workbench.backtests[0]).toMatchObject({ status: 'completed' });
+    expect(rendererAfterRestart.deployment).toMatchObject({ id: seeded.deployment.id, status: 'running' });
     await persisted.getByRole('button', { name: 'Settings' }).click();
     await expect(persisted.getByLabel('Profile name')).toHaveValue('E2E Renamed Profile');
     await expect(persisted.getByLabel('API key')).toHaveValue('');

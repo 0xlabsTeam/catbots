@@ -142,7 +142,7 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
           id: crypto.randomUUID(),
           botId: request.botId,
           role: 'assistant',
-          content: `Draft v${version} is valid. I created an hourly Trigger → combined ETF flow and RSI Conditions → long Action. Run the sample Backtest to inspect performance and every execution trace.`,
+          content: `Draft v${version} is valid. It evaluates the dynamic Hyperliquid perpetual universe hourly, with an ETH-PERP symbol guard. When RSI 14 is below 20 it opens an ETH long; when RSI 14 is above 80 it closes that long. It does not open short positions. Run the sample Backtest to inspect performance and every execution trace.`,
           createdAt: timestamp,
         });
         emit({ botId: request.botId, requestId, phase: 'completed', message: 'Agent response completed.' });
@@ -361,39 +361,35 @@ function previewBacktest(
   if (selectedMarkets.some((market) => !datasetMarkets.includes(market as typeof datasetMarkets[number]))) {
     throw new Error('Preview Backtest dataset does not cover the requested market');
   }
-  const parentTraceId = `preview:strategy:eth-rsi:v${revisionVersion}:trigger:interval:${encodeURIComponent(assumptions.from)}:dex:hyperliquid:universe:${encodeURIComponent('bundled:eth-listed')}`;
-  const traces: TraceDetail[] = ([
-    {
-      traceId: `preview-flow-v${revisionVersion}-btc`,
-      parentTraceId,
-      market: 'BTC-PERP',
-      outcome: 'skipped',
-      events: [
-        { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'entry-hourly', summary: 'trigger received', details: {} },
-        { sequence: 2, type: 'condition.evaluated', occurredAt: assumptions.from, nodeId: 'entry-eth', summary: 'market symbol condition did not pass', details: { result: false } },
-        { sequence: 3, type: 'flow.completed', occurredAt: assumptions.from, summary: 'flow skipped', details: {} },
-      ],
-    },
-    {
-      traceId: `preview-flow-v${revisionVersion}-eth`,
-      parentTraceId,
-      market: 'ETH-PERP',
-      outcome: 'executed',
-      events: [
-        { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'entry-hourly', summary: 'trigger received', details: {} },
-        { sequence: 2, type: 'condition.evaluated', occurredAt: assumptions.from, nodeId: 'entry-rules', summary: 'ETH entry conditions passed', details: { result: true, inputs: [{ ref: 'market.symbol' }, { ref: 'indicator.rsi', field: '14' }] } },
-        { sequence: 3, type: 'flow.completed', occurredAt: assumptions.from, nodeId: 'open-long', summary: 'sample ETH order flow completed', details: {} },
-      ],
-    },
-  ] satisfies TraceDetail[]).filter(({ market }) => selectedMarkets.includes(market));
-  const hasEth = selectedMarkets.includes('ETH-PERP');
-  const performance = hasEth
+  const frames = previewBacktestFrames.filter(({ occurredAt }) => (
+    Date.parse(occurredAt) >= Date.parse(assumptions.from)
+      && Date.parse(occurredAt) <= Date.parse(assumptions.to)
+  ));
+  const traces = frames.flatMap((frame) => previewFrameTraces(
+    revisionVersion,
+    frame,
+    selectedMarkets,
+  ));
+  const hasEthTrade = selectedMarkets.includes('ETH-PERP')
+    && frames.some(({ revision }) => revision === 'bundled:eth-listed')
+    && frames.some(({ revision }) => revision === 'bundled:eth-overbought');
+  const performance = hasEthTrade
     ? { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' }
     : { returnPercent: 0, maximumDrawdownPercent: 0, sharpeLike: 0, winRatePercent: 0, tradeCount: 0, fees: '0', funding: '0', endingEquity: assumptions.startingCapital, realizedPnl: '0' };
   const marketPerformance = [
     { market: 'BTC-PERP', realizedPnl: '0', tradeCount: 0, winRatePercent: 0, drawdownContributionPercent: 0 },
-    { market: 'ETH-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 },
+    { market: 'ETH-PERP', realizedPnl: hasEthTrade ? '420' : '0', tradeCount: hasEthTrade ? 5 : 0, winRatePercent: hasEthTrade ? 60 : 0, drawdownContributionPercent: hasEthTrade ? 1.1 : 0 },
   ].filter(({ market }) => selectedMarkets.includes(market));
+  const representedMarkets = new Set(frames.flatMap(({ markets }) => markets));
+  const warnings = [
+    'Bundled synthetic coverage includes only BTC-PERP and ETH-PERP; it does not represent every Hyperliquid market.',
+    'Bundled sample data is synthetic and is not live market data.',
+    ...(frames.length * 2 < 2 ? ['insufficient_history'] : []),
+    ...(Date.parse(assumptions.from) < Date.parse(previewDatasetCoverage.from)
+      || Date.parse(assumptions.to) > Date.parse(previewDatasetCoverage.to)
+      || selectedMarkets.some((market) => !representedMarkets.has(market))
+      ? ['missing_market_coverage'] : []),
+  ];
   return {
     traces,
     summary: {
@@ -406,23 +402,79 @@ function previewBacktest(
       completedAt: new Date().toISOString(),
       assumptions,
       metrics: performance,
-      datasetCoverage: { markets: [...datasetMarkets], from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+      datasetCoverage: { markets: [...datasetMarkets], ...previewDatasetCoverage },
       perMarket: marketPerformance,
       equityCurve: [
         { timestamp: assumptions.from, equity: assumptions.startingCapital },
-        { timestamp: assumptions.to, equity: hasEth ? String(Number(assumptions.startingCapital) * 1.042) : assumptions.startingCapital },
+        { timestamp: assumptions.to, equity: hasEthTrade ? String(Number(assumptions.startingCapital) * 1.042) : assumptions.startingCapital },
       ],
       trades: [],
-      warnings: ['Bundled sample data is synthetic and is not live market data.'],
+      warnings,
       traces: traces.map(({ traceId, parentTraceId: parentId, market, outcome, events }) => ({
         traceId,
         parentTraceId: parentId,
         market,
         outcome,
-        occurredAt: assumptions.from,
+        occurredAt: events[0]?.occurredAt ?? assumptions.from,
         summary: events.at(-1)?.summary ?? 'flow completed',
       })),
       artifactHash: `sha256:${'b'.repeat(64)}`,
     },
   };
+}
+
+const previewDatasetCoverage = Object.freeze({
+  from: '2026-08-01T00:00:00.000Z',
+  to: '2026-09-01T00:00:00.000Z',
+});
+
+const previewBacktestFrames = Object.freeze([
+  Object.freeze({ occurredAt: '2026-08-10T00:00:00.000Z', revision: 'bundled:before-eth-listing', markets: Object.freeze(['BTC-PERP']) }),
+  Object.freeze({ occurredAt: '2026-08-20T00:00:00.000Z', revision: 'bundled:eth-listed', markets: Object.freeze(['BTC-PERP', 'ETH-PERP']) }),
+  Object.freeze({ occurredAt: '2026-08-28T00:00:00.000Z', revision: 'bundled:eth-overbought', markets: Object.freeze(['BTC-PERP', 'ETH-PERP']) }),
+]);
+
+function previewFrameTraces(
+  revisionVersion: number,
+  frame: typeof previewBacktestFrames[number],
+  selectedMarkets: readonly string[],
+): TraceDetail[] {
+  return (['entry', 'exit'] as const).flatMap((flow) => {
+    const triggerNodeId = flow === 'entry' ? 'entry-hourly' : 'exit-hourly';
+    const parentTraceId = `preview:strategy:eth-rsi:v${revisionVersion}:trigger:interval:${triggerNodeId}:${encodeURIComponent(frame.occurredAt)}:dex:hyperliquid:universe:${encodeURIComponent(frame.revision)}`;
+    return frame.markets
+      .filter((market) => selectedMarkets.includes(market))
+      .map((market): TraceDetail => {
+        const conditionPassed = market === 'ETH-PERP'
+          && (flow === 'entry' ? frame.revision === 'bundled:eth-listed' : frame.revision === 'bundled:eth-overbought');
+        const conditionNodeId = flow === 'entry' ? 'entry-rules' : 'exit-rules';
+        const actionNodeId = flow === 'entry' ? 'open-long' : 'close-long';
+        const actionSummary = flow === 'entry' ? 'sample ETH long entry completed' : 'sample ETH long close completed';
+        return {
+          traceId: `${parentTraceId}:market:${market}`,
+          parentTraceId,
+          market,
+          outcome: conditionPassed ? 'executed' : 'skipped',
+          events: [
+            { sequence: 1, type: 'trigger.received', occurredAt: frame.occurredAt, nodeId: triggerNodeId, summary: 'trigger received', details: {} },
+            {
+              sequence: 2,
+              type: 'condition.evaluated',
+              occurredAt: frame.occurredAt,
+              nodeId: conditionNodeId,
+              summary: conditionPassed ? `ETH ${flow} conditions passed` : `${market} ${flow} conditions did not pass`,
+              details: { result: conditionPassed, inputs: [{ ref: 'market.symbol' }, { ref: 'indicator.rsi', field: '14' }] },
+            },
+            {
+              sequence: 3,
+              type: 'flow.completed',
+              occurredAt: frame.occurredAt,
+              ...(conditionPassed ? { nodeId: actionNodeId } : {}),
+              summary: conditionPassed ? actionSummary : 'flow skipped',
+              details: {},
+            },
+          ],
+        };
+      });
+  });
 }

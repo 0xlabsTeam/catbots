@@ -1,6 +1,8 @@
 import { app, dialog, session, utilityProcess, type BrowserWindow } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createEvaluationContext, parseStrategyDocument } from '@catbots/strategy-runtime';
 import { BotRepository } from './bots/bot-repository';
 import { ConfigRepository } from './config/config-repository';
 import { createMainWindow } from './create-window';
@@ -97,8 +99,9 @@ void app.whenReady()
       console.error('Catbots universe metadata unavailable');
     }
     stopMarketUniverseRefresh = marketUniverseCache.startPeriodicRefresh(marketUniverseRefreshOwner.signal);
+    const executionRepository = new ExecutionRepository(connection);
     const deploymentService = new DeploymentService({
-      executionRepository: new ExecutionRepository(connection),
+      executionRepository,
       workbenchRepository,
       configRepository,
       marketUniverseCache,
@@ -130,6 +133,87 @@ void app.whenReady()
             e2eQuitResponse = response;
             await requestQuit();
           },
+          seedDynamicWorkflow: async (botId: string) => {
+            const now = '2026-09-05T08:00:00.000Z';
+            const revision = workbenchRepository.createValidatedRevision(botId, e2eDynamicStrategy());
+            await workbenchService.runBacktest({
+              botId,
+              revisionVersion: revision.version,
+              marketUniverse: { mode: 'all_available' },
+              assumptions: {
+                from: '2026-08-01T00:00:00.000Z',
+                to: '2026-09-01T00:00:00.000Z',
+                startingCapital: '10000',
+                feeRateBps: 3.5,
+                slippageBps: 1,
+              },
+            });
+            workbenchRepository.approveRevision(botId, revision.version);
+            const universe = {
+              dex: 'hyperliquid' as const,
+              revision: 'e2e:dynamic-universe',
+              observedAt: now,
+              markets: [
+                { symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 40 },
+                { symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 30 },
+              ],
+            };
+            const deterministicPaper = new DeploymentService({
+              executionRepository,
+              workbenchRepository,
+              marketUniverseCache: {
+                refresh: async () => universe,
+                freshness: () => ({ fresh: true }),
+              },
+              clock: () => new Date(now),
+              idFactory: randomUUID,
+            });
+            const deployment = await deterministicPaper.startPaper({
+              botId,
+              strategyVersion: revision.version,
+              riskLimits: {
+                maxOrderUsd: '1000',
+                maxPositionUsd: '2500',
+                maxTotalExposureUsd: '5000',
+                maxLeverage: 3,
+                maxDailyLossUsd: '300',
+                maxDrawdownPercent: 12,
+                allowedSides: ['long'],
+                maxOrdersPerMinute: 4,
+              },
+            });
+            await deterministicPaper.ingest({
+              deploymentId: deployment.id,
+              triggerNodeId: 'entry-clock',
+              triggerInput: { kind: 'interval', occurredAt: now },
+              contextFactory: (market) => createEvaluationContext({
+                evaluatedAt: now,
+                currentMarket: market,
+                values: {
+                  'market.price': {
+                    value: { market, bid: 99, ask: 101, mark: 100 },
+                    provider: 'catbots.e2e-fixture',
+                    observedAt: now,
+                    freshnessSeconds: 0,
+                    quality: { status: 'verified' },
+                    integrityHash: `sha256:e2e-price:${market}`,
+                  },
+                  'indicator.rsi.14': {
+                    value: { value: market === 'ETH-PERP' ? 15 : 50 },
+                    provider: 'catbots.e2e-fixture',
+                    observedAt: now,
+                    freshnessSeconds: 0,
+                    quality: { status: 'verified' },
+                    integrityHash: `sha256:e2e-rsi:${market}`,
+                  },
+                },
+              }),
+            });
+            return e2eDynamicWorkflowSnapshot(botId, workbenchRepository, executionRepository);
+          },
+          getDynamicWorkflow: async (botId: string) => (
+            e2eDynamicWorkflowSnapshot(botId, workbenchRepository, executionRepository)
+          ),
         },
       });
     }
@@ -152,6 +236,76 @@ app.on('before-quit', (event) => {
 
 // Subscribing preserves the process after the final window closes. Tray controls own explicit exit.
 app.on('window-all-closed', () => undefined);
+
+function e2eDynamicStrategy() {
+  return parseStrategyDocument({
+    schemaVersion: '2.0',
+    strategy: { id: 'e2e-eth-rsi', name: 'E2E ETH RSI', version: 1 },
+    marketScope: { type: 'dex_universe' },
+    nodes: [
+      { id: 'entry-clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
+      { id: 'entry-symbol', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'ETH-PERP' } } },
+      { id: 'entry-rsi', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'indicator.rsi.14', field: 'value' }, operator: 'lt', right: { literal: 20 } } },
+      { id: 'entry-all', kind: 'condition', type: 'combine.all', version: 1, config: {} },
+      { id: 'entry-long', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 100 } } },
+      { id: 'exit-clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
+      { id: 'exit-symbol', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'ETH-PERP' } } },
+      { id: 'exit-rsi', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'indicator.rsi.14', field: 'value' }, operator: 'gt', right: { literal: 80 } } },
+      { id: 'exit-long', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'long' } },
+      { id: 'exit-all', kind: 'condition', type: 'combine.all', version: 1, config: {} },
+      { id: 'exit-close', kind: 'action', type: 'execution.close_position', version: 1, config: { side: 'long', percent: 100 } },
+    ],
+    edges: [
+      { id: 'e1', source: 'entry-clock', sourcePort: 'activation', target: 'entry-symbol', targetPort: 'activation' },
+      { id: 'e2', source: 'entry-clock', sourcePort: 'activation', target: 'entry-rsi', targetPort: 'activation' },
+      { id: 'e3', source: 'entry-symbol', sourcePort: 'result', target: 'entry-all', targetPort: 'conditions' },
+      { id: 'e4', source: 'entry-rsi', sourcePort: 'result', target: 'entry-all', targetPort: 'conditions' },
+      { id: 'e5', source: 'entry-all', sourcePort: 'result', target: 'entry-long', targetPort: 'condition' },
+      { id: 'e6', source: 'exit-clock', sourcePort: 'activation', target: 'exit-symbol', targetPort: 'activation' },
+      { id: 'e7', source: 'exit-clock', sourcePort: 'activation', target: 'exit-rsi', targetPort: 'activation' },
+      { id: 'e8', source: 'exit-clock', sourcePort: 'activation', target: 'exit-long', targetPort: 'activation' },
+      { id: 'e9', source: 'exit-symbol', sourcePort: 'result', target: 'exit-all', targetPort: 'conditions' },
+      { id: 'e10', source: 'exit-rsi', sourcePort: 'result', target: 'exit-all', targetPort: 'conditions' },
+      { id: 'e11', source: 'exit-long', sourcePort: 'result', target: 'exit-all', targetPort: 'conditions' },
+      { id: 'e12', source: 'exit-all', sourcePort: 'result', target: 'exit-close', targetPort: 'condition' },
+    ],
+  });
+}
+
+function e2eDynamicWorkflowSnapshot(
+  botId: string,
+  workbenchRepository: WorkbenchRepository,
+  executionRepository: ExecutionRepository,
+) {
+  const state = workbenchRepository.getState(botId);
+  const revision = state.currentRevision;
+  const backtest = state.backtests[0];
+  const deployment = executionRepository.getActiveDeploymentForBot(botId);
+  if (revision === null || backtest === undefined || deployment === null) {
+    throw new Error('E2E dynamic workflow is incomplete');
+  }
+  return {
+    revision: {
+      version: revision.version,
+      schemaVersion: revision.schemaVersion,
+      status: revision.status,
+      ...(revision.schemaVersion === '2.0' ? { marketScope: revision.marketScope } : {}),
+    },
+    backtest: {
+      status: backtest.status,
+      datasetCoverage: backtest.datasetCoverage,
+      traces: backtest.traces.map(({ market }) => ({ market })),
+    },
+    deployment,
+    auditEvents: executionRepository.listDeploymentAuditEvents(deployment.id).map((event) => ({
+      type: event.type,
+      summary: event.summary,
+      ...(event.market === undefined ? {} : { market: event.market }),
+      ...(event.dex === undefined ? {} : { dex: event.dex }),
+      ...(event.universeRevision === undefined ? {} : { universeRevision: event.universeRevision }),
+    })),
+  };
+}
 
 function installTray(): void {
   tray = createTray({
