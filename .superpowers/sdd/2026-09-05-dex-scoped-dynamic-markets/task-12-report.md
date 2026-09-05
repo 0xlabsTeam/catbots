@@ -150,3 +150,62 @@ Results:
 ### Fix Round 1 concerns
 
 - Paper adapter positions and orders remain runtime-owned and are not rehydrated after restart. This test therefore asserts durable deployment status and persisted audit events directly through the already-gated Main E2E seam; it does not claim that an interrupted Paper adapter resumes evaluation automatically.
+
+## Fix Round 2 — 2026-09-05
+
+### Outcome
+
+- Web Preview now uses the same replay engine as the real Backtest workflow. The browser-safe replay core owns graph validation, point-in-time universe selection, position-aware evaluation, simulated execution, trade ledger construction, metrics, per-market results, and warnings. The Node Backtest wrapper retains artifact hashing and serialization.
+- Preview trace outcomes and displayed trades are projected from replay audit events and the closed-trade ledger. They are no longer inferred from fixture revision names. In particular, an August 25–September 1 exit-only request has no inherited position, so both ETH actions are skipped, there are no executed child traces or trades, and return/trade metrics remain zero.
+- Regression coverage now distinguishes three state histories: August 15–25 crosses the ETH listing and opens one position without a closed trade; August 25–September 1 contains an overbought frame but cannot close a nonexistent position; August 1–September 1 opens and closes one ETH long and reports matching execution traces, ledger timestamps, aggregate metrics, and ETH per-market metrics.
+- The canonical bundled fixture is shared by Main and Preview, so membership revisions, RSI/price frames, timestamps, coverage, and limitations cannot drift between the two paths.
+- Packaged E2E startup now chooses its deterministic local BTC/ETH market-universe adapter only after the existing security gate succeeds and the resolved application data directory exactly equals the requested dedicated E2E directory. The adapter is injected before cache initialization and periodic refresh begin, so the validated E2E path constructs no Hyperliquid public client and performs no Hyperliquid network request. Normal startup and a mismatched-directory attempt still construct the production Hyperliquid adapter/client.
+- Durable restart snapshots now compare stable audit event IDs, trace IDs, sequence numbers, types, summaries, parent trace IDs, market, DEX, and universe revision. Volatile timestamps are intentionally excluded.
+- Renderer trace projection remains allowlisted: only condition boolean/unknown results are exposed. Provider values, universe snapshots, execution idempotency keys, raw errors, and other runtime details remain inside the replay result.
+
+### TDD evidence
+
+Focused RED:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/web-preview-api.test.ts tests/main-lifecycle.test.ts
+```
+
+Result: 3 failures and 27 passes. The exit-only preview incorrectly reported a close as executed, preview summaries were hand-authored rather than ledger-consistent, and validated E2E startup constructed the Hyperliquid public client once.
+
+Focused GREEN:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/web-preview-api.test.ts tests/main-lifecycle.test.ts tests/data-directory.test.ts tests/sample-backtest-data.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/strategy-runtime test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm exec playwright test e2e/web-preview-workflow.spec.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm exec playwright test e2e/desktop-smoke.spec.ts --grep 'approved dynamic Paper run'
+```
+
+Results: the four focused desktop suites passed 43/43; strategy runtime passed 126/126; Web Preview E2E passed 1/1; and the packaged durable-restart E2E passed 1/1.
+
+### Full verification and native ABI
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test:e2e
+PATH=/opt/homebrew/opt/node@22/bin:$PATH node -e "require('better-sqlite3')(':memory:').close(); console.log('better-sqlite3 host ABI OK on', process.version)"
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/database.test.ts
+git diff --check
+```
+
+Results:
+
+- Workspace tests passed: contracts 32, strategy runtime 126, execution core 21, and desktop 353; the one opt-in LM Studio test remained skipped.
+- Workspace typecheck passed.
+- Packaged E2E passed 4/4: Web Preview, fresh install, durable dynamic Paper restart, and native close/quit lifecycle.
+- The repository E2E orchestrator rebuilt the Electron native binding and restored the host ABI. Direct Node 22.23.2 loading succeeded, and the post-package database suite passed 10/10.
+- Before E2E, process inspection found no Catbots Electron or Electron dev-orchestrator process. The user's existing Web Preview Vite process was left running; no process was killed.
+- The built renderer contains no `node:crypto`, externalized Node shim, `createHash`, `node:perf_hooks`, or `better-sqlite3` reference. The browser build therefore consumes only the new replay subpath's platform-neutral graph/simulation dependencies.
+- `git diff --check` passed.
+
+### Fix Round 2 concerns
+
+- `@catbots/strategy-runtime/backtest-replay` is one intentional new package subpath; the root package API was not widened. It accepts a caller-supplied identity-hash function and deliberately omits Node-only artifact hashing and serialization. The packaged renderer build and bundle scan verify that this subpath does not pull Node dependencies into the browser.
+- Paper adapter positions and orders remain runtime-owned and are not rehydrated after restart, as noted in Fix Round 1. Durable deployment status and persisted audit identity/sequence are verified without claiming automatic continuation of an interrupted adapter.

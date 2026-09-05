@@ -61,6 +61,8 @@ void app.whenReady()
       protectedDirectories: [app.getAppPath(), app.getPath('userData')],
       temporaryRoot: tmpdir(),
     });
+    const isolatedE2E = e2eAllowed
+      && dataDirectory === process.env.CATBOTS_E2E_DATA_DIR;
     startupPhase = 'database';
     const databaseResult = database.start(dataDirectory);
 
@@ -90,7 +92,9 @@ void app.whenReady()
     const workbenchRepository = new WorkbenchRepository(connection);
     const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository });
     const marketUniverseCache = new MarketUniverseCache({
-      adapter: new HyperliquidAdapter({ client: createHyperliquidPublicClient() }),
+      adapter: isolatedE2E
+        ? e2eMarketUniverseAdapter()
+        : new HyperliquidAdapter({ client: createHyperliquidPublicClient() }),
     });
     marketUniverseRefreshOwner = new AbortController();
     try {
@@ -125,7 +129,7 @@ void app.whenReady()
     });
     startupPhase = 'tray';
     installTray();
-    if (e2eAllowed) {
+    if (isolatedE2E) {
       Object.assign(globalThis, {
         __catbotsE2E: {
           openMainWindow,
@@ -237,6 +241,15 @@ app.on('before-quit', (event) => {
 // Subscribing preserves the process after the final window closes. Tray controls own explicit exit.
 app.on('window-all-closed', () => undefined);
 
+function e2eMarketUniverseAdapter() {
+  return {
+    getMarkets: async () => Object.freeze([
+      Object.freeze({ market: 'BTC-PERP', baseAsset: 'BTC', quoteAsset: 'USDC', active: true, sizeDecimals: 5, maximumLeverage: 40 }),
+      Object.freeze({ market: 'ETH-PERP', baseAsset: 'ETH', quoteAsset: 'USDC', active: true, sizeDecimals: 4, maximumLeverage: 30 }),
+    ]),
+  };
+}
+
 function e2eDynamicStrategy() {
   return parseStrategyDocument({
     schemaVersion: '2.0',
@@ -298,8 +311,12 @@ function e2eDynamicWorkflowSnapshot(
     },
     deployment,
     auditEvents: executionRepository.listDeploymentAuditEvents(deployment.id).map((event) => ({
+      id: event.id,
+      traceId: event.traceId,
+      sequence: event.sequence,
       type: event.type,
       summary: event.summary,
+      ...(event.parentTraceId === undefined ? {} : { parentTraceId: event.parentTraceId }),
       ...(event.market === undefined ? {} : { market: event.market }),
       ...(event.dex === undefined ? {} : { dex: event.dex }),
       ...(event.universeRevision === undefined ? {} : { universeRevision: event.universeRevision }),

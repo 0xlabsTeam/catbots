@@ -32,20 +32,23 @@ test('web preview completes Create → Chat → Flow → Backtest → Paper → 
   await page.getByRole('tab', { name: 'Backtest' }).click();
   await page.getByRole('button', { name: 'Run backtest' }).click();
   await expect(page.getByText('Bundled sample data', { exact: true })).toBeVisible();
-  await expect(page.getByText('+4.20%')).toBeVisible();
+  await expect(page.getByText('+0.99%')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'By market' })).toBeVisible();
-  await expect(page.getByRole('row', { name: /BTC-PERP/ })).toBeVisible();
-  await expect(page.getByRole('row', { name: /ETH-PERP/ })).toBeVisible();
+  const byMarket = page.getByRole('table', { name: 'Backtest results by market' });
+  await expect(byMarket.getByRole('row', { name: /BTC-PERP/ })).toBeVisible();
+  await expect(byMarket.getByRole('row', { name: /ETH-PERP/ })).toBeVisible();
   await page.getByRole('button', { name: /interval run.*2 markets/i }).first().click();
   const marketEvaluations = page.getByRole('group', { name: 'Market evaluations' });
   await expect(marketEvaluations.getByRole('button', { name: /BTC-PERP/ })).toBeVisible();
   await marketEvaluations.getByRole('button', { name: /ETH-PERP/ }).click();
   await expect(page.getByRole('heading', { name: 'ETH-PERP evaluation' })).toBeVisible();
-  await expect(page.getByText('ETH entry conditions passed')).toBeVisible();
+  const traceEvents = page.getByRole('list', { name: 'Events for ETH-PERP' });
+  await expect(traceEvents.getByText('action proposed')).toBeVisible();
+  await expect(traceEvents.getByText('flow completed')).toBeVisible();
 
   await page.getByRole('button', { name: 'Approve v1' }).click();
   await page.getByRole('button', { name: 'Confirm approval' }).click();
-  await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+  await expect(page.locator('.workbench-header').getByText('Approved', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Run Paper' }).click();
   await expect(page.getByRole('heading', { name: 'Review Paper deployment' })).toBeVisible();

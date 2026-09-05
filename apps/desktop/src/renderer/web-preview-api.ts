@@ -28,6 +28,12 @@ import {
   type TraceDetail,
   type WorkbenchState,
 } from '@catbots/contracts';
+import type { AuditEvent, JsonValue, StrategyDocument } from '@catbots/strategy-runtime';
+import { replayBacktest } from '@catbots/strategy-runtime/backtest-replay';
+import {
+  buildBundledSampleInputs,
+  bundledSampleDatasetCatalog,
+} from '../shared/bundled-sample-fixture';
 
 type PreviewWorkbench = {
   revisions: StrategyRevision[];
@@ -329,6 +335,7 @@ function previewRevision(botId: string, version: number, createdAt: string): Str
       { id: 'exit-hourly', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' },
       { id: 'exit-eth', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'Market symbol = ETH-PERP' },
       { id: 'rsi-high', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'RSI 14 > 80' },
+      { id: 'exit-long', kind: 'condition', type: 'predicate.position_state', version: 2, title: 'Position state', summary: 'Current market position is long' },
       { id: 'exit-rules', kind: 'condition', type: 'combine.all', version: 1, title: 'ALL', summary: 'All conditions must pass' },
       { id: 'close-long', kind: 'action', type: 'execution.close_position', version: 1, title: 'Close position', summary: 'Close current-market long' },
     ],
@@ -340,9 +347,11 @@ function previewRevision(botId: string, version: number, createdAt: string): Str
       { id: 'e5', source: 'entry-rules', sourcePort: 'result', target: 'open-long', targetPort: 'condition' },
       { id: 'e6', source: 'exit-hourly', sourcePort: 'activation', target: 'exit-eth', targetPort: 'activation' },
       { id: 'e7', source: 'exit-hourly', sourcePort: 'activation', target: 'rsi-high', targetPort: 'activation' },
-      { id: 'e8', source: 'exit-eth', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
-      { id: 'e9', source: 'rsi-high', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
-      { id: 'e10', source: 'exit-rules', sourcePort: 'result', target: 'close-long', targetPort: 'condition' },
+      { id: 'e8', source: 'exit-hourly', sourcePort: 'activation', target: 'exit-long', targetPort: 'activation' },
+      { id: 'e9', source: 'exit-eth', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e10', source: 'rsi-high', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e11', source: 'exit-long', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e12', source: 'exit-rules', sourcePort: 'result', target: 'close-long', targetPort: 'condition' },
     ],
   };
 }
@@ -354,62 +363,57 @@ function previewBacktest(
   assumptions: BacktestSummary['assumptions'],
 ): { summary: BacktestSummary; traces: TraceDetail[] } {
   const startedAt = new Date().toISOString();
-  const datasetMarkets = ['BTC-PERP', 'ETH-PERP'] as const;
   const selectedMarkets = marketUniverse.mode === 'all_available'
-    ? [...datasetMarkets]
+    ? bundledSampleDatasetCatalog.markets
     : marketUniverse.markets;
-  if (selectedMarkets.some((market) => !datasetMarkets.includes(market as typeof datasetMarkets[number]))) {
+  if (selectedMarkets.some((market) => !bundledSampleDatasetCatalog.markets.includes(market))) {
     throw new Error('Preview Backtest dataset does not cover the requested market');
   }
-  const frames = previewBacktestFrames.filter(({ occurredAt }) => (
-    Date.parse(occurredAt) >= Date.parse(assumptions.from)
-      && Date.parse(occurredAt) <= Date.parse(assumptions.to)
-  ));
-  const traces = frames.flatMap((frame) => previewFrameTraces(
-    revisionVersion,
-    frame,
-    selectedMarkets,
-  ));
-  const hasEthTrade = selectedMarkets.includes('ETH-PERP')
-    && frames.some(({ revision }) => revision === 'bundled:eth-listed')
-    && frames.some(({ revision }) => revision === 'bundled:eth-overbought');
-  const performance = hasEthTrade
-    ? { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' }
-    : { returnPercent: 0, maximumDrawdownPercent: 0, sharpeLike: 0, winRatePercent: 0, tradeCount: 0, fees: '0', funding: '0', endingEquity: assumptions.startingCapital, realizedPnl: '0' };
-  const marketPerformance = [
-    { market: 'BTC-PERP', realizedPnl: '0', tradeCount: 0, winRatePercent: 0, drawdownContributionPercent: 0 },
-    { market: 'ETH-PERP', realizedPnl: hasEthTrade ? '420' : '0', tradeCount: hasEthTrade ? 5 : 0, winRatePercent: hasEthTrade ? 60 : 0, drawdownContributionPercent: hasEthTrade ? 1.1 : 0 },
-  ].filter(({ market }) => selectedMarkets.includes(market));
-  const representedMarkets = new Set(frames.flatMap(({ markets }) => markets));
-  const warnings = [
-    'Bundled synthetic coverage includes only BTC-PERP and ETH-PERP; it does not represent every Hyperliquid market.',
-    'Bundled sample data is synthetic and is not live market data.',
-    ...(frames.length * 2 < 2 ? ['insufficient_history'] : []),
-    ...(Date.parse(assumptions.from) < Date.parse(previewDatasetCoverage.from)
-      || Date.parse(assumptions.to) > Date.parse(previewDatasetCoverage.to)
-      || selectedMarkets.some((market) => !representedMarkets.has(market))
-      ? ['missing_market_coverage'] : []),
-  ];
+  const strategy = previewStrategyDocument(revisionVersion);
+  const result = replayBacktest({
+    strategy,
+    marketUniverse,
+    datasetCoverage: {
+      markets: bundledSampleDatasetCatalog.markets,
+      from: bundledSampleDatasetCatalog.from,
+      to: bundledSampleDatasetCatalog.to,
+    },
+    range: { from: assumptions.from, to: assumptions.to },
+    assumptions: {
+      startingCapital: assumptions.startingCapital,
+      feeRateBps: assumptions.feeRateBps,
+      slippageBps: assumptions.slippageBps,
+      latencyMs: 100,
+      partialFillRatio: 1,
+      maintenanceMarginRate: 0.05,
+    },
+    inputs: buildBundledSampleInputs(strategy, assumptions, (identity) => `preview:${identity}`),
+  }, (identity) => `preview:${identity}`);
+  const childTraces = result.traces.flatMap(({ children }) => children.map(({ evaluation }) => evaluation.trace));
+  const traces = result.traces.flatMap(({ parentTraceId, children }) => children.map(({ market, evaluation }) => (
+    toPreviewTraceDetail(evaluation.trace, parentTraceId, market)
+  )));
   return {
     traces,
     summary: {
       id: crypto.randomUUID(),
       botId,
       revisionVersion,
-      status: 'completed',
+      status: result.status,
       dataSource: 'Bundled sample data',
       startedAt,
       completedAt: new Date().toISOString(),
       assumptions,
-      metrics: performance,
-      datasetCoverage: { markets: [...datasetMarkets], ...previewDatasetCoverage },
-      perMarket: marketPerformance,
-      equityCurve: [
-        { timestamp: assumptions.from, equity: assumptions.startingCapital },
-        { timestamp: assumptions.to, equity: hasEthTrade ? String(Number(assumptions.startingCapital) * 1.042) : assumptions.startingCapital },
+      metrics: result.metrics,
+      datasetCoverage: { ...result.datasetCoverage, markets: [...result.datasetCoverage.markets] },
+      perMarket: [...result.perMarket],
+      equityCurve: [...result.equityCurve],
+      trades: toPreviewBacktestTrades(result.trades, childTraces),
+      warnings: [
+        bundledSampleDatasetCatalog.limitations,
+        'Bundled sample data is synthetic and is not live market data.',
+        ...result.warnings,
       ],
-      trades: [],
-      warnings,
       traces: traces.map(({ traceId, parentTraceId: parentId, market, outcome, events }) => ({
         traceId,
         parentTraceId: parentId,
@@ -423,58 +427,98 @@ function previewBacktest(
   };
 }
 
-const previewDatasetCoverage = Object.freeze({
-  from: '2026-08-01T00:00:00.000Z',
-  to: '2026-09-01T00:00:00.000Z',
-});
+function previewStrategyDocument(version: number): StrategyDocument {
+  return {
+    schemaVersion: '2.0',
+    strategy: { id: 'preview-eth-rsi', name: 'ETH RSI', version },
+    marketScope: { type: 'dex_universe' },
+    nodes: [
+      { id: 'entry-hourly', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
+      { id: 'entry-eth', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'ETH-PERP' } } },
+      { id: 'rsi-low', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'indicator.rsi.14', field: 'value' }, operator: 'lt', right: { literal: 20 } } },
+      { id: 'entry-rules', kind: 'condition', type: 'combine.all', version: 1, config: {} },
+      { id: 'open-long', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'equity_percent', value: 10 } } },
+      { id: 'exit-hourly', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
+      { id: 'exit-eth', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'ETH-PERP' } } },
+      { id: 'rsi-high', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'indicator.rsi.14', field: 'value' }, operator: 'gt', right: { literal: 80 } } },
+      { id: 'exit-long', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'long' } },
+      { id: 'exit-rules', kind: 'condition', type: 'combine.all', version: 1, config: {} },
+      { id: 'close-long', kind: 'action', type: 'execution.close_position', version: 1, config: { side: 'long', percent: 100 } },
+    ],
+    edges: [
+      { id: 'e1', source: 'entry-hourly', sourcePort: 'activation', target: 'entry-eth', targetPort: 'activation' },
+      { id: 'e2', source: 'entry-hourly', sourcePort: 'activation', target: 'rsi-low', targetPort: 'activation' },
+      { id: 'e3', source: 'entry-eth', sourcePort: 'result', target: 'entry-rules', targetPort: 'conditions' },
+      { id: 'e4', source: 'rsi-low', sourcePort: 'result', target: 'entry-rules', targetPort: 'conditions' },
+      { id: 'e5', source: 'entry-rules', sourcePort: 'result', target: 'open-long', targetPort: 'condition' },
+      { id: 'e6', source: 'exit-hourly', sourcePort: 'activation', target: 'exit-eth', targetPort: 'activation' },
+      { id: 'e7', source: 'exit-hourly', sourcePort: 'activation', target: 'rsi-high', targetPort: 'activation' },
+      { id: 'e8', source: 'exit-hourly', sourcePort: 'activation', target: 'exit-long', targetPort: 'activation' },
+      { id: 'e9', source: 'exit-eth', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e10', source: 'rsi-high', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e11', source: 'exit-long', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e12', source: 'exit-rules', sourcePort: 'result', target: 'close-long', targetPort: 'condition' },
+    ],
+  };
+}
 
-const previewBacktestFrames = Object.freeze([
-  Object.freeze({ occurredAt: '2026-08-10T00:00:00.000Z', revision: 'bundled:before-eth-listing', markets: Object.freeze(['BTC-PERP']) }),
-  Object.freeze({ occurredAt: '2026-08-20T00:00:00.000Z', revision: 'bundled:eth-listed', markets: Object.freeze(['BTC-PERP', 'ETH-PERP']) }),
-  Object.freeze({ occurredAt: '2026-08-28T00:00:00.000Z', revision: 'bundled:eth-overbought', markets: Object.freeze(['BTC-PERP', 'ETH-PERP']) }),
-]);
+function toPreviewTraceDetail(trace: readonly AuditEvent[], parentTraceId: string, market: string): TraceDetail {
+  const types = new Set(trace.map(({ type }) => type));
+  const outcome = types.has('flow.failed') ? 'failed'
+    : types.has('execution.rejected') ? 'rejected'
+      : types.has('flow.skipped') ? 'skipped'
+        : types.has('flow.completed') ? 'executed'
+          : 'unknown';
+  return {
+    traceId: trace[0]?.traceId ?? 'unknown-trace',
+    parentTraceId,
+    market,
+    outcome,
+    events: trace.map((event) => ({
+      sequence: event.sequence,
+      type: event.type,
+      occurredAt: event.createdAt,
+      ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+      summary: event.type.replaceAll('.', ' '),
+      details: safePreviewTraceDetails(event),
+    })),
+  };
+}
 
-function previewFrameTraces(
-  revisionVersion: number,
-  frame: typeof previewBacktestFrames[number],
-  selectedMarkets: readonly string[],
-): TraceDetail[] {
-  return (['entry', 'exit'] as const).flatMap((flow) => {
-    const triggerNodeId = flow === 'entry' ? 'entry-hourly' : 'exit-hourly';
-    const parentTraceId = `preview:strategy:eth-rsi:v${revisionVersion}:trigger:interval:${triggerNodeId}:${encodeURIComponent(frame.occurredAt)}:dex:hyperliquid:universe:${encodeURIComponent(frame.revision)}`;
-    return frame.markets
-      .filter((market) => selectedMarkets.includes(market))
-      .map((market): TraceDetail => {
-        const conditionPassed = market === 'ETH-PERP'
-          && (flow === 'entry' ? frame.revision === 'bundled:eth-listed' : frame.revision === 'bundled:eth-overbought');
-        const conditionNodeId = flow === 'entry' ? 'entry-rules' : 'exit-rules';
-        const actionNodeId = flow === 'entry' ? 'open-long' : 'close-long';
-        const actionSummary = flow === 'entry' ? 'sample ETH long entry completed' : 'sample ETH long close completed';
-        return {
-          traceId: `${parentTraceId}:market:${market}`,
-          parentTraceId,
-          market,
-          outcome: conditionPassed ? 'executed' : 'skipped',
-          events: [
-            { sequence: 1, type: 'trigger.received', occurredAt: frame.occurredAt, nodeId: triggerNodeId, summary: 'trigger received', details: {} },
-            {
-              sequence: 2,
-              type: 'condition.evaluated',
-              occurredAt: frame.occurredAt,
-              nodeId: conditionNodeId,
-              summary: conditionPassed ? `ETH ${flow} conditions passed` : `${market} ${flow} conditions did not pass`,
-              details: { result: conditionPassed, inputs: [{ ref: 'market.symbol' }, { ref: 'indicator.rsi', field: '14' }] },
-            },
-            {
-              sequence: 3,
-              type: 'flow.completed',
-              occurredAt: frame.occurredAt,
-              ...(conditionPassed ? { nodeId: actionNodeId } : {}),
-              summary: conditionPassed ? actionSummary : 'flow skipped',
-              details: {},
-            },
-          ],
-        };
-      });
-  });
+function safePreviewTraceDetails(event: AuditEvent): Record<string, unknown> {
+  if (event.type !== 'condition.evaluated') return {};
+  const result = event.details.result;
+  return result === true || result === false || result === 'unknown' ? { result } : {};
+}
+
+function toPreviewBacktestTrades(
+  trades: readonly Readonly<Record<string, JsonValue>>[],
+  traces: readonly (readonly AuditEvent[])[],
+): BacktestSummary['trades'] {
+  const traceIdsByEffect = new Map<string, string>();
+  for (const trace of traces) {
+    for (const event of trace) {
+      const effectIdempotencyKey = event.details.effectIdempotencyKey;
+      if (event.type === 'execution.queued' && typeof effectIdempotencyKey === 'string') {
+        traceIdsByEffect.set(effectIdempotencyKey, event.traceId);
+      }
+    }
+  }
+  return trades.map((trade, index) => ({
+    traceId: typeof trade.effectIdempotencyKey === 'string'
+      ? traceIdsByEffect.get(trade.effectIdempotencyKey) ?? `trade:${index + 1}`
+      : `trade:${index + 1}`,
+    market: requiredPreviewTradeString(trade.market),
+    side: trade.positionSide === 'short' ? 'short' as const : 'long' as const,
+    openedAt: requiredPreviewTradeString(trade.openedAt ?? trade.timestamp),
+    closedAt: requiredPreviewTradeString(trade.timestamp),
+    entryPrice: requiredPreviewTradeString(trade.entryPrice ?? trade.price),
+    exitPrice: requiredPreviewTradeString(trade.price),
+    realizedPnl: requiredPreviewTradeString(trade.realizedPnl ?? '0'),
+  }));
+}
+
+function requiredPreviewTradeString(value: JsonValue | undefined): string {
+  if (typeof value !== 'string' || value.length === 0) throw new Error('Preview Backtest trade is invalid');
+  return value;
 }

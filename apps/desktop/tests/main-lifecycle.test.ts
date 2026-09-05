@@ -176,6 +176,40 @@ const llmTester = vi.hoisted(() => ({
   testLlmConnection: vi.fn(async () => ({ ok: true as const, model: 'fixture-model' })),
 }));
 
+const dataDirectory = vi.hoisted(() => {
+  const isUnsignedDevelopmentBuild = vi.fn(() => false);
+  const isUnsignedE2ETestProcess = vi.fn(() => false);
+  const resolveApplicationDataDirectory = vi.fn(async (options: Readonly<{
+    defaultDirectory: string;
+    environment: NodeJS.ProcessEnv;
+  }>) => options.defaultDirectory);
+  return {
+    isUnsignedDevelopmentBuild,
+    isUnsignedE2ETestProcess,
+    resolveApplicationDataDirectory,
+    reset: () => {
+      isUnsignedDevelopmentBuild.mockReset();
+      isUnsignedDevelopmentBuild.mockReturnValue(false);
+      isUnsignedE2ETestProcess.mockReset();
+      isUnsignedE2ETestProcess.mockReturnValue(false);
+      resolveApplicationDataDirectory.mockReset();
+      resolveApplicationDataDirectory.mockImplementation(async (options) => options.defaultDirectory);
+    },
+  };
+});
+
+const hyperliquid = vi.hoisted(() => ({
+  createPublicClient: vi.fn(() => ({ getMeta: vi.fn() })),
+}));
+
+const hyperliquidAdapter = vi.hoisted(() => {
+  const getMarkets = vi.fn(async () => []);
+  const HyperliquidAdapter = vi.fn(function HyperliquidAdapterMock() {
+    return { getMarkets };
+  });
+  return { getMarkets, HyperliquidAdapter };
+});
+
 const universeCache = vi.hoisted(() => {
   const initialize = vi.fn(async (_signal: AbortSignal) => ({
     dex: 'hyperliquid', revision: 'sha256:lifecycle', observedAt: '2026-09-05T00:00:00.000Z', markets: [],
@@ -204,6 +238,13 @@ vi.mock('../src/main/runtime/runtime-supervisor', () => ({ RuntimeSupervisor: ru
 vi.mock('../src/main/tray/create-tray', () => ({ createTray: tray.create }));
 vi.mock('../src/main/llm/test-llm-connection', () => llmTester);
 vi.mock('../src/main/execution/market-universe-cache', () => ({ MarketUniverseCache: universeCache.MarketUniverseCache }));
+vi.mock('../src/main/data-directory', () => dataDirectory);
+vi.mock('../src/main/execution/hyperliquid/hyperliquid-client', () => ({
+  createHyperliquidPublicClient: hyperliquid.createPublicClient,
+}));
+vi.mock('../src/main/execution/hyperliquid/hyperliquid-adapter', () => ({
+  HyperliquidAdapter: hyperliquidAdapter.HyperliquidAdapter,
+}));
 
 describe('main window lifecycle', () => {
   beforeEach(() => {
@@ -216,7 +257,12 @@ describe('main window lifecycle', () => {
     runtime.reset();
     tray.reset();
     llmTester.testLlmConnection.mockClear();
+    dataDirectory.reset();
+    hyperliquid.createPublicClient.mockClear();
+    hyperliquidAdapter.HyperliquidAdapter.mockClear();
+    hyperliquidAdapter.getMarkets.mockClear();
     universeCache.reset();
+    vi.unstubAllEnvs();
   });
 
   it('keeps the application process alive when the last window closes', async () => {
@@ -261,6 +307,56 @@ describe('main window lifecycle', () => {
 
     expect(periodicSignal?.aborted).toBe(true);
     expect(universeCache.stopPeriodicRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('uses the public Hyperliquid universe client during normal startup', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(hyperliquid.createPublicClient).toHaveBeenCalledOnce();
+    expect(hyperliquidAdapter.HyperliquidAdapter).toHaveBeenCalledOnce();
+  });
+
+  it('uses a deterministic local universe without constructing a public client in a validated E2E session', async () => {
+    const isolatedDirectory = '/private/tmp/catbots-e2e-abcdef';
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('CATBOTS_E2E_DATA_DIR', isolatedDirectory);
+    dataDirectory.isUnsignedDevelopmentBuild.mockReturnValue(true);
+    dataDirectory.isUnsignedE2ETestProcess.mockReturnValue(true);
+    dataDirectory.resolveApplicationDataDirectory.mockResolvedValue(isolatedDirectory);
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(hyperliquid.createPublicClient).not.toHaveBeenCalled();
+    expect(hyperliquidAdapter.HyperliquidAdapter).not.toHaveBeenCalled();
+    const cacheOptions = (universeCache.MarketUniverseCache.mock.calls as unknown as Array<[{
+      adapter: { getMarkets(signal: AbortSignal): Promise<readonly unknown[]> };
+    }]>)[0]![0];
+    await expect(cacheOptions.adapter.getMarkets(new AbortController().signal)).resolves.toEqual([
+      { market: 'BTC-PERP', baseAsset: 'BTC', quoteAsset: 'USDC', active: true, sizeDecimals: 5, maximumLeverage: 40 },
+      { market: 'ETH-PERP', baseAsset: 'ETH', quoteAsset: 'USDC', active: true, sizeDecimals: 4, maximumLeverage: 30 },
+    ]);
+    expect(universeCache.initialize).toHaveBeenCalledOnce();
+    expect(universeCache.startPeriodicRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('does not enable the local universe when the requested E2E directory was not accepted', async () => {
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('CATBOTS_E2E_DATA_DIR', '/private/tmp/catbots-e2e-abcdef');
+    dataDirectory.isUnsignedDevelopmentBuild.mockReturnValue(true);
+    dataDirectory.isUnsignedE2ETestProcess.mockReturnValue(true);
+    dataDirectory.resolveApplicationDataDirectory.mockResolvedValue('/test-user-data');
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(hyperliquid.createPublicClient).toHaveBeenCalledOnce();
+    expect(hyperliquidAdapter.HyperliquidAdapter).toHaveBeenCalledOnce();
   });
 
   it('opens offline, starts periodic universe recovery, and reports no network details', async () => {

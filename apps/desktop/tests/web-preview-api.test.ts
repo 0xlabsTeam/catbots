@@ -96,7 +96,9 @@ describe('web preview API', () => {
       expect.objectContaining({ parentTraceId: listedParent, market: 'BTC-PERP' }),
       expect.objectContaining({ parentTraceId: listedParent, market: 'ETH-PERP' }),
     ]));
-    expect(trace.events.map(({ type }) => type)).toEqual(['trigger.received', 'condition.evaluated', 'flow.completed']);
+    expect(trace.events[0]?.type).toBe('trigger.received');
+    expect(trace.events.map(({ type }) => type)).toContain('condition.evaluated');
+    expect(trace.events.at(-1)?.type).toBe('flow.skipped');
     expect(TraceDetailSchema.parse(trace)).toEqual(trace);
     expect(approved.status).toBe('approved');
     expect(activities).toContain('thinking');
@@ -241,6 +243,65 @@ describe('web preview API', () => {
     expect(new Set(result.traces.map(({ occurredAt }) => occurredAt))).toEqual(new Set(['2026-08-20T00:00:00.000Z']));
     expect(result.traces.some(({ parentTraceId }) => parentTraceId.includes('bundled%3Aeth-listed'))).toBe(true);
     expect(result.traces.some(({ parentTraceId }) => parentTraceId.includes('bundled%3Aeth-overbought'))).toBe(false);
+    expect(result.traces.filter(({ market }) => market === 'ETH-PERP').map(({ outcome }) => outcome))
+      .toEqual(['executed', 'skipped']);
+    expect(result.metrics.tradeCount).toBe(0);
+    expect(result.trades).toEqual([]);
+  });
+
+  it('does not execute an exit when the selected range has no earlier entry', async () => {
+    const api = createWebPreviewApi();
+    const bot = await api.bots.createDraft({ name: 'ETH RSI', dex: 'hyperliquid' });
+    await api.workbench.sendMessage({ botId: bot.id, message: 'Trade ETH RSI' });
+
+    const result = await api.workbench.runBacktest({
+      botId: bot.id,
+      revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
+      assumptions: {
+        from: '2026-08-25T00:00:00.000Z',
+        to: '2026-09-01T00:00:00.000Z',
+        startingCapital: '10000',
+        feeRateBps: 3.5,
+        slippageBps: 1,
+      },
+    });
+
+    expect(result.traces.filter(({ market }) => market === 'ETH-PERP').map(({ outcome }) => outcome))
+      .toEqual(['skipped', 'skipped']);
+    expect(result.traces.some(({ outcome }) => outcome === 'executed')).toBe(false);
+    expect(result.metrics).toMatchObject({ tradeCount: 0, realizedPnl: '0' });
+    expect(result.trades).toEqual([]);
+  });
+
+  it('derives a completed long trade and metrics from the entry and close replay', async () => {
+    const api = createWebPreviewApi();
+    const bot = await api.bots.createDraft({ name: 'ETH RSI', dex: 'hyperliquid' });
+    await api.workbench.sendMessage({ botId: bot.id, message: 'Trade ETH RSI' });
+
+    const result = await api.workbench.runBacktest({
+      botId: bot.id,
+      revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
+      assumptions: {
+        from: '2026-08-01T00:00:00.000Z',
+        to: '2026-09-01T00:00:00.000Z',
+        startingCapital: '10000',
+        feeRateBps: 3.5,
+        slippageBps: 1,
+      },
+    });
+
+    const ethExecuted = result.traces.filter(({ market, outcome }) => market === 'ETH-PERP' && outcome === 'executed');
+    expect(ethExecuted).toHaveLength(2);
+    expect(ethExecuted.map(({ summary }) => summary)).toEqual(['flow completed', 'flow completed']);
+    expect(result.metrics.tradeCount).toBe(1);
+    expect(result.trades).toEqual([
+      expect.objectContaining({ market: 'ETH-PERP', side: 'long', openedAt: '2026-08-20T00:00:00.100Z', closedAt: '2026-08-28T00:00:00.100Z' }),
+    ]);
+    expect(Number(result.metrics.endingEquity)).toBeGreaterThan(Number(result.assumptions.startingCapital));
+    expect(result.perMarket.find(({ market }) => market === 'ETH-PERP')?.tradeCount).toBe(1);
+    expect(result.perMarket.find(({ market }) => market === 'BTC-PERP')?.tradeCount).toBe(0);
   });
 
   it('reports missing coverage without inventing traces outside the bundled range', async () => {

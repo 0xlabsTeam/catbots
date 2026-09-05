@@ -17,7 +17,17 @@ type DurableWorkflowSnapshot = {
   revision: { version: number; schemaVersion: string; status: string; marketScope?: { type: string } };
   backtest: { status: string; datasetCoverage: { markets: string[] }; traces: Array<{ market: string }> };
   deployment: { id: string; recordVersion: number; dex?: string; mode: string; status: string; marketAccess?: { mode: string } };
-  auditEvents: Array<{ type: string; summary: string; market?: string; dex?: string; universeRevision?: string }>;
+  auditEvents: Array<{
+    id: string;
+    traceId: string;
+    sequence: number;
+    type: string;
+    summary: string;
+    parentTraceId?: string;
+    market?: string;
+    dex?: string;
+    universeRevision?: string;
+  }>;
 };
 
 type RunningApplication = {
@@ -291,6 +301,9 @@ test('packaged local workflow persists an approved dynamic Paper run across rest
     expect(seeded.auditEvents.some(({ market }) => market === 'ETH-PERP')).toBe(true);
     expect(seeded.auditEvents.some(({ dex, universeRevision }) => (
       dex === 'hyperliquid' && universeRevision === 'e2e:dynamic-universe'
+    ))).toBe(true);
+    expect(seeded.auditEvents.every(({ id, traceId, sequence }) => (
+      id.length > 0 && traceId.length > 0 && Number.isInteger(sequence) && sequence > 0
     ))).toBe(true);
     expect(JSON.stringify(seeded)).not.toContain(secret);
     expect(JSON.stringify(seeded)).not.toContain('catbots.e2e-fixture');
