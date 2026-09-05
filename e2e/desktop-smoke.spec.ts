@@ -144,7 +144,7 @@ test('fresh install reaches local-profile onboarding', async () => {
   try {
     ({ app, dataDirectory, process } = await launchFreshApplication());
     const window = await app.firstWindow();
-    await expect(window.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'Connect your AI provider' })).toBeVisible();
   } finally {
     await closeApplication(app, process, dataDirectory);
   }
@@ -161,7 +161,7 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     running = await launchApplication(dataDirectory);
     logBuffers.push(running.logs);
     const onboarding = await running.app.firstWindow();
-    await expect(onboarding.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
+    await expect(onboarding.getByRole('heading', { name: 'Connect your AI provider' })).toBeVisible();
     await waitForRuntimeReady(running.app);
 
     const csp = await onboarding.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
@@ -170,7 +170,7 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     expect(csp).not.toContain('ws:');
 
     const profileInput = onboarding.getByLabel('Profile name');
-    const submit = onboarding.getByRole('button', { name: 'Create local profile' });
+    const submit = onboarding.getByRole('button', { name: 'Connect & continue' });
     const styles = await onboarding.evaluate(() => {
       const primary = document.querySelector<HTMLButtonElement>('button[type="submit"]');
       const input = document.querySelector<HTMLInputElement>('#profile-name');
@@ -209,16 +209,13 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     await onboarding.getByLabel('Base URL').fill(provider.baseUrl);
     await onboarding.getByLabel('API key').fill(secret);
     await onboarding.getByLabel('Model').fill('e2e-fixture-model');
-    await onboarding.getByRole('button', { name: 'Test connection' }).click();
-    await expect(onboarding.getByText('Connection successful')).toBeVisible();
+    await submit.click();
     await expect.poll(() => provider.requests.length).toBe(1);
     expect(provider.requests[0]).toEqual({
       authorization: `Bearer ${secret}`,
       path: '/v1/chat/completions',
       xApiKey: undefined,
     });
-    await expect(submit).toBeEnabled();
-    await submit.click();
     await expect(onboarding.getByRole('heading', { name: 'Bots', exact: true })).toBeVisible();
     await requestConfirmedQuit(running);
     running = undefined;
@@ -298,7 +295,7 @@ test('close-to-tray lifecycle keeps the runtime alive and native quit respects c
       await seam.openMainWindow();
     });
     const reopened = await reopenedPromise;
-    await expect(reopened.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
+    await expect(reopened.getByRole('heading', { name: 'Connect your AI provider' })).toBeVisible();
 
     await app.evaluate(async () => {
       const seam = (globalThis as typeof globalThis & { __catbotsE2E?: LifecycleTestSeam }).__catbotsE2E;

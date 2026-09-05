@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Banner, Button, Dialog, Input, LayerCard, Meter, Select, Switch, Tooltip } from '@cloudflare/kumo';
-import { CheckCircleIcon, DesktopTowerIcon, InfoIcon, LockKeyIcon } from '@phosphor-icons/react';
+import { Banner, Button, Dialog, Input, LayerCard, Select, Switch, Tooltip } from '@cloudflare/kumo';
+import { DesktopTowerIcon, InfoIcon } from '@phosphor-icons/react';
 import {
   CompatibleProviderUrlSchema,
   hasSameLlmCredentialScope,
@@ -41,15 +41,24 @@ function isPermittedProviderUrl(value: string): boolean {
   return CompatibleProviderUrlSchema.safeParse(value).success;
 }
 
+function effectiveProviderBaseUrl(state: Pick<FormState, 'provider' | 'baseUrl'>): string {
+  const value = state.baseUrl.trim();
+  if (state.provider !== 'openai-compatible' || !isPermittedProviderUrl(value)) return value;
+  const url = new URL(value);
+  if (url.pathname !== '/') return value;
+  url.pathname = '/v1';
+  return url.toString();
+}
+
 function hasChangedStoredCredentialScope(state: FormState, config?: RedactedLocalConfig): boolean {
   if (config === undefined) return false;
-  const baseUrl = state.baseUrl.trim();
+  const baseUrl = effectiveProviderBaseUrl(state);
   if (!isPermittedProviderUrl(baseUrl)) return false;
   return !hasSameLlmCredentialScope(config.llm, { provider: state.provider, baseUrl });
 }
 
 function connectionApprovalBinding(state: FormState, replacementKeyRevision: number): string | null {
-  const baseUrl = state.baseUrl.trim();
+  const baseUrl = effectiveProviderBaseUrl(state);
   if (!isPermittedProviderUrl(baseUrl)) return null;
   return JSON.stringify({
     provider: state.provider,
@@ -83,7 +92,7 @@ function toSettingsPatch(state: FormState, config?: RedactedLocalConfig): LocalS
     profile: { name: state.profileName.trim(), telemetry: state.telemetry },
     llm: {
       provider: state.provider,
-      baseUrl: state.baseUrl.trim(),
+      baseUrl: effectiveProviderBaseUrl(state),
       model: state.model.trim(),
       ...(state.provider === 'openai-compatible' && state.reasoningEffort !== 'auto'
         ? { reasoningEffort: state.reasoningEffort }
@@ -131,7 +140,7 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
     && testedConnectionBinding === currentConnectionBinding
     && !isRequiredApiKeyMissing
     && form.apiKey !== REDACTED_SECRET;
-  const submitLabel = onboarding ? 'Create local profile' : 'Save settings';
+  const submitLabel = onboarding ? 'Connect & continue' : 'Save settings';
 
   useEffect(() => {
     mountedRef.current = true;
@@ -215,11 +224,53 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       if (mountedRef.current && token === saveRequestTokenRef.current) setIsSaving(false);
     }
   };
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void save(); };
+  const connectAndSave = async (): Promise<void> => {
+    if (isTestingRef.current || isSavingRef.current) return;
+    if (!validateForm()) return;
+    const testToken = testRequestTokenRef.current + 1;
+    testRequestTokenRef.current = testToken;
+    const saveToken = saveRequestTokenRef.current + 1;
+    saveRequestTokenRef.current = saveToken;
+    const submittedRevision = formRevisionRef.current;
+    const submittedProviderRevision = providerRevisionRef.current;
+    const submittedPatch = toSettingsPatch(form, config);
+    isTestingRef.current = true;
+    setTestedConnectionBinding(null);
+    setIsTesting(true);
+    setConnection({ state: 'testing' });
+    try {
+      const result = await api.testLlmConnection(submittedPatch);
+      if (!mountedRef.current || testToken !== testRequestTokenRef.current || submittedProviderRevision !== providerRevisionRef.current) return;
+      if (!result.ok) {
+        setConnection({ state: 'error', code: mapExternalConnectionErrorCode(result.code) });
+        return;
+      }
+
+      isTestingRef.current = false;
+      setIsTesting(false);
+      isSavingRef.current = true;
+      setIsSaving(true);
+      const savedConfig = await api.patchSettings(submittedPatch);
+      if (!mountedRef.current || saveToken !== saveRequestTokenRef.current || submittedRevision !== formRevisionRef.current) return;
+      setForm((previous) => ({ ...previous, apiKey: '', hyperliquidAgentKey: '' }));
+      setConnection({ state: 'saved' });
+      onSaved?.(savedConfig);
+    } catch {
+      if (mountedRef.current && saveToken === saveRequestTokenRef.current && submittedRevision === formRevisionRef.current) {
+        setConnection({ state: 'error', code: isSavingRef.current ? 'save-failed' : 'connection-failed' });
+      }
+    } finally {
+      if (testToken === testRequestTokenRef.current) isTestingRef.current = false;
+      if (saveToken === saveRequestTokenRef.current) isSavingRef.current = false;
+      if (mountedRef.current && testToken === testRequestTokenRef.current) setIsTesting(false);
+      if (mountedRef.current && saveToken === saveRequestTokenRef.current) setIsSaving(false);
+    }
+  };
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void (onboarding ? connectAndSave() : save()); };
   const handleKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
     if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) return;
     event.preventDefault();
-    void save();
+    void (onboarding ? connectAndSave() : save());
   };
 
   const Root = embedded ? 'div' : 'main';
@@ -229,26 +280,24 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
       <section className="setup-intro" aria-labelledby="settings-heading">
         <div className="local-mark" aria-hidden="true"><DesktopTowerIcon weight="duotone" /></div>
         <p className="eyebrow">LOCAL DESKTOP</p>
-        <h1 id="settings-heading">{onboarding ? 'Create your local profile' : 'Settings'}</h1>
-        <p className="lead">{onboarding ? 'Set up a profile and connect an AI provider. Catbots has no cloud account and keeps this configuration on this computer.' : 'Update the local profile and AI provider used by this Catbots installation.'}</p>
-        {onboarding ? <div className="setup-progress" aria-label="Setup progress"><Meter label="Setup checkpoint" value={2} max={2} customValue="2 / 2" /><ol><li className="completed"><CheckCircleIcon aria-hidden="true" weight="fill" /> Local profile</li><li className="active">2 <span>Connect AI provider</span></li></ol></div> : null}
-        <Banner className="local-trust-callout" variant="secondary" icon={<LockKeyIcon aria-hidden="true" weight="duotone" />} title="Your provider key stays local" description="It is sent only to the configured provider when you test it. Catbots never shows it again after saving." />
+        <h1 id="settings-heading">{onboarding ? 'Connect your AI provider' : 'Settings'}</h1>
+        <p className="lead">{onboarding ? 'Name this local workspace and add the AI provider Catbots will use to design and backtest your bots.' : 'Update the local profile and AI provider used by this Catbots installation.'}</p>
       </section>
       <LayerCard render={<section aria-label={onboarding ? 'Local profile setup' : 'Local settings'} />} className="settings-card">
         {repairIssues === undefined ? null : <Banner variant="alert" title="Configuration repair" description={safeRepairPaths.length === 0 ? 'Re-enter the local profile and provider values to repair this configuration.' : <>Review these safe settings fields: {safeRepairPaths.map((path) => <code key={path}>{path}</code>)}</>} />}
-        <header className="form-heading"><p className="eyebrow">{onboarding ? 'STEP 2 OF 2' : 'AI PROVIDER'}</p><h2>{onboarding ? 'Connect your AI provider' : 'Provider connection'}</h2><p>A successful connection test is required before these provider values can be saved.</p></header>
+        <header className="form-heading"><p className="eyebrow">AI PROVIDER</p><h2>{onboarding ? 'Set up Catbots' : 'Provider connection'}</h2><p>{onboarding ? 'Connect once to verify these details, save them locally, and open your bot workspace.' : 'A successful connection test is required before these provider values can be saved.'}</p></header>
         <form className="settings-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate>
           <Input id="profile-name" label="Profile name" value={form.profileName} onChange={(event) => updateForm('profileName', event.currentTarget.value)} variant={errors.profileName === undefined ? 'default' : 'error'} aria-invalid={errors.profileName === undefined ? undefined : true} aria-describedby={errors.profileName === undefined ? undefined : 'profile-name-error'} autoComplete="off" disabled={isSaving} />
           {errors.profileName === undefined ? null : <p id="profile-name-error" role="alert">{errors.profileName}</p>}
           <Switch label="Anonymous telemetry" checked={form.telemetry} onCheckedChange={(value) => updateForm('telemetry', value)} required={false} disabled={isSaving} />
           <Select<Provider> label="Provider" value={form.provider} onValueChange={(value) => updateForm('provider', value as Provider)} error={errors.provider} disabled={isSaving}><Select.Option value="openai-compatible">OpenAI-compatible</Select.Option><Select.Option value="anthropic-compatible">Anthropic-compatible</Select.Option></Select>
-          <Input id="base-url" label="Base URL" value={form.baseUrl} onChange={(event) => updateForm('baseUrl', event.currentTarget.value)} variant={errors.baseUrl === undefined ? 'default' : 'error'} aria-invalid={errors.baseUrl === undefined ? undefined : true} aria-describedby={errors.baseUrl === undefined ? undefined : 'base-url-error'} placeholder="https://api.example.com/v1" autoComplete="url" spellCheck={false} description="Use HTTPS. HTTP is allowed only for localhost, 127.0.0.1, or ::1 on this computer." disabled={isSaving} />
+          <Input id="base-url" label="Base URL" value={form.baseUrl} onChange={(event) => updateForm('baseUrl', event.currentTarget.value)} variant={errors.baseUrl === undefined ? 'default' : 'error'} aria-invalid={errors.baseUrl === undefined ? undefined : true} aria-describedby={errors.baseUrl === undefined ? undefined : 'base-url-error'} placeholder="https://api.example.com/v1" autoComplete="url" spellCheck={false} description="OpenAI-compatible root URLs use /v1 automatically. HTTP is allowed only for localhost, 127.0.0.1, or ::1." disabled={isSaving} />
           {errors.baseUrl === undefined ? null : <p id="base-url-error" role="alert">{errors.baseUrl}</p>}
           <SecretField value={form.apiKey} onValueChange={(value) => updateForm('apiKey', value)} error={errors.apiKey} storedMask={config?.llm.apiKey} requiresReplacement={credentialScopeChanged} disabled={isSaving} />
           <Input id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
           {form.provider === 'openai-compatible' ? <Select<ReasoningEffortSetting> label="Reasoning effort" value={form.reasoningEffort} onValueChange={(value) => updateForm('reasoningEffort', value as ReasoningEffortSetting)} disabled={isSaving}><Select.Option value="auto">Auto</Select.Option><Select.Option value="none">Off</Select.Option><Select.Option value="low">Low</Select.Option><Select.Option value="medium">Medium</Select.Option><Select.Option value="high">High</Select.Option></Select> : null}
-          <section className="exchange-settings" aria-labelledby="hyperliquid-settings-title">
+          {onboarding ? null : <section className="exchange-settings" aria-labelledby="hyperliquid-settings-title">
             <div><p className="eyebrow">LIVE EXECUTION</p><h3 id="hyperliquid-settings-title">Hyperliquid testnet</h3><p>Optional. Use a dedicated Agent/API Wallet. Mainnet is disabled.</p></div>
             <Switch label="Enable Hyperliquid testnet" checked={form.hyperliquidEnabled} onCheckedChange={(value) => updateForm('hyperliquidEnabled', value)} required={false} disabled={isSaving} />
             {form.hyperliquidEnabled ? <>
@@ -256,10 +305,13 @@ export function SettingsScreen({ api, config, repairIssues, onboarding = false, 
               {errors.hyperliquidAccount === undefined ? null : <p id="hyperliquid-account-error" role="alert">{errors.hyperliquidAccount}</p>}
               <SecretField id="hyperliquid-agent-key" label="Agent/API Wallet private key" value={form.hyperliquidAgentKey} onValueChange={(value) => updateForm('hyperliquidAgentKey', value)} error={errors.hyperliquidAgentKey} storedMask={config?.exchanges.hyperliquid?.agentPrivateKey} requiresReplacement={requiresHyperliquidKey} disabled={isSaving} />
             </> : null}
-          </section>
+          </section>}
           <ConnectionTestStatus value={connection} />
-          <div className="form-actions"><Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip><Button type="submit" variant="primary" disabled={!hasPassedCurrentTest || isTesting || isSaving} loading={isSaving}>{submitLabel}</Button></div>
-          <p className="form-footnote"><InfoIcon aria-hidden="true" /> Catbots has no in-app YAML editor. This form is the only way to save local configuration.</p>
+          <div className={`form-actions${onboarding ? ' onboarding-actions' : ''}`}>
+            {onboarding ? null : <Tooltip content="Checks the URL, authentication, model availability, and a minimal provider request." render={<Button type="button" variant="secondary" disabled={isTesting || isSaving || isRequiredApiKeyMissing || form.apiKey === REDACTED_SECRET} onClick={() => void testConnection()} />}>Test connection</Tooltip>}
+            <Button type="submit" variant="primary" disabled={onboarding ? isTesting || isSaving || form.apiKey === REDACTED_SECRET : !hasPassedCurrentTest || isTesting || isSaving} loading={onboarding ? isTesting || isSaving : isSaving}>{submitLabel}</Button>
+          </div>
+          <p className="form-footnote"><InfoIcon aria-hidden="true" /> Your API key is stored locally and sent only to your AI provider.</p>
         </form>
         <Dialog.Root><Dialog.Trigger render={(props) => <Button {...props} className="privacy-dialog-trigger" variant="ghost" size="sm">How is my key handled?</Button>} /><Dialog className="p-8"><Dialog.Title className="text-2xl font-semibold">Local-only credentials</Dialog.Title><Dialog.Description className="mt-2 text-kumo-subtle">Your key is held only by this password field until a successful local save. The stored value is never rendered again.</Dialog.Description><Dialog.Close render={(props) => <Button {...props} className="mt-6" variant="secondary">Close</Button>} /></Dialog></Dialog.Root>
       </LayerCard>

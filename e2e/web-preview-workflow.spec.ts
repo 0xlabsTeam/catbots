@@ -2,15 +2,13 @@ import { expect, test } from '@playwright/test';
 
 test('web preview completes Create → Chat → Flow → Backtest → Paper → Live safety review', async ({ page }) => {
   await page.goto('http://127.0.0.1:4176/web-preview.html');
-  await expect(page.getByRole('heading', { name: 'Create your local profile' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect your AI provider' })).toBeVisible();
 
   await page.getByLabel('Profile name').fill('Preview Trader');
   await page.getByLabel('Base URL').fill('https://api.example.com/v1');
   await page.getByLabel('API key').fill('preview-only-key');
   await page.getByLabel('Model').fill('preview/model');
-  await page.getByRole('button', { name: 'Test connection' }).click();
-  await expect(page.getByText('Connection successful')).toBeVisible();
-  await page.getByRole('button', { name: 'Create local profile' }).click();
+  await page.getByRole('button', { name: 'Connect & continue' }).click();
 
   await page.getByRole('button', { name: 'Create new bot' }).first().click();
   await page.getByLabel('Bot name').fill('BTC Flow Preview');

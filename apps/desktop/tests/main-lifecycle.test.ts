@@ -420,7 +420,7 @@ describe('main window lifecycle', () => {
 
     expect(runtime.stop).toHaveBeenCalledOnce();
     expect(applicationDatabase.close).toHaveBeenCalledOnce();
-    expect(report).toHaveBeenCalledWith('Catbots fatal startup error');
+    expect(report).toHaveBeenCalledWith('Catbots fatal startup error (database)');
     expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
   });
 

@@ -124,21 +124,24 @@ export function restoreProcessOptions(platform = process.platform) {
 }
 
 const nativePath = resolve(root, 'node_modules/better-sqlite3');
-async function restoreHost(onSpawn) {
-  await run(
-    process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['run', 'install', '--prefix', nativePath],
-    root,
-    onSpawn,
-    restoreProcessOptions(),
-  );
+export async function runDesktopCommand(command, options = {}) {
+  const runCommand = options.run ?? run;
+  await runPackaging({
+    rebuildElectron: (onSpawn) => runCommand(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3'], desktop, onSpawn),
+    forge: (onSpawn) => runCommand(resolve(root, 'node_modules/.bin/electron-forge'), [command], desktop, onSpawn),
+    restoreHost: (onSpawn) => runCommand(
+      process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      ['run', 'install', '--prefix', nativePath],
+      root,
+      onSpawn,
+      restoreProcessOptions(),
+    ),
+    signalOptions: options.signalOptions,
+  });
 }
 
 async function main() {
-  await runPackaging({
-    rebuildElectron: (onSpawn) => run(resolve(root, 'node_modules/.bin/electron-rebuild'), ['-f', '-w', 'better-sqlite3'], desktop, onSpawn),
-    forge: (onSpawn) => run(resolve(root, 'node_modules/.bin/electron-forge'), [process.argv[2] ?? 'package'], desktop, onSpawn),
-    restoreHost,
+  await runDesktopCommand(process.argv[2] ?? 'package', {
     signalOptions: {
       on: process.on.bind(process),
       off: process.off.bind(process),

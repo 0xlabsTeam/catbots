@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { createRunner, createSignalController, restoreProcessOptions, runForgeWithSignalHandling, runPackaging, type SpawnedChild } from '../../../scripts/package-desktop.mjs';
+import { createRunner, createSignalController, restoreProcessOptions, runDesktopCommand, runForgeWithSignalHandling, runPackaging, type SpawnedChild } from '../../../scripts/package-desktop.mjs';
 
 function fakeChild(): SpawnedChild {
   const child = new EventEmitter() as SpawnedChild;
@@ -9,6 +9,22 @@ function fakeChild(): SpawnedChild {
 }
 
 describe('package orchestrator runner', () => {
+  it('runs Electron native rebuild, Forge start, and host ABI restoration in order for development', async () => {
+    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const run = async (command: string, args: string[], cwd?: string) => {
+      calls.push({ command, args, cwd: cwd ?? '' });
+    };
+
+    await runDesktopCommand('start', { run });
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toMatchObject({ args: ['-f', '-w', 'better-sqlite3'], cwd: expect.stringMatching(/apps\/desktop$/) });
+    expect(calls[0]?.command).toMatch(/electron-rebuild$/);
+    expect(calls[1]).toMatchObject({ args: ['start'], cwd: expect.stringMatching(/apps\/desktop$/) });
+    expect(calls[1]?.command).toMatch(/electron-forge$/);
+    expect(calls[2]).toMatchObject({ args: ['run', 'install', '--prefix', expect.stringMatching(/node_modules\/better-sqlite3$/)] });
+  });
+
   it('uses the desktop directory by default and propagates nonzero child exits', async () => {
     const calls: Array<{ cwd: string }> = [];
     const run = createRunner((_command: string, _args: string[], options: { cwd: string }) => {

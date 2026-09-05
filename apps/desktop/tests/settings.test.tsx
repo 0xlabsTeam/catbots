@@ -37,6 +37,13 @@ function deferred<T>() {
 describe('SettingsScreen', () => {
   afterEach(cleanup);
 
+  it('keeps optional exchange credentials out of the first-launch provider flow', () => {
+    render(<SettingsScreen api={makeApi()} onboarding />);
+
+    expect(screen.queryByRole('switch', { name: /Enable Hyperliquid testnet/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Connect & continue' })).toBeTruthy();
+  });
+
   it('saves an explicit reasoning effort as part of the tested provider configuration', async () => {
     const user = userEvent.setup();
     const api = makeApi();

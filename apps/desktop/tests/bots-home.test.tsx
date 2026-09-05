@@ -86,6 +86,14 @@ async function saveProviderSettings(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: /Create local profile|Save settings/ }));
 }
 
+async function connectFirstLaunchProvider(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText('Profile name'), 'My Trading');
+  await user.type(screen.getByLabelText('Base URL'), 'https://api.example.com/v1');
+  await user.type(screen.getByLabelText('API key'), 'renderer-only-secret');
+  await user.type(screen.getByLabelText('Model'), 'provider/model');
+  await user.click(screen.getByRole('button', { name: 'Connect & continue' }));
+}
+
 describe('BotsHomeScreen', () => {
   afterEach(cleanup);
 
@@ -262,13 +270,13 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: 'Local settings' }).className).toContain('ring-kumo-line');
   });
 
-  it('moves first launch into the shell after saving the local profile', async () => {
+  it('tests, saves, and moves first launch into the shell with one primary action', async () => {
     const user = userEvent.setup();
     window.catbots = makeDesktopApi({ state: 'first-launch' });
     render(<App api={window.catbots} />);
 
-    await screen.findByRole('heading', { name: 'Create your local profile' });
-    await saveProviderSettings(user);
+    await screen.findByRole('heading', { name: 'Connect your AI provider' });
+    await connectFirstLaunchProvider(user);
     expect(await screen.findByRole('heading', { name: 'Bots' })).toBeTruthy();
   });
 

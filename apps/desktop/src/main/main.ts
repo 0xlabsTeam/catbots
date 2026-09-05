@@ -29,11 +29,13 @@ let tray: TrayController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let quitting = false;
 let e2eQuitResponse: number | undefined;
+let startupPhase = 'waiting-for-electron';
 
 app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
+    startupPhase = 'permission-policy';
     installM0PermissionPolicy(session.defaultSession);
     const e2eRequested = process.env.NODE_ENV === 'test' && process.env.CATBOTS_E2E_DATA_DIR !== undefined;
     const unsignedBuild = e2eRequested && isUnsignedDevelopmentBuild({
@@ -44,6 +46,7 @@ void app.whenReady()
       platform: process.platform,
     });
     const e2eAllowed = isUnsignedE2ETestProcess(process.env, unsignedBuild);
+    startupPhase = 'data-directory';
     const dataDirectory = await resolveApplicationDataDirectory({
       defaultDirectory: app.getPath('userData'),
       environment: process.env,
@@ -51,13 +54,16 @@ void app.whenReady()
       protectedDirectories: [app.getAppPath(), app.getPath('userData')],
       temporaryRoot: tmpdir(),
     });
+    startupPhase = 'database';
     const connection = database.start(dataDirectory);
 
+    startupPhase = 'application-protocol';
     registerAppProtocol({
       rendererDirectory: join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`),
       developmentServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
     });
 
+    startupPhase = 'services';
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
     const workbenchRepository = new WorkbenchRepository(connection);
@@ -68,7 +74,9 @@ void app.whenReady()
       configRepository,
       runtimeReady: () => runtime.getStatus().state === 'ready',
     });
+    startupPhase = 'runtime';
     runtime.start();
+    startupPhase = 'ipc';
     disposeIpcHandlers = registerIpcHandlers({
       app: {
         getVersion: () => app.getVersion(),
@@ -82,6 +90,7 @@ void app.whenReady()
       runtime,
       testLlmConnection,
     });
+    startupPhase = 'tray';
     tray = createTray({
       iconPath: app.isPackaged
         ? join(process.resourcesPath, 'trayTemplate.png')
@@ -102,11 +111,13 @@ void app.whenReady()
         },
       });
     }
+    startupPhase = 'main-window';
     await openMainWindow();
+    startupPhase = 'ready';
   })
   .catch(async () => {
     await shutdown();
-    console.error('Catbots fatal startup error');
+    console.error(`Catbots fatal startup error (${startupPhase})`);
     quitting = true;
     app.quit();
   });

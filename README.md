@@ -100,6 +100,8 @@ Missing or stale data produces an unknown/failed path rather than an optimistic 
 
 ## Quick start
 
+The current release is macOS-only. Windows and Linux packaging is not supported yet.
+
 ### Requirements
 
 - macOS
