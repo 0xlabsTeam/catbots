@@ -130,7 +130,7 @@ describe('runAgentTurn', () => {
     expect(state.currentRevision).toMatchObject({ version: 1, status: 'draft', approvedAt: null });
   });
 
-  it('persists a named-pair RSI strategy as dynamic Strategy 2.0 without inventing a short', async () => {
+  it('records the FakeProvider interpretation contract for named-pair ETH RSI intent', async () => {
     const provider = new FakeProvider([
       { text: '', toolCalls: [{ id: 'eth-rsi', name: 'validate_strategy', arguments: parseJsonValue({ strategy: ethRsiStrategy }) }] },
       { text: 'Draft v1 buys and closes ETH according to RSI.', toolCalls: [] },

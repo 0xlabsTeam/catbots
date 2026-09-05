@@ -102,6 +102,7 @@ export class WorkbenchService {
       {
         clock: this.dependencies.clock,
         idFactory: this.dependencies.idFactory,
+        trustedLegacyMarketBinding: this.dependencies.repository.getStoredIdentity(request.botId).legacyMarketHint,
         onProgress: (completed, total) => this.publish(AgentToolActivitySchema.parse({
           botId: request.botId,
           requestId,

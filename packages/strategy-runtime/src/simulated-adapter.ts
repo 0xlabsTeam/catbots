@@ -269,6 +269,7 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     this.#ledger.push(Object.freeze({
       type: 'fill', timestamp: filledAt, market: effect.market, side,
       quantity: decimal(quantity), price: decimal(fillPrice), fee: decimal(fee), effectType: effect.type,
+      effectIdempotencyKey: effect.idempotencyKey, actionNodeId: effect.nodeId,
     }));
     return { events: this.#fillEvents(effect, quantity, fillPrice, fee, filledAt) };
   }
@@ -298,6 +299,7 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
       side: position.side === 'long' ? 'short' : 'long', quantity: decimal(quantity),
       positionSide: position.side, entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
       price: decimal(fillPrice), fee: decimal(fee), realizedPnl: decimal(pnl), effectType: effect.type,
+      effectIdempotencyKey: effect.idempotencyKey, actionNodeId: effect.nodeId,
     }));
     return { events: this.#fillEvents(effect, quantity, fillPrice, fee, filledAt) };
   }

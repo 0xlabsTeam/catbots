@@ -41,7 +41,10 @@ export type SampleBacktestDependencies = Readonly<{
   idFactory?: () => string;
   shouldCancel?: () => boolean;
   onProgress?: (completed: number, total: number) => void;
+  trustedLegacyMarketBinding?: string | null;
 }>;
+
+export const legacyStrategyMarketMigrationRequired = 'LEGACY_STRATEGY_MARKET_MIGRATION_REQUIRED';
 
 export function runBundledSampleBacktest(
   botId: string,
@@ -58,7 +61,7 @@ export function runBundledSampleBacktest(
   const startedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
   const result = runBacktest({
     strategy,
-    marketUniverse,
+    marketUniverse: backtestMarketUniverse(strategy, marketUniverse, dependencies.trustedLegacyMarketBinding),
     datasetCoverage: {
       markets: bundledSampleDatasetCatalog.markets,
       from: bundledSampleDatasetCatalog.from,
@@ -101,6 +104,17 @@ export function runBundledSampleBacktest(
   return { summary, artifact: result.serializedArtifact };
 }
 
+function backtestMarketUniverse(
+  strategy: StrategyDocument,
+  requested: BacktestMarketUniverse,
+  trustedLegacyMarketBinding: string | null | undefined,
+): BacktestMarketUniverse {
+  if (strategy.schemaVersion === '2.0') return requested;
+  const market = trustedLegacyMarketBinding?.trim();
+  if (!market) throw new Error(legacyStrategyMarketMigrationRequired);
+  return { mode: 'include', markets: [market] };
+}
+
 function toRuntimeAssumptions(input: PublicAssumptions): BacktestAssumptions {
   return {
     startingCapital: input.startingCapital,
@@ -138,7 +152,15 @@ const sampleFrames: readonly SampleFrame[] = Object.freeze([
     revision: 'bundled:eth-listed',
     markets: Object.freeze([
       Object.freeze({ symbol: 'BTC-PERP', mark: 100, rsi: 85, funding: 0.0001, volume: 2_100_000_000, rank: 1 }),
-      Object.freeze({ symbol: 'ETH-PERP', mark: 200, rsi: 25, funding: -0.0002, volume: 1_000_000_000, rank: 2 }),
+      Object.freeze({ symbol: 'ETH-PERP', mark: 200, rsi: 15, funding: -0.0002, volume: 1_000_000_000, rank: 2 }),
+    ]),
+  }),
+  Object.freeze({
+    occurredAt: '2026-08-28T00:00:00.000Z',
+    revision: 'bundled:eth-overbought',
+    markets: Object.freeze([
+      Object.freeze({ symbol: 'BTC-PERP', mark: 100, rsi: 85, funding: 0.0001, volume: 2_200_000_000, rank: 1 }),
+      Object.freeze({ symbol: 'ETH-PERP', mark: 220, rsi: 85, funding: 0.0001, volume: 1_100_000_000, rank: 2 }),
     ]),
   }),
 ]);
@@ -178,18 +200,20 @@ function buildSampleInputs(strategy: StrategyDocument, assumptions: PublicAssump
     ]));
     for (const [triggerIndex, trigger] of eventTriggers.entries()) {
       const eventType = typeof trigger.config.eventType === 'string' ? trigger.config.eventType : 'sample.event';
-      for (const [marketIndex, market] of listedFrame.markets.entries()) {
+      const eventMarkets = trigger.config.scope === 'dex' ? [undefined] : listedFrame.markets;
+      for (const [marketIndex, market] of eventMarkets.entries()) {
+        const marketLabel = market?.symbol ?? 'dex';
         inputs.push({
           occurredAt: eventTime,
           priority: intervalTriggers.length + triggerIndex * listedFrame.markets.length + marketIndex,
-          stableId: `sample:event:${trigger.id}:${market.symbol}`,
+          stableId: `sample:event:${trigger.id}:${marketLabel}`,
           triggerNodeId: trigger.id,
           triggerInput: {
             kind: 'event',
             event: {
-              id: `sample-event:${trigger.id}:${market.symbol}`,
+              id: `sample-event:${trigger.id}:${marketLabel}`,
               type: eventType,
-              market: market.symbol,
+              ...(market === undefined ? {} : { market: market.symbol }),
               occurredAt: eventTime,
               receivedAt: eventTime,
               source: 'catbots.bundled-sample',
@@ -283,11 +307,19 @@ function toBacktestTrades(
   trades: readonly Readonly<Record<string, JsonValue>>[],
   traces: readonly (readonly AuditEvent[])[],
 ) {
-  const closingTraces = traces.filter((trace) => trace.some((event) => (
-    event.type === 'execution.filled' && event.nodeType === 'execution.close_position'
-  )));
+  const traceIdsByEffect = new Map<string, string>();
+  for (const trace of traces) {
+    for (const event of trace) {
+      const effectIdempotencyKey = event.details.effectIdempotencyKey;
+      if (event.type === 'execution.queued' && typeof effectIdempotencyKey === 'string') {
+        traceIdsByEffect.set(effectIdempotencyKey, event.traceId);
+      }
+    }
+  }
   return trades.map((trade, index) => ({
-    traceId: closingTraces[index]?.[0]?.traceId ?? `trade:${index + 1}`,
+    traceId: typeof trade.effectIdempotencyKey === 'string'
+      ? traceIdsByEffect.get(trade.effectIdempotencyKey) ?? `trade:${index + 1}`
+      : `trade:${index + 1}`,
     market: requiredTradeString(trade.market),
     side: trade.positionSide === 'short' ? 'short' as const : 'long' as const,
     openedAt: requiredTradeString(trade.openedAt ?? trade.timestamp),

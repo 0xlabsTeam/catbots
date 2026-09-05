@@ -82,3 +82,44 @@ Results:
 - No Task 9 blocker remains.
 - The bundled dataset is intentionally small and synthetic. The prompt, tool catalog, summary coverage, and warnings all disclose that limitation.
 - The real LM Studio behavior test was not enabled because the explicit environment flag was absent; its suite was discovered and skipped as designed.
+
+## Fix Round 1 — compatibility, trace identity, Event scope, and runtime proof
+
+Addressed all four review findings:
+
+1. Strategy 1.0 Backtests now ignore a caller's dynamic universe selection and force Task 5's `include` mode to the trusted `legacy_market_hint` read from the Bot's stored identity. A missing binding fails closed with `LEGACY_STRATEGY_MARKET_MIGRATION_REQUIRED`. The regression proves a legacy BTC strategy produces no ETH trace or position even when the request asks for `all_available`.
+2. Simulated fill ledger entries now retain their originating effect idempotency key and Action node ID. Backtest trade presentation resolves each filled close by that effect identity through its queued audit event instead of assigning trades to child traces by array index. A two-market, two-close-per-child regression proves all four trade trace IDs exist, match the trade market, and contain both actual close Actions.
+3. Bundled Event inputs now follow the registered trigger scope. A DEX-scoped trigger produces one marketless Event whose single parent fans out to BTC and ETH; a market-scoped trigger continues to produce symbol-tagged occurrences. The DEX regression proves one parent and exactly one position per market.
+4. The canned-provider Agent test is explicitly named as the FakeProvider interpretation contract. A separate deterministic Backtest test now proves the generated ETH RSI graph opens an ETH Long below RSI 20, excludes BTC, closes that Long above RSI 80, ends flat, and never proposes a Short opening. The sample dataset gained a post-listing ETH-overbought frame to make that behavior observable.
+
+### Fix-round RED evidence
+
+- Legacy binding seam: 2 failures / 4 passes. Strategy 1.0 replay included ETH and an unbound v1 revision completed instead of failing closed.
+- Trade identity seam: 1 failure / 2 passes. The second BTC partial close was incorrectly assigned to the ETH child trace.
+- Event scope seam: 1 failure / 3 passes. One DEX Event was emitted once per market, creating two parents.
+- ETH runtime seam: 1 failure / 11 passes across sample and Agent-loop suites. No ETH trade occurred because the fixture lacked below-20 and above-80 post-listing frames.
+
+### Fix-round GREEN verification (Node 22.23.2)
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/agent-tools.test.ts tests/agent-loop.test.ts tests/workbench-service.test.ts tests/sample-backtest-data.test.ts tests/lmstudio-workbench.e2e.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/strategy-runtime test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+git diff --check
+```
+
+Results:
+
+- Required five-suite gate: 4 files passed, 1 skipped; 28 tests passed, 1 LM Studio test skipped.
+- Strategy runtime: 11 files / 126 tests passed.
+- Full desktop: 40 files passed, 1 skipped; 330 tests passed, 1 skipped.
+- Workspace typecheck: contracts, strategy-runtime, execution-core, and desktop passed.
+- Diff check will be rerun on the final staged patch immediately before commit.
+
+### Fix-round rulings and concerns
+
+- The Bot's private migrated `legacy_market_hint` is the available trusted historical binding for Workbench and Agent-tool replay. The public Bot contract remains market-free, and no new Strategy 1.0 creation path was restored.
+- A trusted legacy symbol absent from this deliberately limited dataset still fails through Task 5's explicit missing-coverage error. Only absence of the historical binding itself produces the migration-required error.
+- Liquidations retain the existing synthetic fallback trade ID because they do not originate from a filled close Action. Every `execution.close_position` fill now resolves through effect identity without positional assumptions.
+- No fix-round blocker remains. The opt-in LM Studio suite was not enabled.

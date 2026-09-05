@@ -28,6 +28,20 @@ const strategy = parseStrategyDocument({
   ],
 });
 
+const legacyOpeningStrategy = parseStrategyDocument({
+  schemaVersion: '1.0',
+  strategy: { id: 'legacy-open', name: 'Legacy BTC open', version: 1 },
+  nodes: [
+    { id: 't', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '1h', alignment: 'utc' } },
+    { id: 'c', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { literal: 2 }, operator: 'gt', right: { literal: 1 } } },
+    { id: 'a', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 100 } } },
+  ],
+  edges: [
+    { id: 'e1', source: 't', sourcePort: 'activation', target: 'c', targetPort: 'activation' },
+    { id: 'e2', source: 'c', sourcePort: 'result', target: 'a', targetPort: 'condition' },
+  ],
+});
+
 beforeEach(() => {
   database = openDatabase(':memory:');
   migrateDatabase(database);
@@ -93,6 +107,42 @@ describe('WorkbenchService', () => {
     expect(trace).toMatchObject({ traceId: backtest.traces[0]?.traceId, events: expect.any(Array) });
     expect(repository.getState(botId).currentRevision?.status).toBe('draft');
     await expect(service.approveRevision({ botId, version: 1 })).resolves.toMatchObject({ status: 'approved' });
+  });
+
+  it('keeps a Strategy 1.0 backtest bound to its trusted legacy BTC market', async () => {
+    repository.createValidatedRevision(botId, legacyOpeningStrategy);
+    const service = createService();
+
+    const backtest = await service.runBacktest({
+      botId,
+      revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
+      assumptions: {
+        from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 0, slippageBps: 0,
+      },
+    });
+    const artifact = JSON.parse(repository.getTraceArtifact(botId, backtest.artifactHash)) as {
+      snapshot: { positions: Array<{ market: string }> };
+    };
+
+    expect(backtest.perMarket.map(({ market }) => market)).toEqual(['BTC-PERP']);
+    expect(new Set(backtest.traces.map(({ market }) => market))).toEqual(new Set(['BTC-PERP']));
+    expect(new Set(artifact.snapshot.positions.map(({ market }) => market))).toEqual(new Set(['BTC-PERP']));
+  });
+
+  it('fails closed when a Strategy 1.0 revision has no trusted legacy market binding', async () => {
+    const dynamicBot = new BotRepository(database).createDraft({ name: 'Unbound legacy', dex: 'hyperliquid' });
+    repository.createValidatedRevision(dynamicBot.id, legacyOpeningStrategy);
+    const service = createService();
+
+    await expect(service.runBacktest({
+      botId: dynamicBot.id,
+      revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' },
+      assumptions: {
+        from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', startingCapital: '10000', feeRateBps: 0, slippageBps: 0,
+      },
+    })).rejects.toThrow('LEGACY_STRATEGY_MARKET_MIGRATION_REQUIRED');
   });
 
   it('publishes validated activity and removes subscribers', async () => {

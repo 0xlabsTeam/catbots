@@ -13,6 +13,7 @@ import {
 import { parseJsonValue, type AgentToolDefinition, type JsonValue } from '../llm/compatible-chat-provider';
 import {
   runBundledSampleBacktest,
+  legacyStrategyMarketMigrationRequired,
   type BundledSampleDatasetCatalog,
 } from '../workbench/sample-backtest-data';
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
@@ -217,6 +218,9 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
               idFactory: dependencies.idFactory,
               shouldCancel: dependencies.shouldCancel,
               onProgress: dependencies.onBacktestProgress,
+              trustedLegacyMarketBinding: document.schemaVersion === '1.0'
+                ? dependencies.repository.getStoredIdentity(dependencies.botId).legacyMarketHint
+                : null,
             },
           );
           dependencies.repository.createBacktestRun(result.summary, result.artifact);
@@ -253,6 +257,12 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
               })),
             },
           } as AgentToolResult;
+        }
+        if (error instanceof Error && error.message === legacyStrategyMarketMigrationRequired) {
+          return failure(
+            legacyStrategyMarketMigrationRequired,
+            'Legacy strategy market binding is unavailable; create and approve a Strategy 2.0 revision before backtesting.',
+          );
         }
         return failure('INVALID_TOOL_ARGUMENTS', 'Tool arguments are invalid.');
       }
