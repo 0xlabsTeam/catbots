@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   AuditEventViewSchema,
   DeploymentSchema,
+  DynamicDeploymentSchema,
   GetDeploymentInputSchema,
   LivePreflightViewSchema,
   PaperDeploymentViewSchema,
   PauseDeploymentInputSchema,
-  RiskLimitsSchema,
+  DynamicRiskLimitsSchema,
+  LegacyRiskLimitsSchema,
   StartLiveInputSchema,
   StartPaperInputSchema,
 } from './execution';
@@ -27,6 +29,17 @@ const riskLimits = {
   maxOrdersPerMinute: 4,
 } as const;
 
+const dynamicRiskLimits = {
+  maxOrderUsd: '1000',
+  maxPositionUsd: '2500',
+  maxTotalExposureUsd: '5000',
+  maxLeverage: 3,
+  maxDailyLossUsd: '300',
+  maxDrawdownPercent: 12,
+  allowedSides: ['long', 'short'],
+  maxOrdersPerMinute: 4,
+} as const;
+
 describe('execution contracts', () => {
   it('accepts a renderer-safe Paper deployment bound to one approved revision', () => {
     const deployment = DeploymentSchema.parse({
@@ -34,6 +47,7 @@ describe('execution contracts', () => {
       botId,
       strategyId: 'btc-combined-flow',
       strategyVersion: 3,
+      recordVersion: 1,
       mode: 'paper',
       venue: 'paper',
       network: 'paper',
@@ -52,6 +66,46 @@ describe('execution contracts', () => {
     expect(DeploymentSchema.safeParse({ ...deployment, agentPrivateKey: 'secret' }).success).toBe(false);
   });
 
+  it('accepts a dynamic deployment with DEX-wide market access', () => {
+    const dynamicDeployment = {
+      id: deploymentId,
+      botId,
+      strategyId: 'eth-rsi',
+      strategyVersion: 2,
+      recordVersion: 2,
+      dex: 'hyperliquid',
+      mode: 'paper',
+      executionVenue: 'paper',
+      marketAccess: { mode: 'all_active_perpetuals' },
+      riskLimits: dynamicRiskLimits,
+      status: 'running',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    expect(DynamicDeploymentSchema.parse(dynamicDeployment)).toMatchObject({
+      dex: 'hyperliquid',
+      executionVenue: 'paper',
+      marketAccess: { mode: 'all_active_perpetuals' },
+    });
+    expect(DeploymentSchema.safeParse({
+      id: deploymentId,
+      botId,
+      strategyId: 'btc-rsi',
+      strategyVersion: 1,
+      recordVersion: 1,
+      mode: 'paper',
+      venue: 'paper',
+      network: 'paper',
+      marketBindings: ['BTC-PERP'],
+      riskLimits,
+      status: 'stopped',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }).success).toBe(true);
+    expect(DynamicDeploymentSchema.safeParse({ ...dynamicDeployment, marketBindings: ['ETH-PERP'] }).success).toBe(false);
+  });
+
   it.each([
     ['zero order size', { ...riskLimits, maxOrderUsd: '0' }],
     ['negative daily loss', { ...riskLimits, maxDailyLossUsd: '-1' }],
@@ -59,15 +113,16 @@ describe('execution contracts', () => {
     ['duplicate market', { ...riskLimits, allowedMarkets: ['BTC-PERP', 'BTC-PERP'] }],
     ['zero frequency', { ...riskLimits, maxOrdersPerMinute: 0 }],
   ])('rejects unsafe risk limits: %s', (_name, candidate) => {
-    expect(RiskLimitsSchema.safeParse(candidate).success).toBe(false);
+    expect(LegacyRiskLimitsSchema.safeParse(candidate).success).toBe(false);
   });
 
   it('uses strict Paper and Live start requests with testnet-only Live confirmation', () => {
-    expect(StartPaperInputSchema.safeParse({ botId, strategyVersion: 3, riskLimits }).success).toBe(true);
+    expect(DynamicRiskLimitsSchema.safeParse(dynamicRiskLimits).success).toBe(true);
+    expect(StartPaperInputSchema.safeParse({ botId, strategyVersion: 3, riskLimits: dynamicRiskLimits }).success).toBe(true);
     expect(StartLiveInputSchema.safeParse({
       botId,
       strategyVersion: 3,
-      riskLimits,
+      riskLimits: dynamicRiskLimits,
       network: 'testnet',
       confirmationBotName: 'BTC Guard',
       preflightId: deploymentId,
@@ -118,6 +173,7 @@ describe('execution contracts', () => {
       ...audit,
       adapter: { ...audit.adapter, authorization: 'Bearer secret' },
     }).success).toBe(false);
+    expect(AuditEventViewSchema.safeParse({ ...audit, type: 'market.evaluation_completed' }).success).toBe(true);
   });
 
   it('exposes a strict renderer-safe Paper state with its durable audit log', () => {
@@ -126,6 +182,7 @@ describe('execution contracts', () => {
       botId,
       strategyId: 'btc-combined-flow',
       strategyVersion: 3,
+      recordVersion: 1,
       mode: 'paper',
       venue: 'paper',
       network: 'paper',

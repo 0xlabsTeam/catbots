@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { DexIdSchema } from './bots';
+
 const BotIdSchema = z.string().uuid();
 const DeploymentIdSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
@@ -13,46 +15,67 @@ export const NonNegativeDecimalStringSchema = z.string()
   .regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/)
   .refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0, 'Must not be negative');
 
-const UniqueMarketsSchema = z.array(z.string().trim().min(1).max(40)).min(1).refine(
+export const UniqueMarketsSchema = z.array(z.string().trim().min(1).max(40)).min(1).refine(
   (markets) => new Set(markets).size === markets.length,
   'Markets must be unique',
 );
 
-export const RiskLimitsSchema = z.object({
+const RiskLimitsBaseSchema = z.object({
   maxOrderUsd: PositiveDecimalStringSchema,
   maxPositionUsd: PositiveDecimalStringSchema,
   maxLeverage: z.number().int().min(1).max(50),
   maxDailyLossUsd: PositiveDecimalStringSchema,
   maxDrawdownPercent: z.number().finite().positive().max(100),
-  allowedMarkets: UniqueMarketsSchema,
   allowedSides: z.array(z.enum(['long', 'short'])).min(1).refine(
     (sides) => new Set(sides).size === sides.length,
     'Sides must be unique',
   ),
   maxOrdersPerMinute: z.number().int().positive().max(600),
+});
+
+export const LegacyRiskLimitsSchema = RiskLimitsBaseSchema.extend({
+  allowedMarkets: UniqueMarketsSchema,
 }).strict();
 
-export type RiskLimits = z.infer<typeof RiskLimitsSchema>;
+export const DynamicRiskLimitsSchema = RiskLimitsBaseSchema.extend({
+  maxTotalExposureUsd: PositiveDecimalStringSchema,
+}).strict();
+
+/** @deprecated Use DynamicRiskLimitsSchema for new deployment paths. */
+export const RiskLimitsSchema = DynamicRiskLimitsSchema;
+
+export type LegacyRiskLimits = z.infer<typeof LegacyRiskLimitsSchema>;
+export type DynamicRiskLimits = z.infer<typeof DynamicRiskLimitsSchema>;
+/**
+ * Both shapes remain accepted while persisted version-1 deployments are read.
+ * The legacy market allow-list remains present in the compatibility view until
+ * execution callers are migrated; new request schemas use DynamicRiskLimits.
+ */
+export type RiskLimits = LegacyRiskLimits | (DynamicRiskLimits & { allowedMarkets: string[] });
 
 const DeploymentBaseSchema = z.object({
   id: DeploymentIdSchema,
   botId: BotIdSchema,
   strategyId: NonEmptyTextSchema.max(120),
   strategyVersion: z.number().int().positive(),
-  marketBindings: UniqueMarketsSchema,
-  riskLimits: RiskLimitsSchema,
   status: z.enum(['preflight', 'running', 'paused', 'stopping', 'stopped', 'recovering', 'suspended', 'error']),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 }).strict();
 
-export const DeploymentSchema = z.discriminatedUnion('mode', [
-  DeploymentBaseSchema.extend({
+const LegacyDeploymentBaseSchema = DeploymentBaseSchema.extend({
+  recordVersion: z.literal(1),
+  marketBindings: UniqueMarketsSchema,
+  riskLimits: LegacyRiskLimitsSchema,
+});
+
+export const LegacyDeploymentSchema = z.discriminatedUnion('mode', [
+  LegacyDeploymentBaseSchema.extend({
     mode: z.literal('paper'),
     venue: z.literal('paper'),
     network: z.literal('paper'),
   }).strict(),
-  DeploymentBaseSchema.extend({
+  LegacyDeploymentBaseSchema.extend({
     mode: z.literal('live'),
     venue: z.literal('hyperliquid'),
     network: z.literal('testnet'),
@@ -60,25 +83,90 @@ export const DeploymentSchema = z.discriminatedUnion('mode', [
   }).strict(),
 ]);
 
-export type Deployment = z.infer<typeof DeploymentSchema>;
+export const MarketAccessSchema = z.object({ mode: z.literal('all_active_perpetuals') }).strict();
 
-export const StartPaperInputSchema = z.object({
+export type MarketAccess = z.infer<typeof MarketAccessSchema>;
+
+const DynamicDeploymentBaseSchema = DeploymentBaseSchema.extend({
+  recordVersion: z.literal(2),
+  dex: DexIdSchema,
+  marketAccess: MarketAccessSchema,
+  riskLimits: DynamicRiskLimitsSchema,
+});
+
+export const DynamicDeploymentSchema = z.discriminatedUnion('mode', [
+  DynamicDeploymentBaseSchema.extend({
+    mode: z.literal('paper'),
+    executionVenue: z.literal('paper'),
+  }).strict(),
+  DynamicDeploymentBaseSchema.extend({
+    mode: z.literal('live'),
+    executionVenue: z.literal('hyperliquid'),
+    network: z.literal('testnet'),
+    maskedAccount: NonEmptyTextSchema.max(80),
+  }).strict(),
+]);
+
+const DeploymentSchemaBase = z.union([
+  LegacyDeploymentSchema,
+  DynamicDeploymentSchema,
+]);
+
+/** Temporary structural compatibility while version-1 callers are migrated. */
+export type Deployment = {
+  id: string;
+  botId: string;
+  strategyId: string;
+  strategyVersion: number;
+  recordVersion?: 1 | 2;
+  dex?: 'hyperliquid';
+  mode: 'paper' | 'live';
+  venue: 'paper' | 'hyperliquid';
+  network: 'paper' | 'testnet';
+  executionVenue?: 'paper' | 'hyperliquid';
+  marketBindings: string[];
+  marketAccess?: MarketAccess;
+  riskLimits: RiskLimits;
+  status: 'preflight' | 'running' | 'paused' | 'stopping' | 'stopped' | 'recovering' | 'suspended' | 'error';
+  createdAt: string;
+  updatedAt: string;
+  maskedAccount?: string;
+};
+
+export const DeploymentSchema = DeploymentSchemaBase as unknown as z.ZodType<Deployment>;
+
+export type StartPaperInput = {
+  botId: string;
+  strategyVersion: number;
+  riskLimits: RiskLimits;
+};
+
+export type PrepareLiveInput = StartPaperInput & { network: 'testnet' };
+export type StartLiveInput = PrepareLiveInput & { confirmationBotName: string; preflightId: string };
+
+const StartPaperInputSchemaBase = z.object({
   botId: BotIdSchema,
   strategyVersion: z.number().int().positive(),
-  riskLimits: RiskLimitsSchema,
+  riskLimits: z.union([DynamicRiskLimitsSchema, LegacyRiskLimitsSchema]),
 }).strict();
 
-export const PrepareLiveInputSchema = z.object({
+export const StartPaperInputSchema = StartPaperInputSchemaBase as unknown as z.ZodType<StartPaperInput>;
+
+const PrepareLiveInputSchemaBase = z.object({
   botId: BotIdSchema,
   strategyVersion: z.number().int().positive(),
-  riskLimits: RiskLimitsSchema,
+  riskLimits: z.union([DynamicRiskLimitsSchema, LegacyRiskLimitsSchema]),
   network: z.literal('testnet'),
 }).strict();
 
-export const StartLiveInputSchema = PrepareLiveInputSchema.extend({
+export const PrepareLiveInputSchema = PrepareLiveInputSchemaBase as unknown as z.ZodType<PrepareLiveInput>;
+
+const StartLiveInputSchemaBase = PrepareLiveInputSchemaBase.extend({
   confirmationBotName: NonEmptyTextSchema.max(80),
   preflightId: DeploymentIdSchema,
 }).strict();
+
+export const StartLiveInputSchema = StartLiveInputSchemaBase as unknown as z.ZodType<StartLiveInput>;
 
 export const StopDeploymentInputSchema = z.object({
   deploymentId: DeploymentIdSchema,
@@ -88,9 +176,6 @@ export const GetDeploymentInputSchema = StopDeploymentInputSchema;
 export const PauseDeploymentInputSchema = StopDeploymentInputSchema;
 export const GetActiveDeploymentInputSchema = z.object({ botId: BotIdSchema }).strict();
 
-export type StartPaperInput = z.infer<typeof StartPaperInputSchema>;
-export type PrepareLiveInput = z.infer<typeof PrepareLiveInputSchema>;
-export type StartLiveInput = z.infer<typeof StartLiveInputSchema>;
 export type StopDeploymentInput = z.infer<typeof StopDeploymentInputSchema>;
 export type GetDeploymentInput = z.infer<typeof GetDeploymentInputSchema>;
 export type PauseDeploymentInput = z.infer<typeof PauseDeploymentInputSchema>;
@@ -138,6 +223,9 @@ export type LivePreflightView = z.infer<typeof LivePreflightViewSchema>;
 
 export const AuditEventTypeSchema = z.enum([
   'trigger.received',
+  'universe.resolved',
+  'market.evaluation_started',
+  'market.evaluation_completed',
   'context.resolution_started',
   'context.resolved',
   'context.failed',

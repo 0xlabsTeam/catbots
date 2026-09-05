@@ -33,6 +33,13 @@ export const RuntimeStatusSchema = z.object({
 
 export type RuntimeStatus = z.infer<typeof RuntimeStatusSchema>;
 
+export const DatabaseStateSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ready') }).strict(),
+  z.object({ status: z.literal('repair'), code: z.literal('DATABASE_MIGRATION_FAILED') }).strict(),
+]);
+
+export type DatabaseState = z.infer<typeof DatabaseStateSchema>;
+
 export type BootstrapState =
   | { state: 'first-launch' }
   | { state: 'ready'; config: RedactedLocalConfig }
@@ -78,6 +85,7 @@ export interface CatbotsDesktopApi {
   };
   runtime: {
     getStatus(): Promise<RuntimeStatus>;
+    getDatabaseState?(): Promise<DatabaseState>;
     subscribeStatus(listener: (status: RuntimeStatus) => void): () => void;
   };
 }

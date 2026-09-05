@@ -4,11 +4,13 @@ import {
   AgentToolActivitySchema,
   ApproveStrategyRevisionInputSchema,
   BacktestSummarySchema,
+  BacktestMarketUniverseSchema,
   ChatMessageSchema,
   GetWorkbenchInputSchema,
   SendWorkbenchMessageInputSchema,
   StrategyRevisionSchema,
   TraceDetailSchema,
+  TraceSummarySchema,
   WorkbenchStateSchema,
 } from './workbench';
 
@@ -55,8 +57,12 @@ const backtest = {
   },
   metrics: {
     returnPercent: 4.2, maximumDrawdownPercent: 1.5, sharpeLike: 1.1,
-    winRatePercent: 60, tradeCount: 5, fees: '12.5', funding: '2.1',
+    winRatePercent: 60, tradeCount: 5, fees: '12.5', funding: '2.1', endingEquity: '10420', realizedPnl: '420',
   },
+  datasetCoverage: {
+    markets: ['BTC-PERP'], from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z',
+  },
+  perMarket: [{ market: 'ETH-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.5 }],
   equityCurve: [
     { timestamp: '2026-08-01T00:00:00.000Z', equity: '10000' },
     { timestamp: '2026-09-01T00:00:00.000Z', equity: '10420' },
@@ -67,11 +73,16 @@ const backtest = {
     entryPrice: '60000', exitPrice: '61000', realizedPnl: '16.67',
   }],
   warnings: ['Sample data is for workflow evaluation only.'],
-  traces: [{ traceId: 'trace-1', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'Opened BTC long' }],
+  traces: [{ traceId: 'trace-1', parentTraceId: 'run:1', market: 'ETH-PERP', outcome: 'executed', occurredAt: '2026-08-02T00:00:00.000Z', summary: 'Opened ETH long' }],
   artifactHash: `sha256:${'a'.repeat(64)}`,
 };
 
 describe('workbench request contracts', () => {
+  it('selects the Backtest market universe explicitly', () => {
+    expect(BacktestMarketUniverseSchema.parse({ mode: 'include', markets: ['ETH-PERP'] })).toEqual({
+      mode: 'include', markets: ['ETH-PERP'],
+    });
+  });
   it('trims a non-empty user message and rejects an unknown field', () => {
     expect(SendWorkbenchMessageInputSchema.parse({ botId, message: '  Buy when RSI is low  ' })).toEqual({
       botId,
@@ -102,10 +113,17 @@ describe('workbench response contracts', () => {
 
   it('accepts finite Backtest metrics and rejects non-finite results', () => {
     expect(BacktestSummarySchema.parse(backtest).metrics.returnPercent).toBe(4.2);
+    expect(BacktestSummarySchema.parse(backtest).perMarket[0]?.market).toBe('ETH-PERP');
     expect(BacktestSummarySchema.safeParse({
       ...backtest,
       metrics: { ...backtest.metrics, sharpeLike: Number.POSITIVE_INFINITY },
     }).success).toBe(false);
+  });
+
+  it('links market trace summaries to their parent run', () => {
+    expect(TraceSummarySchema.parse(backtest.traces[0])).toMatchObject({
+      parentTraceId: 'run:1', market: 'ETH-PERP',
+    });
   });
 
   it('validates Chat, tool activity, Workbench state, and trace details strictly', () => {
@@ -120,7 +138,7 @@ describe('workbench response contracts', () => {
     });
     const state = WorkbenchStateSchema.parse({
       bot: {
-        id: botId, name: 'BTC assistant', market: 'BTC-PERP', status: 'draft',
+        id: botId, name: 'BTC assistant', dex: 'hyperliquid', status: 'draft',
         createdAt: '2026-09-04T08:00:00.000Z', updatedAt: '2026-09-04T08:00:01.000Z',
       },
       currentRevision: revision,
@@ -129,7 +147,7 @@ describe('workbench response contracts', () => {
       backtests: [backtest],
     });
     const trace = TraceDetailSchema.parse({
-      traceId: 'trace-1', outcome: 'executed',
+      traceId: 'trace-1', parentTraceId: 'run:1', market: 'ETH-PERP', outcome: 'executed',
       events: [{ sequence: 1, type: 'trigger.received', occurredAt: '2026-08-02T00:00:00.000Z', nodeId: 't-15m', summary: 'Interval fired', details: {} }],
     });
 
