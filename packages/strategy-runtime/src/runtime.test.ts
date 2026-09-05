@@ -248,10 +248,17 @@ describe('evaluateTrigger', () => {
       execution: filledExecution(),
     };
     const standalone = evaluateTrigger(request);
-    const coordinated = evaluateTrigger({ ...request, traceId: 'parent-trace:market:BTC-PERP' });
+    const coordinated = evaluateTrigger({
+      ...request,
+      traceId: 'parent-trace:market:BTC-PERP',
+      auditIdentity: { market: 'BTC-PERP', universeRevision: 'universe:42' },
+    });
 
     expect(coordinated.traceId).toBe('parent-trace:market:BTC-PERP');
     expect(coordinated.trace.every(({ traceId }) => traceId === coordinated.traceId)).toBe(true);
+    expect(coordinated.trace.every(({ market, universeRevision }) => (
+      market === 'BTC-PERP' && universeRevision === 'universe:42'
+    ))).toBe(true);
     expect(coordinated.trace.map(({ type, nodeId, details }) => ({ type, nodeId, details }))).toEqual(
       standalone.trace.map(({ type, nodeId, details }) => ({ type, nodeId, details })),
     );

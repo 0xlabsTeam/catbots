@@ -36,6 +36,8 @@ export type AuditEvent = Readonly<{
   mode: 'backtest' | 'paper' | 'live';
   triggerNodeId: string;
   triggerEventId?: string;
+  market?: string;
+  universeRevision?: string;
   evaluationTime: string;
   nodeId?: string;
   nodeType?: string;

@@ -19,8 +19,14 @@ export function normalizeMarketSymbol(symbol: string): string {
 }
 
 export function orderedActiveMarkets(universe: MarketUniverseSnapshot): readonly MarketUniverseMarket[] {
-  return Object.freeze(universe.markets
+  const normalized = universe.markets
+    .map((market) => Object.freeze({ ...market, symbol: normalizeMarketSymbol(market.symbol) }));
+  const symbols = new Set<string>();
+  for (const { symbol } of normalized) {
+    if (symbols.has(symbol)) throw new Error('Duplicate normalized market symbol.');
+    symbols.add(symbol);
+  }
+  return Object.freeze(normalized
     .filter(({ active }) => active)
-    .map((market) => Object.freeze({ ...market, symbol: normalizeMarketSymbol(market.symbol) }))
     .sort((left, right) => left.symbol < right.symbol ? -1 : left.symbol > right.symbol ? 1 : 0));
 }

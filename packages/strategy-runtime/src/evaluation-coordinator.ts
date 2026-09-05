@@ -46,6 +46,11 @@ export type CoordinatedEvaluation = Readonly<{
   }>[];
 }>;
 
+const contextResolutionFailure = Object.freeze({
+  code: 'CONTEXT_RESOLUTION_FAILED',
+  message: 'Market context could not be resolved.',
+});
+
 function triggerTime(input: TriggerInput): string {
   return input.kind === 'event' ? input.event.occurredAt : input.occurredAt;
 }
@@ -123,10 +128,9 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
     const market = metadata.symbol;
     const childTraceId = `${parentTraceId}:market:${traceComponent(market)}`;
     let context: EvaluationContext | undefined;
-    let contextFailure: Readonly<{ code: string; message: string }> | undefined;
     try {
       const resolved = contextFactory(market, metadata);
-      if (resolved.currentMarket !== market && !isMarketScopedEvent) {
+      if (resolved.currentMarket !== market) {
         throw new Error(
           `Resolved currentMarket ${resolved.currentMarket} does not match selected market ${market}`,
         );
@@ -137,11 +141,8 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
         ...(resolved.triggerEvent ? { triggerEvent: resolved.triggerEvent } : {}),
         values: resolved.values,
       });
-    } catch (error) {
-      contextFailure = {
-        code: 'CONTEXT_RESOLUTION_FAILED',
-        message: error instanceof Error ? error.message : String(error),
-      };
+    } catch {
+      context = undefined;
     }
     const evaluation = context
       ? evaluateTrigger({
@@ -152,17 +153,18 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
           deployment,
           execution,
           traceId: childTraceId,
+          auditIdentity: { market, universeRevision: universe.revision },
         })
       : evaluateTrigger({
         compiled,
         triggerNodeId,
         triggerInput,
         context: undefined,
-        contextFailure: contextFailure
-          ?? { code: 'CONTEXT_RESOLUTION_FAILED', message: 'Context factory returned no context' },
+        contextFailure: contextResolutionFailure,
         deployment,
         execution,
         traceId: childTraceId,
+        auditIdentity: { market, universeRevision: universe.revision },
       });
     const outcome = terminalOutcome(evaluation);
     trace.append('market.evaluation_completed', { market, childTraceId, outcome });

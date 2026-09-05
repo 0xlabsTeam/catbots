@@ -154,6 +154,21 @@ describe('coordinateEvaluation', () => {
     );
   });
 
+  it('rejects duplicate universe symbols after whitespace normalization', () => {
+    const contextFactory = vi.fn();
+
+    expect(() => coordinateEvaluation({
+      compiled: compiledStrategy(),
+      triggerNodeId: 't-15m',
+      triggerInput: { kind: 'interval', occurredAt },
+      universe: snapshot('universe:duplicate', ['BTC-PERP', ' BTC-PERP ']),
+      contextFactory,
+      deployment: { id: 'backtest-42', mode: 'backtest' },
+      execution: filledExecution(),
+    })).toThrow('Duplicate normalized market symbol.');
+    expect(contextFactory).not.toHaveBeenCalled();
+  });
+
   it('evaluates a market-scoped Event only for its exact active universe market', () => {
     const event = {
       id: 'trade-eth-1', type: 'market.trade', market: 'ETH-PERP',
@@ -253,7 +268,7 @@ describe('coordinateEvaluation', () => {
       triggerInput: { kind: 'interval', occurredAt },
       universe: snapshot('universe:42', ['ETH-PERP', 'BTC-PERP']),
       contextFactory: (market) => {
-        if (market === 'ETH-PERP') throw new Error('ETH snapshot is unavailable');
+        if (market === 'ETH-PERP') throw new Error('provider hyperliquid says wallet-secret');
         return createEvaluationContext({
           evaluatedAt: occurredAt,
           currentMarket: market,
@@ -270,26 +285,38 @@ describe('coordinateEvaluation', () => {
     });
 
     expect(result.children.map(({ outcome }) => outcome)).toEqual(['completed', 'failed']);
+    expect(result.children.map(({ evaluation }) => ({
+      market: evaluation.trace[0]?.market,
+      universeRevision: evaluation.trace[0]?.universeRevision,
+    }))).toEqual([
+      { market: 'BTC-PERP', universeRevision: 'universe:42' },
+      { market: 'ETH-PERP', universeRevision: 'universe:42' },
+    ]);
+    expect(result.children.every((child) => child.evaluation.trace.every((event) => (
+      event.market === child.market && event.universeRevision === 'universe:42'
+    )))).toBe(true);
     expect(result.children[1]?.evaluation.trace.map(({ type }) => type)).toEqual([
       'trigger.received', 'context.resolution_started', 'context.failed', 'flow.failed',
     ]);
     expect(result.children[1]?.evaluation.trace[2]?.details).toEqual({
-      code: 'CONTEXT_RESOLUTION_FAILED', message: 'ETH snapshot is unavailable',
+      code: 'CONTEXT_RESOLUTION_FAILED', message: 'Market context could not be resolved.',
     });
+    expect(JSON.stringify(result)).not.toContain('provider hyperliquid says wallet-secret');
     expect(execute).toHaveBeenCalledTimes(1);
     expect(result.parentTrace.at(-1)).toMatchObject({
       type: 'flow.failed', details: { failedMarkets: ['ETH-PERP'] },
     });
   });
 
-  it('preserves the evaluator guard against a mismatched market Event context', () => {
+  it('fails only the selected market child when a market Event context resolves to another market', () => {
     const event = {
       id: 'trade-eth-mismatch', type: 'market.trade', market: 'ETH-PERP',
       occurredAt, receivedAt: occurredAt, source: 'fixture.market', payload: {},
       quality: { status: 'verified' as const, freshnessSeconds: 0 },
     };
 
-    expect(() => coordinateEvaluation({
+    const execute = vi.fn<RuntimeExecutionPort['execute']>();
+    const result = coordinateEvaluation({
       compiled: compiledStrategy('market-event'),
       triggerNodeId: 't-market',
       triggerInput: { kind: 'event', event },
@@ -306,16 +333,24 @@ describe('coordinateEvaluation', () => {
         },
       }),
       deployment: { id: 'paper-42', mode: 'paper' },
-      execution: filledExecution(),
-    })).toThrow(/event market.*currentMarket/i);
+      execution: { execute },
+    });
+
+    expect(result.children).toEqual([
+      expect.objectContaining({ market: 'ETH-PERP', outcome: 'failed' }),
+    ]);
+    expect(result.children[0]?.evaluation.trace.map(({ type }) => type)).toEqual([
+      'trigger.received', 'context.resolution_started', 'context.failed', 'flow.failed',
+    ]);
+    expect(execute).not.toHaveBeenCalled();
   });
 
-  it('fails an interval child whose resolved context is bound to another market', () => {
+  it('keeps interval siblings running when one resolved context is bound to another market', () => {
     const result = coordinateEvaluation({
       compiled: compiledStrategy(),
       triggerNodeId: 't-15m',
       triggerInput: { kind: 'interval', occurredAt },
-      universe: snapshot('universe:42', ['ETH-PERP']),
+      universe: snapshot('universe:42', ['ETH-PERP', 'BTC-PERP']),
       contextFactory: () => createEvaluationContext({
         evaluatedAt: occurredAt,
         currentMarket: 'BTC-PERP',
@@ -330,12 +365,10 @@ describe('coordinateEvaluation', () => {
       execution: filledExecution(),
     });
 
-    expect(result.children).toEqual([
-      expect.objectContaining({ market: 'ETH-PERP', outcome: 'failed' }),
-    ]);
-    expect(result.children[0]?.evaluation.trace[2]?.details).toEqual({
+    expect(result.children.map(({ outcome }) => outcome)).toEqual(['completed', 'failed']);
+    expect(result.children[1]?.evaluation.trace[2]?.details).toEqual({
       code: 'CONTEXT_RESOLUTION_FAILED',
-      message: 'Resolved currentMarket BTC-PERP does not match selected market ETH-PERP',
+      message: 'Market context could not be resolved.',
     });
   });
 

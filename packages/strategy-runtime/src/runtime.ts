@@ -1,4 +1,9 @@
-import { AuditTraceBuilder, type AuditEvent, type AuditEventType } from './audit-trace';
+import {
+  AuditTraceBuilder,
+  sanitizeAuditValue,
+  type AuditEvent,
+  type AuditEventType,
+} from './audit-trace';
 import { evaluateConditionNode, type ConditionResult } from './condition-evaluator';
 import type { EvaluationContext } from './evaluation-context';
 import type { CompiledStrategy } from './graph-validator';
@@ -49,6 +54,7 @@ type RuntimeEvaluationRequestBase = Readonly<{
   deployment: Readonly<{ id: string; mode: 'backtest' | 'paper' | 'live' }>;
   execution: RuntimeExecutionPort;
   traceId?: string;
+  auditIdentity?: Readonly<{ market: string; universeRevision: string }>;
 }>;
 
 export type RuntimeEvaluationRequest = RuntimeEvaluationRequestBase & (
@@ -116,6 +122,10 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
     mode: deployment.mode,
     triggerNodeId,
     ...(triggerEventId(triggerInput) ? { triggerEventId: triggerEventId(triggerInput) } : {}),
+    ...(request.auditIdentity ? {
+      market: String(sanitizeAuditValue(request.auditIdentity.market)),
+      universeRevision: String(sanitizeAuditValue(request.auditIdentity.universeRevision)),
+    } : {}),
     evaluationTime,
     createdAt: evaluationTime,
     actor: 'strategy-runtime',
