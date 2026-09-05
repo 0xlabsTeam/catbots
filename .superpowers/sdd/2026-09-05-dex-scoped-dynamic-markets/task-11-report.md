@@ -84,3 +84,60 @@ Results:
 - No Task 11 blocker remains.
 - The current renderer-safe trace DTO links child traces to a parent but does not expose `universeRevision` as a separate field. Coordinated trace IDs encode the revision deterministically, so the UI decodes that suffix and fails safely to `Not recorded` for historical/unknown IDs. A future contract revision may promote this metadata to an explicit field without changing the drilldown behavior.
 - The bundled Backtest fixture remains intentionally small and synthetic; the UI shows its exact markets/date range and preserves its existing limitation warning.
+
+## Fix Round 1 — truthful scope, trace evidence, and Paper review
+
+Addressed all three P2 review findings and the related trace-selection race.
+
+- The renderer-safe Workbench revision DTO now carries the strategy schema version and a discriminated market scope. Strategy 2.0 revisions project as the Hyperliquid DEX universe; Strategy 1.0 revisions remain fixed-market and include the trusted bot migration hint when it exists. Both the header and the graph metadata now avoid describing legacy revisions as dynamic.
+- Trace detail renders only a small semantic allowlist from real audit-event shapes: condition result/reason/reference names, proposed action side/size/leverage, risk decision/rule IDs, and execution outcome. Values, provider payloads, error text, secret-shaped tokens, integrity data, IDs, and arbitrary JSON are never rendered. Each list is capped at three items and tokens at 80 characters.
+- Changing bot, revision, or trace set resets the selected parent, market child, detail, and error. Request sequencing invalidates late responses after either a data change or navigation change.
+- Paper execution now opens a Kumo review before making any deployment call. It states Hyperliquid, all-active-perpetual access, and the honest pre-start freshness state (`unavailable`), and exposes all editable shared risk limits including max total exposure. Cancel is mutation-free; confirmation submits the exact displayed limits.
+- Live and Paper reuse the same deployment-scope summary. Account/preflight/explicit-confirmation safety remains confined to Live.
+- The graph test fixture now verifies two predicate branches flowing into an explicit `combine.all` condition before the action, while the canvas still contains only Trigger, Condition, and Action node kinds.
+
+### Fix-round RED / GREEN evidence
+
+- Contract/repository/graph RED: the previous revision DTO rejected both `schemaVersion` and `marketScope`, and legacy scope could not be rendered truthfully. GREEN: contracts `9/9`; repository plus graph `11/11`.
+- Trace RED: real condition/action/risk/execution event details produced no semantic evidence, and a pending old child request could survive a trace-set replacement. GREEN: Backtest/trace `4/4`.
+- Paper RED: clicking `Run Paper` started immediately, so no review heading, scope, freshness state, editable limits, or cancel path existed. GREEN: Workbench `6/6`, including exact edited-limit submission.
+
+### Fix-round final verification (Node 22)
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/contracts exec vitest run src/workbench.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/workbench-repository.test.ts tests/workbench-service.test.ts tests/strategy-graph.test.tsx tests/backtest-panel.test.tsx tests/bot-workbench.test.tsx tests/live-review.test.tsx tests/renderer-theme.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+git diff --check
+```
+
+Results before the final post-report rerun:
+
+- Contracts: 1 file / 9 tests passed.
+- Focused repository, service, UI, and renderer-theme gate: 7 files / 32 tests passed.
+- Full desktop suite: 40 files passed, 1 skipped; 336 tests passed, 1 opt-in LM Studio test skipped.
+- Workspace typecheck: contracts, strategy-runtime, execution-core, and desktop passed.
+- Diff whitespace check passed.
+
+### Fix-round changed files
+
+- `packages/contracts/src/workbench.ts`
+- `packages/contracts/src/workbench.test.ts`
+- `apps/desktop/src/main/workbench/workbench-repository.ts`
+- `apps/desktop/src/renderer/web-preview-api.ts`
+- `apps/desktop/src/renderer/workbench/DeploymentScopeSummary.tsx`
+- `apps/desktop/src/renderer/workbench/StrategyGraph.tsx`
+- `apps/desktop/src/renderer/workbench/TraceTimeline.tsx`
+- `apps/desktop/src/renderer/workbench/WorkbenchHeader.tsx`
+- `apps/desktop/src/renderer/screens/BotWorkbenchScreen.tsx`
+- `apps/desktop/src/renderer/screens/LiveReviewScreen.tsx`
+- `apps/desktop/src/renderer/screens/PaperReviewScreen.tsx`
+- `apps/desktop/src/renderer/app.css`
+- Focused contract, repository, graph, trace, Live review, and Workbench tests.
+
+### Fix-round compatibility and concerns
+
+- No Fix Round 1 blocker remains.
+- A Strategy 1.0 revision without a trusted migrated market hint is labeled `Fixed market · unavailable`; it is never widened to dynamic scope.
+- Paper cannot claim universe freshness before its runtime has started because the current review contract exposes no pre-start universe snapshot. The review says it is unavailable rather than inventing a fresh state.

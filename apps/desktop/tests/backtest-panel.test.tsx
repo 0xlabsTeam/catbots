@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BacktestSummary, CatbotsDesktopApi, StrategyRevision } from '@catbots/contracts';
+import type { BacktestSummary, CatbotsDesktopApi, StrategyRevision, TraceDetail, TraceSummary } from '@catbots/contracts';
 
 import { BacktestPanel } from '../src/renderer/workbench/BacktestPanel';
+import { TraceTimeline } from '../src/renderer/workbench/TraceTimeline';
 
 const botId = '018f3f75-89ab-7def-8123-456789abcdef';
 const revision = {
   botId, strategyId: 's', version: 1, name: 'Momentum', status: 'draft', createdAt: '2026-09-04T00:00:00.000Z', approvedAt: null,
+  schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
   nodes: [{ id: 't', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' }], edges: [],
 } satisfies StrategyRevision;
 const backtest = {
@@ -52,10 +54,29 @@ function api(): CatbotsDesktopApi['workbench'] {
       market: traceId === 'trace-2' ? 'ETH-PERP' : 'BTC-PERP',
       outcome: 'executed' as const,
       events: [
-        { sequence: 1, type: 'condition.evaluated', occurredAt: '2026-08-02T00:00:00.000Z', nodeId: 'condition', summary: 'condition matched', details: {} },
-        { sequence: 2, type: 'action.proposed', occurredAt: '2026-08-02T00:00:00.100Z', nodeId: 'action', summary: 'action proposed', details: {} },
-        { sequence: 3, type: 'risk.approved', occurredAt: '2026-08-02T00:00:00.200Z', nodeId: 'action', summary: 'risk approved', details: {} },
-        { sequence: 4, type: 'execution.filled', occurredAt: '2026-08-02T00:00:01.000Z', nodeId: 'action', summary: 'execution filled', details: {} },
+        {
+          sequence: 1, type: 'condition.evaluated', occurredAt: '2026-08-02T00:00:00.000Z', nodeId: 'condition', summary: 'condition evaluated',
+          details: {
+            result: 'unknown', reason: 'data.stale',
+            inputs: [
+              { ref: 'market.price', field: 'mark', value: { raw: 'secret-value' }, provider: 'raw-provider-payload', integrityHash: 'secret-integrity' },
+              { ref: 'privateKey', field: 'value' },
+            ],
+            rawPayload: 'raw-provider-payload',
+          },
+        },
+        {
+          sequence: 2, type: 'action.proposed', occurredAt: '2026-08-02T00:00:00.100Z', nodeId: 'action', summary: 'action proposed',
+          details: { effect: { type: 'execution.open_position', market: 'ETH-PERP', config: { side: 'long', size: { type: 'quote', value: 1000 }, leverage: 2 }, idempotencyKey: 'secret-effect-key' } },
+        },
+        {
+          sequence: 3, type: 'risk.rejected', occurredAt: '2026-08-02T00:00:00.200Z', nodeId: 'action', summary: 'risk evaluated',
+          details: { violatedRuleIds: ['max-total-exposure-usd'], error: 'provider-error' },
+        },
+        {
+          sequence: 4, type: 'execution.rejected', occurredAt: '2026-08-02T00:00:01.000Z', nodeId: 'action', summary: 'execution completed',
+          details: { code: 'NO_PRICE', privateKey: 'private-key-value' },
+        },
       ],
     })),
   };
@@ -104,7 +125,16 @@ describe('BacktestPanel', () => {
     expect(screen.getByText('Action')).toBeTruthy();
     expect(screen.getByText('Risk')).toBeTruthy();
     expect(screen.getByText('Execution')).toBeTruthy();
+    expect(screen.getByText('Unknown')).toBeTruthy();
+    expect(screen.getByText('data.stale')).toBeTruthy();
+    expect(screen.getByText('market.price.mark')).toBeTruthy();
+    expect(screen.getByText('Long')).toBeTruthy();
+    expect(screen.getByText('$1,000 quote')).toBeTruthy();
+    expect(screen.getByText('2×')).toBeTruthy();
+    expect(screen.getByText('max-total-exposure-usd')).toBeTruthy();
+    expect(screen.getAllByText('Rejected')).toHaveLength(2);
     expect(screen.getByText('Node condition')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/raw-provider-payload|secret-value|secret-integrity|secret-effect-key|provider-error|private-key-value|privateKey/);
 
     await user.click(screen.getByRole('button', { name: /interval run/i }));
     expect(screen.queryByRole('heading', { name: 'ETH-PERP evaluation' })).toBeNull();
@@ -118,5 +148,31 @@ describe('BacktestPanel', () => {
 
     expect(screen.getByText('Not recorded')).toBeTruthy();
     expect(screen.getByRole('button', { name: /BTC-PERP/ })).toBeTruthy();
+  });
+
+  it('resets parent, child, and pending detail state when the trace set changes', async () => {
+    let resolveTrace: ((detail: TraceDetail) => void) | undefined;
+    const pendingTrace = new Promise<TraceDetail>((resolve) => { resolveTrace = resolve; });
+    const traceApi = { getTrace: vi.fn(() => pendingTrace) };
+    const firstTraces = backtest.traces;
+    const nextTraces: TraceSummary[] = [{
+      traceId: 'trace-next',
+      parentTraceId: 'trace:s:v1:deployment:d:trigger:event:event-2:dex:hyperliquid:universe:bundled%3Anext',
+      market: 'SOL-PERP', outcome: 'skipped', occurredAt: '2026-08-03T00:00:00.000Z', summary: 'flow skipped',
+    }];
+    const { rerender } = render(<TraceTimeline botId={botId} revisionVersion={1} traces={firstTraces} api={traceApi} />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /interval run/i }));
+    await user.click(screen.getByRole('button', { name: /ETH-PERP/ }));
+    rerender(<TraceTimeline botId={botId} revisionVersion={1} traces={nextTraces} api={traceApi} />);
+
+    expect(screen.getByRole('button', { name: /event run/i }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: /ETH-PERP/ })).toBeNull();
+
+    await act(async () => resolveTrace?.({
+      traceId: 'trace-2', parentTraceId: firstTraces[0]!.parentTraceId, market: 'ETH-PERP', outcome: 'executed', events: [],
+    }));
+    expect(screen.queryByRole('heading', { name: 'ETH-PERP evaluation' })).toBeNull();
   });
 });

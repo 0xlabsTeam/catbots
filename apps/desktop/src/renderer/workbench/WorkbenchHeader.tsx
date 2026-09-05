@@ -19,7 +19,7 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
         <div>
           <p className="eyebrow">AI BOT WORKBENCH</p>
           <h1 id="bot-workbench-title">{state.bot.name}</h1>
-          <p className="workbench-scope-line">{dexName(state.bot.dex)} · Dynamic markets</p>
+          <p className="workbench-scope-line">{dexName(state.bot.dex)} · {scopeName(revision)}</p>
         </div>
         <Badge variant={revision?.status === 'approved' ? 'success' : 'info'}>{revision?.status === 'approved' ? 'Approved' : 'Draft'}</Badge>
       </div>
@@ -55,4 +55,11 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
 
 function dexName(dex: WorkbenchState['bot']['dex']): string {
   return dex === 'hyperliquid' ? 'Hyperliquid' : dex;
+}
+
+function scopeName(revision: WorkbenchState['currentRevision']): string {
+  if (revision?.marketScope.type !== 'legacy_fixed') return 'Dynamic markets';
+  return revision.marketScope.market === undefined
+    ? 'Legacy fixed market unavailable'
+    : `Fixed market ${revision.marketScope.market}`;
 }

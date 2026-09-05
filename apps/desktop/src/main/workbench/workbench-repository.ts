@@ -156,11 +156,12 @@ export class WorkbenchRepository {
   }
 
   getState(botId: string, selectedVersion?: number): WorkbenchState {
-    const bot = this.requireBot(botId);
+    const identity = this.getStoredIdentity(botId);
+    const bot = identity.summary;
     const revisions = this.database.prepare(`
       SELECT bot_id, version, strategy_id, name, document_json, status, created_at, approved_at
       FROM strategy_revisions WHERE bot_id = ? ORDER BY version DESC
-    `).all(botId).map(toStrategyRevision);
+    `).all(botId).map((row) => toStrategyRevision(row, identity.legacyMarketHint));
     const messages = this.database.prepare(`
       SELECT id, bot_id, role, content, created_at
       FROM chat_messages WHERE bot_id = ? ORDER BY created_at ASC, rowid ASC
@@ -221,7 +222,7 @@ export class WorkbenchRepository {
       FROM strategy_revisions WHERE bot_id = ? AND version = ?
     `).get(botId, version);
     if (row === undefined) throw new Error('Strategy revision not found');
-    return toStrategyRevision(row);
+    return toStrategyRevision(row, this.getStoredIdentity(botId).legacyMarketHint);
   }
 
   private requireBot(botId: string) {
@@ -240,7 +241,7 @@ export class WorkbenchRepository {
   }
 }
 
-function toStrategyRevision(row: unknown): StrategyRevision {
+function toStrategyRevision(row: unknown, legacyMarketHint: string | null): StrategyRevision {
   const source = row as RevisionRow;
   if (typeof source.document_json !== 'string') throw new Error('Stored strategy document is invalid');
   const document = parseStrategyDocument(JSON.parse(source.document_json));
@@ -249,6 +250,10 @@ function toStrategyRevision(row: unknown): StrategyRevision {
     strategyId: source.strategy_id,
     version: source.version,
     name: source.name,
+    schemaVersion: document.schemaVersion,
+    marketScope: document.schemaVersion === '2.0'
+      ? { type: 'dex_universe' }
+      : { type: 'legacy_fixed', ...(legacyMarketHint === null ? {} : { market: legacyMarketHint }) },
     status: source.status,
     createdAt: source.created_at,
     approvedAt: source.approved_at,

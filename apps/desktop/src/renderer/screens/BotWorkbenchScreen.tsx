@@ -8,6 +8,7 @@ import { InspectorPanel } from '../workbench/InspectorPanel';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
 import { LiveReviewScreen } from './LiveReviewScreen';
+import { PaperReviewScreen } from './PaperReviewScreen';
 
 export type BotWorkbenchScreenProps = Readonly<{
   bot: BotSummary;
@@ -26,6 +27,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
   const [approving, setApproving] = useState(false);
   const [deployment, setDeployment] = useState<PaperDeploymentView | null>(null);
   const [liveDeployment, setLiveDeployment] = useState<Deployment | null>(null);
+  const [reviewingPaper, setReviewingPaper] = useState(false);
   const [reviewingLive, setReviewingLive] = useState(false);
   const [changingDeployment, setChangingDeployment] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       setApproving(false);
     }
   };
-  const startPaper = async () => {
+  const startPaper = async (riskLimits: RiskLimits) => {
     const revision = state?.currentRevision;
     if (revision?.status !== 'approved') return;
     setChangingDeployment(true);
@@ -117,10 +119,12 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       setDeployment(await deploymentApi.startPaper({
         botId: bot.id,
         strategyVersion: revision.version,
-        riskLimits: defaultRiskLimits(),
+        riskLimits,
       }));
+      setReviewingPaper(false);
     } catch {
       setError('Paper deployment could not start. Check approval and risk limits.');
+      throw new Error('PAPER_DEPLOYMENT_FAILED');
     } finally {
       setChangingDeployment(false);
     }
@@ -161,9 +165,18 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       riskLimits={defaultRiskLimits()}
       api={deploymentApi}
       onBack={() => setReviewingLive(false)}
-      onRunPaper={() => { setReviewingLive(false); void startPaper(); }}
+      onRunPaper={() => { setReviewingLive(false); setReviewingPaper(true); }}
       onStarted={(next) => { setLiveDeployment(next); setReviewingLive(false); }}
       onOpenSettings={onOpenSettings}
+    />;
+  }
+  if (reviewingPaper && state.currentRevision !== null) {
+    return <PaperReviewScreen
+      bot={bot}
+      revision={state.currentRevision}
+      initialRiskLimits={defaultRiskLimits()}
+      onCancel={() => setReviewingPaper(false)}
+      onStart={startPaper}
     />;
   }
   return (
@@ -178,7 +191,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
             deployment={deployment}
             liveDeployment={liveDeployment}
             changing={changingDeployment}
-            onStart={startPaper}
+            onStart={() => setReviewingPaper(true)}
             onPause={() => void changePaperStatus('pause')}
             onStop={() => void changePaperStatus('stop')}
             onReviewLive={() => setReviewingLive(true)}

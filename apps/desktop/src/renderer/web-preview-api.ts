@@ -309,6 +309,8 @@ function previewRevision(botId: string, version: number, createdAt: string): Str
     strategyId: 'preview-etf-rsi',
     version,
     name: 'BTC ETF Flow + RSI',
+    schemaVersion: '2.0',
+    marketScope: { type: 'dex_universe' },
     status: 'draft',
     createdAt,
     approvedAt: null,

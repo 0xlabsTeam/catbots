@@ -27,7 +27,7 @@ export function StrategyGraph({ revision, onSelectNode }: StrategyGraphProps) {
     <section className="strategy-graph-shell" aria-label={`Strategy flow for ${revision.name}`}>
       <header className="strategy-scope" aria-label="Market scope">
         <div><span>DEX</span><strong>Hyperliquid</strong></div>
-        <div><span>Market scope</span><strong>All active perpetual markets</strong></div>
+        <div><span>Market scope</span><strong>{scopeDescription(revision)}</strong></div>
       </header>
       <div className="strategy-graph">
         <ReactFlow
@@ -53,6 +53,13 @@ export function StrategyGraph({ revision, onSelectNode }: StrategyGraphProps) {
       </div>
     </section>
   );
+}
+
+function scopeDescription(revision: StrategyRevision): string {
+  if (revision.marketScope.type === 'dex_universe') return 'All active perpetual markets';
+  return revision.marketScope.market === undefined
+    ? 'Fixed market · unavailable'
+    : `Fixed market · ${revision.marketScope.market}`;
 }
 
 function StrategyNodeCard({ data }: NodeProps<StrategyFlowNode>) {

@@ -25,7 +25,7 @@ export const WorkbenchEdgeSchema = z.object({
 
 export const StrategyRevisionStatusSchema = z.enum(['draft', 'approved']);
 
-export const StrategyRevisionSchema = z.object({
+const StrategyRevisionBaseSchema = z.object({
   botId: BotIdSchema,
   strategyId: z.string().trim().min(1),
   version: z.number().int().positive(),
@@ -35,7 +35,21 @@ export const StrategyRevisionSchema = z.object({
   approvedAt: TimestampSchema.nullable(),
   nodes: z.array(WorkbenchNodeSchema),
   edges: z.array(WorkbenchEdgeSchema),
-}).strict();
+});
+
+export const StrategyRevisionSchema = z.discriminatedUnion('schemaVersion', [
+  StrategyRevisionBaseSchema.extend({
+    schemaVersion: z.literal('1.0'),
+    marketScope: z.object({
+      type: z.literal('legacy_fixed'),
+      market: z.string().trim().min(1).max(40).optional(),
+    }).strict(),
+  }).strict(),
+  StrategyRevisionBaseSchema.extend({
+    schemaVersion: z.literal('2.0'),
+    marketScope: z.object({ type: z.literal('dex_universe') }).strict(),
+  }).strict(),
+]);
 
 export type StrategyRevision = z.infer<typeof StrategyRevisionSchema>;
 

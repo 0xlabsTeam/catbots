@@ -101,7 +101,10 @@ describe('WorkbenchRepository', () => {
     now = new Date('2026-09-04T00:01:00.000Z');
     const second = repository.createValidatedRevision(botId, strategy('ETF flow momentum v2'));
 
-    expect(first).toMatchObject({ botId, version: 1, status: 'draft', name: 'ETF flow momentum' });
+    expect(first).toMatchObject({
+      botId, version: 1, status: 'draft', name: 'ETF flow momentum',
+      schemaVersion: '1.0', marketScope: { type: 'legacy_fixed', market: 'BTC-PERP' },
+    });
     expect(second).toMatchObject({ botId, version: 2, status: 'draft', name: 'ETF flow momentum v2' });
     expect(input.strategy.version).toBe(99);
     expect(first.nodes).toEqual([
@@ -114,6 +117,21 @@ describe('WorkbenchRepository', () => {
     expect(repository.getState(botId, 1).currentRevision?.version).toBe(1);
     expect(() => database.prepare('UPDATE strategy_revisions SET document_json = ? WHERE bot_id = ? AND version = 1').run('{}', botId))
       .toThrow(/immutable/i);
+  });
+
+  it('projects a Strategy 2.0 revision as the DEX universe without a fixed market', () => {
+    const dynamicBotId = new BotRepository(database, () => now).createDraft({ name: 'Universe bot', dex: 'hyperliquid' }).id;
+    const dynamic = parseStrategyDocument({
+      schemaVersion: '2.0',
+      strategy: { id: 'dynamic', name: 'Dynamic universe', version: 1 },
+      marketScope: { type: 'dex_universe' },
+      nodes: strategy().nodes,
+      edges: strategy().edges,
+    });
+
+    expect(repository.createValidatedRevision(dynamicBotId, dynamic)).toMatchObject({
+      schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
+    });
   });
 
   it('rejects invalid graphs without persisting a revision', () => {

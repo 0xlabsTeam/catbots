@@ -19,6 +19,7 @@ const state: WorkbenchState = {
   },
   currentRevision: {
     botId: '018f3f75-89ab-7def-8123-456789abcdef', strategyId: 'strategy', version: 1, name: 'ETF momentum', status: 'draft',
+    schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
     createdAt: '2026-09-04T00:00:00.000Z', approvedAt: null,
     nodes: [
       { id: 'trigger', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' },
@@ -143,7 +144,7 @@ describe('BotWorkbenchScreen', () => {
     expect(workbenchApi.approveRevision).toHaveBeenCalledWith({ botId: state.bot.id, version: 1 });
   });
 
-  it('starts an approved revision in Paper mode and exposes performance and logs tabs', async () => {
+  it('reviews and edits the exact shared limits before starting Paper, and cancel does not start', async () => {
     const workbenchApi = api();
     workbenchApi.get = vi.fn().mockResolvedValue({
       ...state,
@@ -155,9 +156,28 @@ describe('BotWorkbenchScreen', () => {
     await screen.findByRole('heading', { name: 'BTC Flow' });
 
     await user.click(screen.getByRole('button', { name: 'Run Paper' }));
+    expect(screen.getByRole('heading', { name: 'Review Paper deployment' })).toBeTruthy();
+    expect(screen.getByText('DEX: Hyperliquid')).toBeTruthy();
+    expect(screen.getByText('Market access: All active perpetual markets')).toBeTruthy();
+    expect(screen.getByText('Universe data freshness is unavailable before Paper starts.')).toBeTruthy();
+    expect(screen.getByLabelText('Max total exposure (USD)')).toHaveProperty('value', '5000');
+    expect(document.body.textContent).not.toContain('credential');
+    expect(paperApi.startPaper).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByRole('heading', { name: 'BTC Flow' })).toBeTruthy();
+    expect(paperApi.startPaper).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Run Paper' }));
+    await user.clear(screen.getByLabelText('Max total exposure (USD)'));
+    await user.type(screen.getByLabelText('Max total exposure (USD)'), '6000');
+    await user.click(screen.getByRole('button', { name: 'Start Paper' }));
     expect(paperApi.startPaper).toHaveBeenCalledWith(expect.objectContaining({
       botId: state.bot.id, strategyVersion: 1,
-      riskLimits: expect.objectContaining({ maxTotalExposureUsd: '5000' }),
+      riskLimits: {
+        maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '6000', maxLeverage: 3,
+        maxDailyLossUsd: '300', maxDrawdownPercent: 12, allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+      },
     }));
     expect(await screen.findByText('Paper running')).toBeTruthy();
 

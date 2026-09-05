@@ -3,6 +3,8 @@ import { Badge, Banner, Button, Input, LayerCard } from '@cloudflare/kumo';
 import { CheckCircleIcon, WarningDiamondIcon, XCircleIcon } from '@phosphor-icons/react';
 import type { BotSummary, CatbotsDesktopApi, Deployment, LivePreflightView, RiskLimits, StrategyRevision } from '@catbots/contracts';
 
+import { DeploymentScopeSummary } from '../workbench/DeploymentScopeSummary';
+
 export type LiveReviewScreenProps = Readonly<{
   bot: BotSummary;
   revision: StrategyRevision;
@@ -81,11 +83,7 @@ export function LiveReviewScreen({ bot, revision, riskLimits, api, onBack, onRun
             ]} />
           </ReviewSection>
           <ReviewSection eyebrow="2 · STRATEGY" title={`${revision.name} · v${revision.version}`}>
-            <div className="live-market-scope" aria-label="Deployment market scope">
-              <p>DEX: Hyperliquid</p>
-              <p>Market access: All active perpetual markets</p>
-              <p className={freshnessCheck?.ok === false ? 'live-freshness-stale' : undefined}>{freshnessSummary}</p>
-            </div>
+            <DeploymentScopeSummary freshness={freshnessSummary} stale={freshnessCheck?.ok === false} />
             <DefinitionList rows={[
               ['Bot', bot.name], ['Strategy revision', `v${revision.version}`], ['Approval', revision.status === 'approved' ? 'Approved revision' : 'Not approved'],
             ]} />

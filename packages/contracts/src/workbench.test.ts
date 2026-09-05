@@ -20,6 +20,8 @@ const revision = {
   strategyId: 'btc-rsi',
   version: 1,
   name: 'BTC RSI',
+  schemaVersion: '2.0',
+  marketScope: { type: 'dex_universe' },
   status: 'draft',
   createdAt: '2026-09-04T08:00:00.000Z',
   approvedAt: null,
@@ -102,8 +104,17 @@ describe('workbench response contracts', () => {
     const parsed = StrategyRevisionSchema.parse(revision);
 
     expect(parsed.nodes.map((node) => node.kind)).toEqual(['trigger', 'condition', 'action']);
+    expect(parsed).toMatchObject({ schemaVersion: '2.0', marketScope: { type: 'dex_universe' } });
     expect(parsed).not.toHaveProperty('document');
     expect(parsed).not.toHaveProperty('json');
+  });
+
+  it('represents a legacy fixed-market revision without widening its scope', () => {
+    expect(StrategyRevisionSchema.parse({
+      ...revision,
+      schemaVersion: '1.0',
+      marketScope: { type: 'legacy_fixed', market: 'BTC-PERP' },
+    })).toMatchObject({ schemaVersion: '1.0', marketScope: { type: 'legacy_fixed', market: 'BTC-PERP' } });
   });
 
   it('rejects secret-bearing or unknown revision fields', () => {

@@ -12,6 +12,7 @@ const bot: BotSummary = {
 };
 const revision: StrategyRevision = {
   botId: bot.id, strategyId: 'btc-flow', version: 2, name: 'BTC Flow', status: 'approved',
+  schemaVersion: '2.0', marketScope: { type: 'dex_universe' },
   createdAt: '2026-09-05T00:00:00.000Z', approvedAt: '2026-09-05T00:01:00.000Z', nodes: [], edges: [],
 };
 const riskLimits: RiskLimits = {
