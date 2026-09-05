@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  runBacktest,
+  runSingleMarketBacktest,
   type AuditEvent,
   type BacktestAssumptions,
-  type BacktestInput,
+  type LegacyBacktestInput,
   type EvaluationValue,
   type JsonValue,
   type StrategyDocument,
@@ -29,7 +29,7 @@ export function runBundledSampleBacktest(
   dependencies: SampleBacktestDependencies = {},
 ): { summary: BacktestSummary; artifact: string } {
   const startedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
-  const result = runBacktest({
+  const result = runSingleMarketBacktest({
     strategy,
     market,
     range: { from: assumptions.from, to: assumptions.to },
@@ -84,7 +84,7 @@ function toRuntimeAssumptions(input: PublicAssumptions): BacktestAssumptions {
   };
 }
 
-function sampleInputs(strategy: StrategyDocument, market: string, assumptions: PublicAssumptions): BacktestInput[] {
+function sampleInputs(strategy: StrategyDocument, market: string, assumptions: PublicAssumptions): LegacyBacktestInput[] {
   const midpoint = new Date((Date.parse(assumptions.from) + Date.parse(assumptions.to)) / 2).toISOString();
   const values = sampleValues(strategy, market, midpoint);
   return strategy.nodes.filter((node) => node.kind === 'trigger').map((trigger, index) => {

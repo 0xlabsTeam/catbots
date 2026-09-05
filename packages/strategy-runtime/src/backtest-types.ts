@@ -1,4 +1,7 @@
 import type { JsonValue } from './strategy-schema';
+import type { EvaluationValue } from './evaluation-context';
+import type { MarketUniverseSnapshot } from './market-universe';
+import type { TimedSimulationInput } from './simulation-clock';
 
 export type BacktestAssumptions = Readonly<{
   startingCapital: string;
@@ -32,4 +35,20 @@ export type SimulationSnapshot = Readonly<{
   totalFees: string;
   totalFunding: string;
   realizedPnl: string;
+}>;
+
+export type BacktestMarketUniverse =
+  | Readonly<{ mode: 'all_available' }>
+  | Readonly<{ mode: 'include'; markets: readonly string[] }>;
+
+export type BacktestDatasetCoverage = Readonly<{
+  markets: readonly string[];
+  from: string;
+  to: string;
+}>;
+
+export type BacktestFrame = TimedSimulationInput & Readonly<{
+  universe: MarketUniverseSnapshot;
+  marketValues: Readonly<Record<string, Readonly<Record<string, EvaluationValue<unknown>>>>>;
+  fundingRates?: Readonly<Record<string, number>>;
 }>;

@@ -70,19 +70,16 @@ function rejected(code: string): Readonly<{ events: readonly ExecutionTraceEvent
 }
 
 export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
-  readonly #market: string;
   readonly #assumptions: BacktestAssumptions;
   readonly #positions: NumericPosition[] = [];
   readonly #ledger: SimulationLedgerEntry[] = [];
   readonly #outcomes = new Map<string, Readonly<{ events: readonly ExecutionTraceEvent[] }>>();
+  readonly #lastMarks = new Map<string, number>();
   #cash: number;
   #totalFees = 0;
   #totalFunding = 0;
-  #realizedPnl = 0;
-  #lastMark?: number;
 
-  constructor(input: Readonly<{ market: string; assumptions: BacktestAssumptions }>) {
-    this.#market = input.market;
+  constructor(input: Readonly<{ assumptions: BacktestAssumptions }>) {
     this.#assumptions = Object.freeze({ ...input.assumptions });
     this.#cash = validateAssumptions(this.#assumptions);
   }
@@ -90,9 +87,9 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
   execute(effect: ProposedEffect, context: EvaluationContext): Readonly<{ events: readonly ExecutionTraceEvent[] }> {
     const previous = this.#outcomes.get(effect.idempotencyKey);
     if (previous) return previous;
-    const price = marketPrice(context, this.#market);
+    const price = marketPrice(context, effect.market);
     if (!price) return this.#remember(effect.idempotencyKey, rejected('MARKET_PRICE_UNAVAILABLE'));
-    this.#lastMark = price.mark;
+    this.#lastMarks.set(effect.market, price.mark);
 
     const outcome = effect.type === 'execution.open_position'
       ? this.#open(effect, context, price)
@@ -103,49 +100,64 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
   }
 
   applyFunding(rate: number, context: EvaluationContext): void {
-    const price = marketPrice(context, this.#market);
+    const market = context.currentMarket;
+    const price = marketPrice(context, market);
     if (!price || !Number.isFinite(rate)) throw new Error('Funding requires a valid point-in-time price and rate');
-    this.#lastMark = price.mark;
-    for (const position of this.#positions) {
+    this.#lastMarks.set(market, price.mark);
+    for (const position of this.#positions.filter((candidate) => candidate.market === market)) {
       const signedCost = position.quantity * price.mark * rate * (position.side === 'long' ? 1 : -1);
       this.#cash -= signedCost;
       this.#totalFunding += signedCost;
       this.#ledger.push(Object.freeze({
-        type: 'funding', timestamp: context.evaluatedAt, market: this.#market,
+        type: 'funding', timestamp: context.evaluatedAt, market,
         rate: decimal(rate), amount: decimal(signedCost),
       }));
     }
   }
 
   markToMarket(context: EvaluationContext): Readonly<{ liquidated: boolean }> {
-    const price = marketPrice(context, this.#market);
+    const market = context.currentMarket;
+    const price = marketPrice(context, market);
     if (!price) throw new Error('Mark-to-market requires a valid point-in-time price');
-    this.#lastMark = price.mark;
-    let liquidated = false;
+    this.#lastMarks.set(market, price.mark);
+    return this.#liquidate(context.evaluatedAt);
+  }
+
+  markPortfolio(contexts: readonly EvaluationContext[]): Readonly<{ liquidated: boolean }> {
+    const prices = contexts.map((context) => {
+      const price = marketPrice(context, context.currentMarket);
+      if (!price) throw new Error('Mark-to-market requires a valid point-in-time price');
+      return { context, price };
+    });
+    for (const { context, price } of prices) this.#lastMarks.set(context.currentMarket, price.mark);
+    const timestamp = contexts.at(-1)?.evaluatedAt;
+    return timestamp ? this.#liquidate(timestamp) : { liquidated: false };
+  }
+
+  #liquidate(timestamp: string): Readonly<{ liquidated: boolean }> {
+    const equity = this.#equity();
+    const maintenanceMargin = this.#positions.reduce((total, position) => {
+      const mark = this.#lastMarks.get(position.market) ?? position.entryPrice;
+      return total + position.quantity * mark * this.#assumptions.maintenanceMarginRate;
+    }, 0);
+    if (equity > maintenanceMargin) return { liquidated: false };
+
     for (const position of [...this.#positions]) {
-      const equity = this.#cash + this.#unrealized(position, price.mark);
-      const maintenanceMargin = position.quantity * price.mark * this.#assumptions.maintenanceMarginRate;
-      if (equity <= maintenanceMargin) {
-        const pnl = this.#unrealized(position, price.mark);
-        this.#cash += pnl;
-        this.#realizedPnl += pnl;
-        this.#positions.splice(this.#positions.indexOf(position), 1);
-        this.#ledger.push(Object.freeze({
-          type: 'liquidation', timestamp: context.evaluatedAt, market: this.#market,
-          side: position.side, quantity: decimal(position.quantity), price: decimal(price.mark),
-          realizedPnl: decimal(pnl), entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
-        }));
-        liquidated = true;
-      }
+      const mark = this.#lastMarks.get(position.market) ?? position.entryPrice;
+      const pnl = this.#unrealized(position, mark);
+      this.#cash += pnl;
+      this.#positions.splice(this.#positions.indexOf(position), 1);
+      this.#ledger.push(Object.freeze({
+        type: 'liquidation', timestamp, market: position.market,
+        side: position.side, quantity: decimal(position.quantity), price: decimal(mark),
+        realizedPnl: decimal(pnl), entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
+      }));
     }
-    return { liquidated };
+    return { liquidated: true };
   }
 
   snapshot(): SimulationSnapshot {
-    const equity = this.#cash + this.#positions.reduce(
-      (total, position) => total + this.#unrealized(position, this.#lastMark ?? position.entryPrice),
-      0,
-    );
+    const equity = this.#equity();
     const positions: SimulatedPosition[] = this.#positions.map((position) => Object.freeze({
       market: position.market,
       side: position.side,
@@ -160,8 +172,35 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
       ledger: Object.freeze([...this.#ledger]),
       totalFees: decimal(this.#totalFees),
       totalFunding: decimal(this.#totalFunding),
-      realizedPnl: decimal(this.#realizedPnl),
+      realizedPnl: decimal(this.#ledger.reduce(
+        (total, entry) => total + Number(entry.realizedPnl ?? 0),
+        0,
+      )),
     });
+  }
+
+  marketEquityContributions(): Readonly<Record<string, string>> {
+    const markets = new Set<string>([
+      ...this.#lastMarks.keys(),
+      ...this.#positions.map(({ market }) => market),
+      ...this.#ledger.map(({ market }) => market),
+    ]);
+    return Object.freeze(Object.fromEntries([...markets].sort().map((market) => {
+      let realizedPnl = 0;
+      let fees = 0;
+      let funding = 0;
+      for (const entry of this.#ledger.filter((candidate) => candidate.market === market)) {
+        realizedPnl += numeric(entry.realizedPnl) ?? Number(entry.realizedPnl ?? 0);
+        fees += numeric(entry.fee) ?? Number(entry.fee ?? 0);
+        funding += numeric(entry.amount) ?? Number(entry.amount ?? 0);
+      }
+      const unrealizedPnl = this.#positions
+        .filter((position) => position.market === market)
+        .reduce((total, position) => (
+          total + this.#unrealized(position, this.#lastMarks.get(market) ?? position.entryPrice)
+        ), 0);
+      return [market, decimal(realizedPnl - fees - funding + unrealizedPnl)];
+    })));
   }
 
   #open(
@@ -181,7 +220,13 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
       ? Number(this.snapshot().equity) * sizeValue / 100
       : size.type === 'quote' ? sizeValue : Number.NaN;
     if (!Number.isFinite(notional) || notional <= 0) return rejected('INVALID_ORDER_INTENT');
-    if (notional / leverage > Number(this.snapshot().equity)) return rejected('INSUFFICIENT_MARGIN');
+    const usedMargin = this.#positions.reduce((total, position) => {
+      const mark = this.#lastMarks.get(position.market) ?? position.entryPrice;
+      return total + position.quantity * mark / position.leverage;
+    }, 0);
+    if (notional / leverage > Number(this.snapshot().equity) - usedMargin) {
+      return rejected('INSUFFICIENT_MARGIN');
+    }
 
     const slip = this.#assumptions.slippageBps / 10_000;
     const fillPrice = side === 'long' ? price.ask * (1 + slip) : price.bid * (1 - slip);
@@ -190,9 +235,9 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     const filledAt = new Date(Date.parse(context.evaluatedAt) + this.#assumptions.latencyMs).toISOString();
     this.#cash -= fee;
     this.#totalFees += fee;
-    this.#positions.push({ market: this.#market, side, quantity, entryPrice: fillPrice, leverage, openedAt: filledAt });
+    this.#positions.push({ market: effect.market, side, quantity, entryPrice: fillPrice, leverage, openedAt: filledAt });
     this.#ledger.push(Object.freeze({
-      type: 'fill', timestamp: filledAt, market: this.#market, side,
+      type: 'fill', timestamp: filledAt, market: effect.market, side,
       quantity: decimal(quantity), price: decimal(fillPrice), fee: decimal(fee), effectType: effect.type,
     }));
     return { events: this.#fillEvents(effect, quantity, fillPrice, fee, filledAt) };
@@ -203,7 +248,8 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     context: EvaluationContext,
     price: MarketPrice,
   ): Readonly<{ events: readonly ExecutionTraceEvent[] }> {
-    const position = this.#positions[0];
+    const positionIndex = this.#positions.findIndex((candidate) => candidate.market === effect.market);
+    const position = this.#positions[positionIndex];
     if (!position) return rejected('POSITION_NOT_FOUND');
     const percent = numeric(effect.config.percent) ?? 100;
     if (percent <= 0 || percent > 100) return rejected('INVALID_ORDER_INTENT');
@@ -213,13 +259,12 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
     const pnl = (position.side === 'long' ? fillPrice - position.entryPrice : position.entryPrice - fillPrice) * quantity;
     const fee = quantity * fillPrice * this.#assumptions.feeRateBps / 10_000;
     this.#cash += pnl - fee;
-    this.#realizedPnl += pnl;
     this.#totalFees += fee;
     position.quantity -= quantity;
-    if (position.quantity <= 0.000000005) this.#positions.splice(0, 1);
+    if (position.quantity <= 0.000000005) this.#positions.splice(positionIndex, 1);
     const filledAt = new Date(Date.parse(context.evaluatedAt) + this.#assumptions.latencyMs).toISOString();
     this.#ledger.push(Object.freeze({
-      type: 'fill', timestamp: filledAt, market: this.#market,
+      type: 'fill', timestamp: filledAt, market: effect.market,
       side: position.side === 'long' ? 'short' : 'long', quantity: decimal(quantity),
       positionSide: position.side, entryPrice: decimal(position.entryPrice), openedAt: position.openedAt,
       price: decimal(fillPrice), fee: decimal(fee), realizedPnl: decimal(pnl), effectType: effect.type,
@@ -255,6 +300,13 @@ export class SimulatedExecutionAdapter implements RuntimeExecutionPort {
 
   #unrealized(position: NumericPosition, mark: number): number {
     return (position.side === 'long' ? mark - position.entryPrice : position.entryPrice - mark) * position.quantity;
+  }
+
+  #equity(): number {
+    return this.#cash + this.#positions.reduce((total, position) => {
+      const mark = this.#lastMarks.get(position.market) ?? position.entryPrice;
+      return total + this.#unrealized(position, mark);
+    }, 0);
   }
 
   #remember(

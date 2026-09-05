@@ -1,5 +1,9 @@
 export type EquityPoint = Readonly<{ timestamp: string; equity: string }>;
-export type ClosedTrade = Readonly<{ realizedPnl: string }>;
+export type ClosedTrade = Readonly<{ market?: string; realizedPnl: string }>;
+export type MarketContributionPoint = Readonly<{
+  timestamp: string;
+  contributions: Readonly<Record<string, string>>;
+}>;
 
 export type BacktestMetrics = Readonly<{
   returnPercent: number;
@@ -9,6 +13,16 @@ export type BacktestMetrics = Readonly<{
   tradeCount: number;
   fees: string;
   funding: string;
+  endingEquity: string;
+  realizedPnl: string;
+}>;
+
+export type PerMarketBacktestMetrics = Readonly<{
+  market: string;
+  realizedPnl: string;
+  tradeCount: number;
+  winRatePercent: number;
+  drawdownContributionPercent: number;
 }>;
 
 export type BacktestMetricInput = Readonly<{
@@ -27,6 +41,11 @@ function finiteDecimal(value: string, label: string): number {
 
 function round(value: number): number {
   return Number(value.toFixed(8));
+}
+
+function decimal(value: number): string {
+  const normalized = Math.abs(value) < 0.000000005 ? 0 : value;
+  return Number(normalized.toFixed(8)).toString();
 }
 
 export function calculateBacktestMetrics(input: BacktestMetricInput): BacktestMetrics {
@@ -69,5 +88,78 @@ export function calculateBacktestMetrics(input: BacktestMetricInput): BacktestMe
     tradeCount: realized.length,
     fees: input.totalFees,
     funding: input.totalFunding,
+    endingEquity: input.equityCurve.at(-1)?.equity ?? input.startingCapital,
+    realizedPnl: decimal(realized.reduce((total, value) => total + value, 0)),
   });
+}
+
+export type PerMarketBacktestMetricInput = Readonly<{
+  startingCapital: string;
+  markets: readonly string[];
+  equityCurve: readonly EquityPoint[];
+  marketContributionCurve: readonly MarketContributionPoint[];
+  closedTrades: readonly Readonly<{ market: string; realizedPnl: string }>[];
+}>;
+
+export function calculatePerMarketBacktestMetrics(
+  input: PerMarketBacktestMetricInput,
+): readonly PerMarketBacktestMetrics[] {
+  const startingCapital = finiteDecimal(input.startingCapital, 'Starting capital');
+  if (startingCapital <= 0) throw new Error('Starting capital must be positive');
+  if (input.marketContributionCurve.length !== input.equityCurve.length) {
+    throw new Error('Market contribution curve must align with the equity curve');
+  }
+  const markets = [...input.markets].sort();
+  if (markets.some((market) => market.length === 0) || new Set(markets).size !== markets.length) {
+    throw new Error('Per-market metric markets must be non-empty and unique');
+  }
+
+  let peak = startingCapital;
+  let peakIndex = 0;
+  let drawdownPeakIndex = 0;
+  let drawdownTroughIndex = 0;
+  let maximumDrawdown = 0;
+  input.equityCurve.forEach((point, index) => {
+    const equity = finiteDecimal(point.equity, 'Equity');
+    if (equity > peak) {
+      peak = equity;
+      peakIndex = index;
+    }
+    const drawdown = peak > 0 ? (peak - equity) / peak : 0;
+    if (drawdown > maximumDrawdown) {
+      maximumDrawdown = drawdown;
+      drawdownPeakIndex = peakIndex;
+      drawdownTroughIndex = index;
+    }
+  });
+  const drawdownPeak = finiteDecimal(
+    input.equityCurve[drawdownPeakIndex]?.equity ?? input.startingCapital,
+    'Drawdown peak',
+  );
+
+  return Object.freeze(markets.map((market) => {
+    const realized = input.closedTrades
+      .filter((trade) => trade.market === market)
+      .map((trade) => finiteDecimal(trade.realizedPnl, 'Realized PnL'));
+    const peakContribution = finiteDecimal(
+      input.marketContributionCurve[drawdownPeakIndex]?.contributions[market] ?? '0',
+      'Market contribution',
+    );
+    const troughContribution = finiteDecimal(
+      input.marketContributionCurve[drawdownTroughIndex]?.contributions[market] ?? '0',
+      'Market contribution',
+    );
+    const lossesInDrawdownWindow = Math.max(0, peakContribution - troughContribution);
+    return Object.freeze({
+      market,
+      realizedPnl: decimal(realized.reduce((total, value) => total + value, 0)),
+      tradeCount: realized.length,
+      winRatePercent: realized.length === 0
+        ? 0
+        : round(realized.filter((value) => value > 0).length / realized.length * 100),
+      drawdownContributionPercent: drawdownPeak === 0
+        ? 0
+        : round(lossesInDrawdownWindow / drawdownPeak * 100),
+    });
+  }));
 }

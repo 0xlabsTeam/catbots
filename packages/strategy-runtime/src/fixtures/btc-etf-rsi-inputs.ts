@@ -1,4 +1,4 @@
-import type { BacktestRequest } from '../backtest';
+import type { LegacySingleMarketBacktestRequest } from '../backtest';
 import type { EvaluationValue, TriggerEvent } from '../evaluation-context';
 import { btcEtfRsiStrategy } from './btc-etf-rsi';
 
@@ -22,7 +22,7 @@ function market(mark: number, observedAt: string): EvaluationValue<unknown> {
   return value({ market: 'BTC-PERP', bid: mark, ask: mark, mark }, observedAt, `price-${mark}`);
 }
 
-export function btcEtfRsiBacktestRequest(): BacktestRequest {
+export function btcEtfRsiBacktestRequest(): LegacySingleMarketBacktestRequest {
   const etfEvent: TriggerEvent = {
     id: 'evt-etf-negative',
     type: 'data.etf_flow.updated',
