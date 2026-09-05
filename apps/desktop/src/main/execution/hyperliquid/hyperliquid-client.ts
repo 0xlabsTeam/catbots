@@ -10,7 +10,12 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { fixedError } from './hyperliquid-normalization';
 
 export type HyperliquidMeta = Readonly<{
-  universe: readonly Readonly<{ name: string; szDecimals: number; maxLeverage: number }>[];
+  universe: readonly Readonly<{
+    name: string;
+    szDecimals: number;
+    maxLeverage: number;
+    isDelisted?: true;
+  }>[];
 }>;
 
 export type HyperliquidClearinghouseState = Readonly<{
@@ -174,10 +179,13 @@ class SdkHyperliquidClient implements HyperliquidClientPort {
     return {
       universe: response.universe.map((item) => {
         const row = asRecord(item);
+        const isDelisted = row.isDelisted;
+        if (isDelisted !== undefined && isDelisted !== true) throw fixedError('HYPERLIQUID_RESPONSE_INVALID');
         return {
           name: requiredText(row.name),
           szDecimals: nonnegativeInteger(row.szDecimals),
           maxLeverage: positiveInteger(row.maxLeverage),
+          ...(isDelisted === true ? { isDelisted } : {}),
         };
       }),
     };

@@ -2,6 +2,8 @@ export type PerpMarket = Readonly<{
   market: string;
   baseAsset: string;
   quoteAsset: string;
+  active: boolean;
+  sizeDecimals: number;
   maximumLeverage: number;
 }>;
 

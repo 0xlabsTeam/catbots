@@ -8,7 +8,13 @@ const account = '0x0123456789abcdef0123456789abcdef01234567';
 
 function client(overrides: Partial<HyperliquidClientPort> = {}): HyperliquidClientPort {
   return {
-    getMeta: vi.fn().mockResolvedValue({ universe: [{ name: 'BTC', szDecimals: 5, maxLeverage: 40 }] }),
+    getMeta: vi.fn().mockResolvedValue({
+      universe: [
+        { name: 'BTC', szDecimals: 5, maxLeverage: 40 },
+        { name: 'ETH', szDecimals: 4, maxLeverage: 50 },
+        { name: 'OLD', szDecimals: 2, maxLeverage: 3, isDelisted: true },
+      ],
+    }),
     getClearinghouseState: vi.fn().mockResolvedValue({
       marginSummary: { accountValue: '10000' },
       withdrawable: '7500',
@@ -29,8 +35,36 @@ describe('HyperliquidAdapter', () => {
     const adapter = new HyperliquidAdapter({ client: client() });
 
     await expect(adapter.getMarkets(signal)).resolves.toEqual([
-      { market: 'BTC-PERP', baseAsset: 'BTC', quoteAsset: 'USDC', maximumLeverage: 40 },
+      {
+        market: 'BTC-PERP', baseAsset: 'BTC', quoteAsset: 'USDC', active: true,
+        sizeDecimals: 5, maximumLeverage: 40,
+      },
+      {
+        market: 'ETH-PERP', baseAsset: 'ETH', quoteAsset: 'USDC', active: true,
+        sizeDecimals: 4, maximumLeverage: 50,
+      },
+      {
+        market: 'OLD-PERP', baseAsset: 'OLD', quoteAsset: 'USDC', active: false,
+        sizeDecimals: 2, maximumLeverage: 3,
+      },
     ]);
+  });
+
+  it('fetches fresh metadata each time the market universe is requested', async () => {
+    const api = client({
+      getMeta: vi.fn()
+        .mockResolvedValueOnce({ universe: [{ name: 'BTC', szDecimals: 5, maxLeverage: 40 }] })
+        .mockResolvedValueOnce({ universe: [{ name: 'ETH', szDecimals: 4, maxLeverage: 50 }] }),
+    });
+    const adapter = new HyperliquidAdapter({ client: api });
+
+    await expect(adapter.getMarkets(signal)).resolves.toEqual([
+      expect.objectContaining({ market: 'BTC-PERP' }),
+    ]);
+    await expect(adapter.getMarkets(signal)).resolves.toEqual([
+      expect.objectContaining({ market: 'ETH-PERP' }),
+    ]);
+    expect(api.getMeta).toHaveBeenCalledTimes(2);
   });
 
   it('queries the master account and normalizes balances and signed positions', async () => {

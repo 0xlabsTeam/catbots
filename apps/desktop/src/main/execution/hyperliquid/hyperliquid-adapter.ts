@@ -25,9 +25,15 @@ export class HyperliquidAdapter implements PerpDexAdapter {
   }>) {}
 
   async getMarkets(signal: AbortSignal): Promise<readonly PerpMarket[]> {
-    const meta = await this.getMeta(signal);
-    return meta.universe.map(({ name, maxLeverage }) => ({
-      market: toCatbotsMarket(name), baseAsset: name, quoteAsset: 'USDC', maximumLeverage: maxLeverage,
+    const meta = await this.options.client.getMeta(signal);
+    this.meta = meta;
+    return meta.universe.map(({ name, szDecimals, maxLeverage, isDelisted }) => ({
+      market: toCatbotsMarket(name),
+      baseAsset: name,
+      quoteAsset: 'USDC',
+      active: isDelisted !== true,
+      sizeDecimals: szDecimals,
+      maximumLeverage: maxLeverage,
     }));
   }
 
