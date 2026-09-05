@@ -94,6 +94,13 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
       ? matchesEventTrigger(trigger.config as EventTriggerConfig, triggerInput.event)
       : false;
   if (!matches) throw new Error(`Input does not match Trigger node: ${triggerNodeId}`);
+  if (context
+    && trigger.type === 'trigger.event'
+    && triggerInput.kind === 'event'
+    && ((trigger.config as EventTriggerConfig).scope ?? 'market') === 'market'
+    && triggerInput.event.market !== context.currentMarket) {
+    throw new Error(`Event market ${triggerInput.event.market} does not match currentMarket ${context.currentMarket}`);
+  }
 
   const idempotencyKey = deriveTriggerIdempotencyKey(triggerNodeId, triggerInput);
   const traceId = `trace:${compiled.document.strategy.id}:v${compiled.document.strategy.version}:${idempotencyKey}`;

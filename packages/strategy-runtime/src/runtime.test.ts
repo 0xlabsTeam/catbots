@@ -71,6 +71,26 @@ function compiledMarketStrategy(): CompiledStrategy {
   return result.compiled;
 }
 
+function compiledMarketEventStrategy(scope: 'market' | 'dex' = 'market'): CompiledStrategy {
+  const document = parseStrategyDocument({
+    schemaVersion: '2.0',
+    strategy: { id: 'btc-event', name: 'BTC Event', version: 1 },
+    marketScope: { type: 'dex_universe' },
+    nodes: [
+      { id: 't-trade', kind: 'trigger', type: 'trigger.event', version: 1, config: { eventType: 'market.trade', filters: {}, scope } },
+      { id: 'c-symbol', kind: 'condition', type: 'predicate.compare', version: 1, config: { left: { ref: 'market.symbol' }, operator: 'eq', right: { literal: 'BTC-PERP' } } },
+      { id: 'a-long', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long' } },
+    ],
+    edges: [
+      { id: 'e1', source: 't-trade', sourcePort: 'activation', target: 'c-symbol', targetPort: 'activation' },
+      { id: 'e2', source: 'c-symbol', sourcePort: 'result', target: 'a-long', targetPort: 'condition' },
+    ],
+  });
+  const result = validateStrategy(document, createBuiltinRegistry());
+  if (!result.valid) throw new Error(`Fixture must compile: ${JSON.stringify(result.errors)}`);
+  return result.compiled;
+}
+
 const triggerInput = { kind: 'interval' as const, occurredAt: '2026-09-03T08:15:00.000Z' };
 
 function filledExecution(): RuntimeExecutionPort {
@@ -89,6 +109,38 @@ function filledExecution(): RuntimeExecutionPort {
 }
 
 describe('evaluateTrigger', () => {
+  it('requires a market-scoped Event to match the evaluation currentMarket', () => {
+    const compiled = compiledMarketEventStrategy();
+    const eventInput = {
+      kind: 'event' as const,
+      event: {
+        id: 'trade-1', type: 'market.trade', market: 'BTC-PERP',
+        occurredAt: '2026-09-03T08:15:00.000Z', receivedAt: '2026-09-03T08:15:01.000Z',
+        source: 'fixture.market', payload: {},
+        quality: { status: 'verified' as const, freshnessSeconds: 1 },
+      },
+    };
+    const requestFor = (currentMarket: string) => ({
+      compiled,
+      triggerNodeId: 't-trade',
+      triggerInput: eventInput,
+      context: context(25, currentMarket),
+      deployment: { id: 'backtest-1', mode: 'backtest' as const },
+      execution: filledExecution(),
+    });
+
+    expect(() => evaluateTrigger(requestFor('ETH-PERP'))).toThrow(/event market.*currentMarket/i);
+    expect(evaluateTrigger(requestFor('BTC-PERP')).effects).toEqual([
+      expect.objectContaining({ market: 'BTC-PERP' }),
+    ]);
+
+    expect(evaluateTrigger({
+      ...requestFor('BTC-PERP'),
+      compiled: compiledMarketEventStrategy('dex'),
+      triggerInput: { kind: 'event', event: { ...eventInput.event, market: undefined } },
+    }).effects).toEqual([expect.objectContaining({ market: 'BTC-PERP' })]);
+  });
+
   it('binds symbol Conditions and proposed Actions to the immutable current market', () => {
     const requestFor = (currentMarket: string) => ({
       compiled: compiledMarketStrategy(),
