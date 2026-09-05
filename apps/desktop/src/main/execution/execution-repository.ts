@@ -16,6 +16,7 @@ import type {
   EvaluationContext,
   MarketUniverseSnapshot,
   ProposedEffect,
+  TriggerInput,
 } from '@catbots/strategy-runtime';
 
 export type AuditTraceIdentity = Readonly<{
@@ -299,6 +300,21 @@ export class ExecutionRepository {
     return this.database.transaction(() => {
       const pending = this.getOutboxItem(idempotencyKey);
       if (pending === null || pending.status !== 'pending') return null;
+      const submittedAt = Date.parse(claimedAt);
+      if (!Number.isFinite(submittedAt)) throw new Error('Valid submission timestamp required');
+      const deployment = this.getDeployment(pending.deploymentId);
+      const items = this.listOutboxItems(pending.deploymentId);
+      // Pending intents own FIFO queue slots, not permanent minute slots. Claiming
+      // converts the head slot to an actual submission reservation atomically.
+      const head = this.database.prepare(`
+        SELECT idempotency_key FROM execution_outbox
+        WHERE deployment_id = ? AND status = 'pending' ORDER BY rowid LIMIT 1
+      `).get(pending.deploymentId) as { idempotency_key: string } | undefined;
+      if (head?.idempotency_key !== idempotencyKey) return null;
+      const recentClaims = items.filter((item) => item.claimedAt !== null
+        && (item.status === 'claimed'
+          || Math.max(Date.parse(item.claimedAt), Date.parse(item.updatedAt)) > submittedAt - 60_000)).length;
+      if (recentClaims >= deployment.riskLimits.maxOrdersPerMinute) return null;
       if (submissionEvent !== undefined) {
         const event = AuditEventViewSchema.parse(submissionEvent);
         this.requireNextAuditEvent(pending.traceId, event);
@@ -399,17 +415,37 @@ export class ExecutionRepository {
     return rows.map((row) => toOutboxItem(row as OutboxRow));
   }
 
+  findTriggerRunId(deploymentId: string, triggerNodeId: string, input: TriggerInput): string | null {
+    const occurrence = input.kind === 'event' ? input.event.id : `interval:${input.occurredAt}`;
+    const row = this.database.prepare(`
+      SELECT traces.id FROM audit_traces AS traces
+      JOIN audit_events AS events ON events.trace_id = traces.id
+      WHERE traces.deployment_id = ? AND traces.parent_trace_id IS NULL
+        AND traces.trigger_event_id = ? AND events.type = 'trigger.received'
+        AND json_extract(events.event_json, '$.nodeId') = ?
+        AND json_extract(events.event_json, '$.nodeType') = ?
+      ORDER BY traces.created_at, traces.rowid LIMIT 1
+    `).get(deploymentId, occurrence, triggerNodeId, `trigger.${input.kind}`) as { id: string } | undefined;
+    return row?.id ?? null;
+  }
+
   withLiveRiskReservations<T>(deploymentId: string, evaluateAndPersist: (reservations: Readonly<{
-    positions: readonly { market: string; side: 'long' | 'short'; notionalUsd: string }[];
+    positions: readonly { market: string; side: 'long' | 'short'; notionalUsd: string; settledAt?: string }[];
     recentOrderTimestamps: readonly string[];
   }>) => T): T {
     return this.database.transaction(() => {
       const items = this.listOutboxItems(deploymentId);
       return evaluateAndPersist({
-        positions: items.flatMap((item) => item.intent.type === 'open_position' && item.status !== 'rejected'
-          && !this.hasConfirmedFill(item)
-          ? [{ market: item.intent.market, side: item.intent.side, notionalUsd: item.intent.notionalUsd }] : []),
-        recentOrderTimestamps: items.map((item) => item.createdAt),
+        positions: items.flatMap((item) => {
+          if (item.intent.type !== 'open_position') return [];
+          const partial = this.listAuditEvents(item.traceId).find((event) => event.nodeId === item.actionNodeId
+            && (event.type === 'execution.partially_filled_cancelled' || event.type === 'execution.partially_filled_rejected'));
+          if (partial !== undefined) return [{ market: item.intent.market, side: item.intent.side,
+            notionalUsd: partial.fill?.notionalUsd ?? item.intent.notionalUsd, settledAt: partial.occurredAt }];
+          return item.status !== 'rejected' && !this.hasConfirmedFill(item)
+            ? [{ market: item.intent.market, side: item.intent.side, notionalUsd: item.intent.notionalUsd }] : [];
+        }),
+        recentOrderTimestamps: items.map((item) => item.claimedAt ?? item.createdAt),
       });
     }).immediate();
   }
@@ -440,6 +476,7 @@ export class ExecutionRepository {
   ): ExecutionOutboxItem {
     return this.database.transaction(() => {
       const item = this.getOutboxItem(idempotencyKey);
+      if (item?.status === 'rejected') return item;
       if (item === null || !['unknown', 'claimed', 'acknowledged'].includes(item.status)) throw new Error('Unsettled outbox item not found');
       if (this.hasConfirmedFill(item)) return item;
       const event = AuditEventViewSchema.parse(source);

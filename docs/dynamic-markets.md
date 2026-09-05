@@ -73,6 +73,8 @@ One Backtest shares cash, equity, positions, exposure, and order-rate budget acr
 
 Every simulated fill first passes the shared Risk Engine, including the historical market's maximum leverage. Callers can supply `assumptions.riskLimits` with the same strict limits used by Paper/Live. For older requests without this field, compatibility defaults are 50× starting capital for order, position, and total exposure, 50× leverage, starting capital for daily loss, 100% drawdown, both sides, and 600 orders/minute. These are simulation compatibility ceilings, not recommended trading limits or observed venue metadata. The historical venue ceiling still applies. Funding is applied once per market and replay timestamp, even when several Trigger flows run at that time; conflicting rates for the same occurrence fail explicitly.
 
+Drawdown risk tracks every marked/accounting equity peak, including frames with no Action. The reported equity curve also retains these peaks, so a skipped flow cannot hide a peak from a later risk check.
+
 Always read the displayed market list and date range. Bundled sample data covers only its labeled fixture universe and is not a claim about all Hyperliquid markets. Missing required coverage, stale data, or unavailable marks produce explicit warnings or a failed/unknown path; Catbots does not substitute another market.
 
 ## Paper and Hyperliquid testnet
@@ -131,7 +133,15 @@ Other valid paths include `context.failed`, `risk.rejected`, `execution.unknown`
 
 Trigger identity includes the deployment, Strategy revision, Trigger, and occurrence—not the mutable universe revision. Retrying an occurrence after a listing refresh keeps the first persisted universe as evidence. Live risk atomically reserves unsettled outbox exposure across ingestion calls and restarts, including pending, claimed, unknown, and acknowledged orders. Confirmed fills move exposure back to the trusted account-position view; rejected orders release exposure, while their order-rate reservation remains until the minute window expires.
 
+Identity components are encoded separately so colons in Trigger/Event IDs cannot collide. Durable occurrence lookup preserves already recorded parent IDs and original universe evidence when retrying across an identity-format upgrade.
+
+The Live outbox enforces the order-rate cap again atomically when claiming a submission, using actual claim/outcome times rather than historical Trigger timestamps. Pending items progress in FIFO order as slots reopen. An in-flight claim keeps its slot even beyond a minute; completed attempts retain a conservative one-minute window from the later claim/outcome time. A throttled item remains pending, without an attempt or submission audit, for the ingestion/execution integration to retry.
+
 Live persists `execution.queued` before submission. An acknowledgement leaves the child open; only confirmed fill or terminal rejection/cancellation can finish it, and all actions in a child must be terminal. Hyperliquid trade fragments require order-status confirmation before they count as full fills. A validated close without `percent` means 100% in Backtest, Paper, and Live.
+
+Terminal partial fills are distinct from both complete fills and zero-fill failures. They persist cumulative filled quantity, original quantity, and executed notional when the trade evidence covers that quantity. A partial cancellation/rejection closes the action but fails the child once every other action is terminal. Its unexecuted exposure reservation is released; filled exposure remains reserved until a trusted `RiskAccountState.positionsObservedAt` snapshot at or after the outcome transfers that exposure into account positions. Without complete fill-value evidence, the reservation conservatively retains the original intended notional. An absent, invalid, or future snapshot timestamp never releases that protection.
+
+Hyperliquid reconciliation queries only unsettled client-order identities when available. Status queries run with at most four concurrent requests, including the legacy fills-based fallback. A failed individual lookup remains unproven without discarding independently confirmed outcomes for other orders; raw provider errors are not returned or persisted.
 
 The renderer receives bounded, typed summaries. Credentials, raw provider payloads, and raw provider errors are excluded from audit records and UI output. Use **Logs** to inspect Paper execution. Parent/child Backtest traces appear from the Backtest result; durable Live records remain available to recovery and reconciliation services.
 

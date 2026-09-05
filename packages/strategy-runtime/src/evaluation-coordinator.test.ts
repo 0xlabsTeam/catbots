@@ -69,6 +69,29 @@ function filledExecution(): RuntimeExecutionPort {
 }
 
 describe('coordinateEvaluation', () => {
+  it('does not collide parent or child identities across colon-bearing Trigger/Event tuples', () => {
+    const base = compiledStrategy('market-event').document;
+    const document = parseStrategyDocument({ ...base,
+      nodes: [...base.nodes.map((node) => node.id === 't-market' ? { ...node, id: 't' } : node),
+        ...base.nodes.map((node) => ({ ...node, id: node.id === 't-market' ? 't:event:a' : `${node.id}:2` }))],
+      edges: [...base.edges.map((edge) => edge.source === 't-market' ? { ...edge, source: 't' } : edge),
+        ...base.edges.map((edge) => ({ ...edge, id: `${edge.id}:2`,
+          source: edge.source === 't-market' ? 't:event:a' : `${edge.source}:2`, target: `${edge.target}:2` }))],
+    });
+    const validation = validateStrategy(document, createBuiltinRegistry());
+    if (!validation.valid) throw new Error('Fixture must compile');
+    const run = (triggerNodeId: string, id: string) => coordinateEvaluation({
+      compiled: validation.compiled, triggerNodeId,
+      triggerInput: { kind: 'event', event: { id, type: 'market.trade', market: 'BTC-PERP', occurredAt,
+        receivedAt: occurredAt, source: 'fixture', payload: {}, quality: { status: 'verified', freshnessSeconds: 0 } } },
+      universe: snapshot('first', ['BTC-PERP']), deployment: { id: 'deployment', mode: 'paper' }, execution: filledExecution(),
+      contextFactory: (market) => createEvaluationContext({ evaluatedAt: occurredAt, currentMarket: market, values: {} }),
+    });
+    const first = run('t', 'a:event:b');
+    const second = run('t:event:a', 'b');
+    expect(first.parentTraceId).not.toBe(second.parentTraceId);
+    expect(first.children[0]?.evaluation.traceId).not.toBe(second.children[0]?.evaluation.traceId);
+  });
   it('fans an interval out to active markets in normalized symbol order with one parent trace', () => {
     const request = {
       compiled: compiledStrategy(),

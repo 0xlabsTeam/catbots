@@ -53,19 +53,24 @@ export type UpdateLeverageIntent = Readonly<{
 }>;
 
 export type ExecutionReceipt = Readonly<{
-  status: 'acknowledged' | 'filled' | 'rejected' | 'unknown';
+  status: 'acknowledged' | 'filled' | 'rejected' | 'unknown' | 'partially_filled_cancelled' | 'partially_filled_rejected';
   clientOrderId: string;
   venueOrderId?: string;
   errorCode?: string;
+  filledQuantity?: string;
+  originalQuantity?: string;
+  filledNotionalUsd?: string;
 }>;
 
 export type ExecutionEvent = Readonly<{
   id: string;
   clientOrderId: string;
-  type: 'acknowledged' | 'partially_filled' | 'filled' | 'cancelled' | 'rejected';
+  type: 'acknowledged' | 'partially_filled' | 'filled' | 'cancelled' | 'rejected' | 'partially_filled_cancelled' | 'partially_filled_rejected';
   occurredAt: string;
   filledQuantity?: string;
   averagePrice?: string;
+  originalQuantity?: string;
+  filledNotionalUsd?: string;
 }>;
 
 export type ExecutionEventPage = Readonly<{
@@ -82,4 +87,5 @@ export interface PerpDexAdapter {
   updateLeverage(input: UpdateLeverageIntent, signal: AbortSignal): Promise<ExecutionReceipt>;
   closePosition(input: ClosePositionIntent, signal: AbortSignal): Promise<ExecutionReceipt>;
   getExecutionEvents(cursor: string | null, signal: AbortSignal): Promise<ExecutionEventPage>;
+  getOrderExecutionEvents?(clientOrderIds: readonly string[], signal: AbortSignal): Promise<ExecutionEventPage>;
 }

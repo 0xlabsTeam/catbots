@@ -185,6 +185,27 @@ function portfolioRoundTripRequest(): BacktestRequest {
 }
 
 describe('runBacktest', () => {
+  it('uses a no-action marked equity peak for later risk drawdown as well as reported drawdown', () => {
+    const base = twoMarketRequest();
+    const times = ['2026-09-03T08:15:00.000Z', '2026-09-03T08:30:00.000Z', '2026-09-03T08:45:00.000Z'];
+    const result = runBacktest({ ...base,
+      range: { ...base.range, to: times[2]! }, datasetCoverage: { ...base.datasetCoverage, to: times[2]! },
+      assumptions: { ...base.assumptions, riskLimits: {
+        maxOrderUsd: '2000', maxPositionUsd: '50000', maxTotalExposureUsd: '50000', maxLeverage: 3,
+        maxDailyLossUsd: '10000', maxDrawdownPercent: 20, allowedSides: ['long', 'short'], maxOrdersPerMinute: 10,
+      } },
+      inputs: times.map((occurredAt, index) => ({ ...base.inputs[0]!, occurredAt, stableId: `peak-${index}`,
+        triggerInput: { kind: 'interval', occurredAt }, universe: universe(`peak-${index}`, occurredAt, ['BTC-PERP']),
+        marketValues: { 'BTC-PERP': marketValues('BTC-PERP', index === 1 ? 1100 : 100, index === 1 ? 45 : 25, occurredAt) },
+      })),
+    });
+    expect(result.equityCurve.map(({ equity }) => equity)).toEqual(['10000', '10000', '20000', '10000']);
+    expect(result.metrics.maximumDrawdownPercent).toBe(50);
+    expect(result.snapshot.ledger.filter(({ type }) => type === 'fill')).toHaveLength(1);
+    expect(result.traces[2]?.children[0]?.evaluation.trace).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'risk.rejected', details: { violatedRuleIds: ['max-drawdown-percent'] } }),
+    ]));
+  });
   it.each([
     ['portfolio', { maxTotalExposureUsd: '1500' }, 'max-total-exposure-usd'],
     ['order rate', { maxOrdersPerMinute: 1 }, 'max-orders-per-minute'],

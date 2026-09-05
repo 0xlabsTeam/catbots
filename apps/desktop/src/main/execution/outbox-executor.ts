@@ -44,7 +44,8 @@ export class OutboxExecutor {
       receipt = sanitizeReceipt(receipt);
     }
 
-    const auditType = receipt.status === 'filled' ? 'execution.filled'
+    const partialTerminal = receipt.status === 'partially_filled_cancelled' || receipt.status === 'partially_filled_rejected';
+    const auditType = partialTerminal ? `execution.${receipt.status}` as const : receipt.status === 'filled' ? 'execution.filled'
       : receipt.status === 'acknowledged' ? 'execution.acknowledged'
       : receipt.status === 'rejected' ? 'execution.rejected' : 'execution.unknown';
     const outcome = this.event(
@@ -53,8 +54,9 @@ export class OutboxExecutor {
       receipt.status === 'unknown' ? 'Order outcome is unknown; reconciliation is required.' : `Order ${receipt.status}.`,
       receipt,
     );
-    const recorded = this.dependencies.repository.recordAdapterOutcome(idempotencyKey, outcome,
-      receipt.status === 'filled' ? 'acknowledged' : receipt.status);
+    const outboxStatus = receipt.status === 'unknown' ? 'unknown'
+      : receipt.status === 'rejected' || partialTerminal ? 'rejected' : 'acknowledged';
+    const recorded = this.dependencies.repository.recordAdapterOutcome(idempotencyKey, outcome, outboxStatus);
     if (receipt.status === 'unknown') throw executionError('EXECUTION_OUTCOME_UNKNOWN');
 
     this.finalizeTraceIfReady(recorded);
@@ -98,6 +100,11 @@ export class OutboxExecutor {
       nodeType: item.intent.type === 'open_position' ? 'execution.open_position' : 'execution.close_position',
       summary,
       riskRuleIds: [],
+      ...(receipt?.filledQuantity === undefined ? {} : { fill: {
+        quantity: receipt.filledQuantity,
+        ...(receipt.originalQuantity === undefined ? {} : { originalQuantity: receipt.originalQuantity }),
+        ...(receipt.filledNotionalUsd === undefined ? {} : { notionalUsd: receipt.filledNotionalUsd }),
+      } }),
       adapter: {
         venue: 'hyperliquid', requestId,
         ...(receipt?.venueOrderId === undefined ? {} : { venueOrderId: receipt.venueOrderId }),
@@ -123,6 +130,9 @@ function sanitizeReceipt(receipt: ExecutionReceipt): ExecutionReceipt {
     clientOrderId: receipt.clientOrderId,
     ...(venueOrderId === undefined ? {} : { venueOrderId }),
     ...(errorCode === undefined ? {} : { errorCode }),
+    ...(receipt.filledQuantity === undefined ? {} : { filledQuantity: receipt.filledQuantity }),
+    ...(receipt.originalQuantity === undefined ? {} : { originalQuantity: receipt.originalQuantity }),
+    ...(receipt.filledNotionalUsd === undefined ? {} : { filledNotionalUsd: receipt.filledNotionalUsd }),
   };
 }
 

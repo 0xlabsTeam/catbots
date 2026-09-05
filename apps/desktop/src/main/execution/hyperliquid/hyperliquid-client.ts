@@ -6,6 +6,7 @@ import {
   ValidationError,
 } from '@nktkas/hyperliquid';
 import { privateKeyToAccount } from 'viem/accounts';
+import type { ExecutionEvent } from '@catbots/execution-core';
 
 import { fixedError } from './hyperliquid-normalization';
 
@@ -44,18 +45,15 @@ export type HyperliquidOrderRequest = Readonly<{
 export type HyperliquidActionResult = Readonly<{
   status: 'ok' | 'error' | 'unknown';
   filled?: boolean;
+  partialTerminal?: 'cancelled' | 'rejected';
+  filledQuantity?: string;
+  originalQuantity?: string;
+  filledNotionalUsd?: string;
   venueOrderId?: string;
   errorCode?: string;
 }>;
 
-export type HyperliquidFill = Readonly<{
-  id: string;
-  clientOrderId: string;
-  type: 'partially_filled' | 'filled' | 'cancelled' | 'rejected';
-  occurredAt: string;
-  filledQuantity?: string;
-  averagePrice?: string;
-}>;
+export type HyperliquidFill = ExecutionEvent;
 
 export interface HyperliquidClientPort {
   getMeta(signal: AbortSignal): Promise<HyperliquidMeta>;
@@ -66,6 +64,7 @@ export interface HyperliquidClientPort {
   cancelByCloid(input: Readonly<{ asset: number; cloid: string }>, signal: AbortSignal): Promise<HyperliquidActionResult>;
   updateLeverage(input: Readonly<{ asset: number; leverage: number }>, signal: AbortSignal): Promise<HyperliquidActionResult>;
   getUserFills(account: string, signal: AbortSignal): Promise<readonly HyperliquidFill[]>;
+  getOrderExecutionEvents?(account: string, clientOrderIds: readonly string[], signal: AbortSignal): Promise<readonly HyperliquidFill[]>;
 }
 
 type InfoFacade = {
@@ -74,7 +73,7 @@ type InfoFacade = {
   allMids(signal?: AbortSignal): Promise<unknown>;
   userRole(input: { user: `0x${string}` }, signal?: AbortSignal): Promise<unknown>;
   userFills(input: { user: `0x${string}`; aggregateByTime?: boolean }, signal?: AbortSignal): Promise<unknown>;
-  orderStatus(input: { user: `0x${string}`; oid: number }, signal?: AbortSignal): Promise<unknown>;
+  orderStatus(input: { user: `0x${string}`; oid: number | `0x${string}` }, signal?: AbortSignal): Promise<unknown>;
 };
 
 type ExchangeFacade = {
@@ -187,6 +186,7 @@ export function createHyperliquidPublicClient(
     getAllMids: (signal) => client.getAllMids(signal),
     getUserRole: (address, signal) => client.getUserRole(address, signal),
     getUserFills: (account, signal) => client.getUserFills(account, signal),
+    getOrderExecutionEvents: (account, ids, signal) => client.getOrderExecutionEvents(account, ids, signal),
     placeOrder: signerRequired,
     cancelByCloid: signerRequired,
     updateLeverage: signerRequired,
@@ -261,7 +261,7 @@ class SdkHyperliquidClient implements HyperliquidClientPort {
         }],
         grouping: 'na',
       }, { signal });
-      return normalizeActionResponse(response);
+      return normalizeActionResponse(response, input.size);
     } catch (error) {
       return rejectedOrUnknown(error);
     }
@@ -288,29 +288,83 @@ class SdkHyperliquidClient implements HyperliquidClientPort {
   async getUserFills(account: string, signal: AbortSignal): Promise<readonly HyperliquidFill[]> {
     const response = await safeInfo(() => this.info.userFills({ user: address(account), aggregateByTime: true }, signal));
     if (!Array.isArray(response)) throw fixedError('HYPERLIQUID_RESPONSE_INVALID');
-    const statuses = new Map<number, Promise<Record<string, unknown>>>();
-    return (await Promise.all(response.map(async (item): Promise<HyperliquidFill[]> => {
-      const fill = asRecord(item);
-      const oid = nonnegativeInteger(fill.oid);
-      if (!statuses.has(oid)) {
-        statuses.set(oid, safeInfo(() => this.info.orderStatus({ user: address(account), oid }, signal)).then(asRecord));
-      }
-      const status = await statuses.get(oid)!;
-      const order = status.status === 'order' ? asRecord(status.order) : {};
-      const detail = typeof order.order === 'object' && order.order !== null ? asRecord(order.order) : {};
-      const cloid = typeof fill.cloid === 'string' ? fill.cloid : typeof detail.cloid === 'string' ? detail.cloid : undefined;
-      if (cloid === undefined) return [];
-      const occurredAt = new Date(nonnegativeInteger(fill.time)).toISOString();
-      return [{
-        id: `${requiredText(fill.hash)}:${nonnegativeInteger(fill.tid)}`,
-        clientOrderId: cloid,
-        type: order.status === 'filled' ? 'filled' : 'partially_filled',
-        occurredAt,
-        filledQuantity: decimalText(fill.sz, false),
-        averagePrice: decimalText(fill.px, false),
-      }];
-    }))).flat();
+    const ids = [...new Set(response.flatMap((item) => {
+      try { return [nonnegativeInteger(asRecord(item).oid)]; } catch { return []; }
+    }))];
+    return boundedEvidence(ids, signal, async (oid) => orderExecutionEvent(
+      await this.info.orderStatus({ user: address(account), oid }, signal), response,
+    ));
   }
+
+  async getOrderExecutionEvents(account: string, clientOrderIds: readonly string[], signal: AbortSignal): Promise<readonly HyperliquidFill[]> {
+    // One bounded fills read enriches only the requested order identities. Failure
+    // cannot discard an independently proven terminal status.
+    let fills: unknown[] = [];
+    try {
+      const response = await this.info.userFills({ user: address(account), aggregateByTime: true }, signal);
+      if (Array.isArray(response)) fills = response;
+    } catch { /* Quantity/status may still be proven; missing value stays unknown. */ }
+    return boundedEvidence([...new Set(clientOrderIds)], signal, async (id) => {
+      if (!/^0x[a-f0-9]{32}$/i.test(id)) throw fixedError('HYPERLIQUID_ORDER_ID_INVALID');
+      return orderExecutionEvent(await this.info.orderStatus({ user: address(account), oid: id as `0x${string}` }, signal), fills, id);
+    });
+  }
+}
+
+async function boundedEvidence<T>(items: readonly T[], signal: AbortSignal, query: (item: T) => Promise<ExecutionEvent | undefined>): Promise<ExecutionEvent[]> {
+  const results: Array<ExecutionEvent | undefined> = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => {
+    while (!signal.aborted && next < items.length) {
+      const index = next++;
+      try { results[index] = await query(items[index]!); } catch { /* Isolate each unproven identity. */ }
+    }
+  }));
+  return results.filter((event): event is ExecutionEvent => event !== undefined);
+}
+
+function orderExecutionEvent(source: unknown, fills: readonly unknown[], expectedId?: string): ExecutionEvent | undefined {
+  const response = asRecord(source);
+  if (response.status !== 'order') return undefined;
+  const state = asRecord(response.order);
+  const order = asRecord(state.order);
+  const orderId = nonnegativeInteger(order.oid);
+  const clientOrderId = requiredText(order.cloid);
+  if (expectedId !== undefined && clientOrderId !== expectedId) throw fixedError('HYPERLIQUID_ORDER_ID_MISMATCH');
+  const originalQuantity = decimalText(order.origSz, false);
+  const original = Number(originalQuantity);
+  const remaining = Number(decimalText(order.sz, true));
+  if (remaining > original) throw fixedError('HYPERLIQUID_RESPONSE_INVALID');
+  const quantity = state.status === 'filled' ? original : Number((original - remaining).toFixed(12));
+  const canceled = typeof state.status === 'string' && /^(canceled|scheduledCancel|internalCancel|[a-zA-Z]+Canceled)$/.test(state.status);
+  const rejected = typeof state.status === 'string' && /^(rejected|[a-zA-Z]+Rejected)$/.test(state.status);
+  const type: ExecutionEvent['type'] | undefined = state.status === 'filled' ? 'filled'
+    : canceled ? quantity > 0 ? 'partially_filled_cancelled' : 'cancelled'
+    : rejected ? quantity > 0 ? 'partially_filled_rejected' : 'rejected'
+    : state.status === 'open' || state.status === 'triggered' ? quantity > 0 ? 'partially_filled' : 'acknowledged' : undefined;
+  if (type === undefined) return undefined;
+  let knownQuantity = 0;
+  let notional = 0;
+  const seen = new Set<string>();
+  for (const candidate of fills) {
+    try {
+      const fill = asRecord(candidate);
+      if (fill.cloid !== clientOrderId && fill.oid !== orderId) continue;
+      const id = `${requiredText(fill.hash)}:${nonnegativeInteger(fill.tid)}`;
+      if (seen.has(id)) continue;
+      const size = Number(decimalText(fill.sz, false));
+      const price = Number(decimalText(fill.px, false));
+      seen.add(id); knownQuantity += size; notional += size * price;
+    } catch { /* An unrelated/malformed trade cannot erase proven order evidence. */ }
+  }
+  const occurredAt = new Date(nonnegativeInteger(state.statusTimestamp)).toISOString();
+  return {
+    id: `order:${clientOrderId}:${type}:${occurredAt}`, clientOrderId, type, occurredAt,
+    originalQuantity,
+    ...(quantity <= 0 ? {} : { filledQuantity: String(quantity) }),
+    ...(quantity > 0 && Math.abs(knownQuantity - quantity) <= quantity * 1e-10 && Number.isFinite(notional) && notional > 0
+      ? { filledNotionalUsd: String(Number(notional.toFixed(8))), averagePrice: String(notional / quantity) } : {}),
+  };
 }
 
 async function safeInfo<T>(request: () => Promise<T>): Promise<T> {
@@ -321,7 +375,7 @@ async function safeInfo<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
-function normalizeActionResponse(source: unknown): HyperliquidActionResult {
+function normalizeActionResponse(source: unknown, requestedSize: string): HyperliquidActionResult {
   const response = asRecord(source);
   const data = asRecord(asRecord(response.response).data);
   if (!Array.isArray(data.statuses) || data.statuses.length !== 1) return { status: 'unknown', errorCode: 'HYPERLIQUID_OUTCOME_UNKNOWN' };
@@ -331,7 +385,14 @@ function normalizeActionResponse(source: unknown): HyperliquidActionResult {
   if (typeof row.error === 'string') return { status: 'error', errorCode: 'HYPERLIQUID_REJECTED' };
   const acknowledged = row.filled ?? row.resting;
   const detail = asRecord(acknowledged);
-  return { status: 'ok', ...(row.filled === undefined ? {} : { filled: true }), venueOrderId: String(nonnegativeInteger(detail.oid)) };
+  if (row.filled === undefined) return { status: 'ok', venueOrderId: String(nonnegativeInteger(detail.oid)) };
+  const filledQuantity = decimalText(detail.totalSz, false);
+  const originalQuantity = decimalText(requestedSize, false);
+  if (Number(filledQuantity) > Number(originalQuantity)) throw fixedError('HYPERLIQUID_RESPONSE_INVALID');
+  return { status: 'ok', filled: filledQuantity === originalQuantity || Number(filledQuantity) === Number(originalQuantity),
+    ...(Number(filledQuantity) < Number(originalQuantity) ? { partialTerminal: 'cancelled' } : {}),
+    filledQuantity, originalQuantity, filledNotionalUsd: String(Number(filledQuantity) * Number(decimalText(detail.avgPx, false))),
+    venueOrderId: String(nonnegativeInteger(detail.oid)) };
 }
 
 function rejectedOrUnknown(error: unknown): HyperliquidActionResult {

@@ -323,6 +323,11 @@ export class DeploymentService {
     if (universe.dex !== deployment.dex) throw new Error('DEX universe does not match deployment');
     runtime.universe = universe;
     runtime.adapter.updateMarketUniverse({ universe, fresh: universeFresh });
+    const recordedRun = this.dependencies.executionRepository.findTriggerRunId(deployment.id, input.triggerNodeId, input.triggerInput);
+    if (recordedRun !== null) return {
+      traceId: recordedRun, parentTraceId: recordedRun, duplicate: true,
+      events: runtime.evaluations.get(recordedRun) ?? [], children: [], state: runtime.adapter.snapshot(),
+    };
     runtime.adapter.beginCoordinatedEvaluation();
     try {
       const paperState = runtime.adapter.snapshot();
@@ -426,6 +431,8 @@ export class DeploymentService {
     this.liveUniverses.set(deployment.id, universe);
 
     return this.dependencies.executionRepository.withLiveRiskReservations(deployment.id, (reservations) => {
+      const recordedRun = this.dependencies.executionRepository.findTriggerRunId(deployment.id, input.triggerNodeId, input.triggerInput);
+      if (recordedRun !== null) return { parentTraceId: recordedRun, duplicate: true, children: [], outboxCount: 0 };
       const contexts = new Map<string, EvaluationContext>();
       const planned = new Map<string, Readonly<{ effect: ProposedEffect; account: RiskAccountState }>>();
       const reservedPositions = [...reservations.positions];
@@ -459,7 +466,10 @@ export class DeploymentService {
             }
             const riskAccount = account === undefined ? undefined : {
               ...account,
-              positions: [...account.positions, ...reservedPositions],
+              positions: [...account.positions, ...reservedPositions.filter((position) => position.settledAt === undefined
+                || account.positionsObservedAt === undefined
+                || !(Date.parse(account.positionsObservedAt) >= Date.parse(position.settledAt)
+                  && Date.parse(account.positionsObservedAt) <= Date.parse(context.evaluatedAt)))],
               recentOrderTimestamps: [...account.recentOrderTimestamps, ...reservedOrderTimestamps],
             };
             const provisionalIntent = toLiveIntent(effect, riskAccount?.equityUsd, 'cb_risk_evaluation');

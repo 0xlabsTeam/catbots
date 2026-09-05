@@ -72,7 +72,7 @@ function stableIdentity(input: TriggerInput): string {
 }
 
 export function deriveTriggerIdempotencyKey(triggerNodeId: string, input: TriggerInput): string {
-  return `${triggerNodeId}:${input.kind}:${stableIdentity(input)}`;
+  return `trigger:v2:${encodeURIComponent(triggerNodeId)}:${input.kind}:${encodeURIComponent(stableIdentity(input))}`;
 }
 
 export function orderTriggerInputs(inputs: readonly TriggerInput[]): readonly TriggerInput[] {

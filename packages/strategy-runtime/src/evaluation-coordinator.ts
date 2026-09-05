@@ -91,8 +91,7 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
     'strategy', traceComponent(compiled.document.strategy.id), `v${compiled.document.strategy.version}`,
   ].join(':');
   const parentTraceId = [
-    'trace', traceComponent(compiled.document.strategy.id),
-    `v${compiled.document.strategy.version}`,
+    'trace', 'v2',
     parentIdempotencyKey,
   ].join(':');
   const evaluationTime = triggerTime(triggerInput);

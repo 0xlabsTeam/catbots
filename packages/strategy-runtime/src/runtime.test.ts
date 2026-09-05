@@ -188,7 +188,7 @@ describe('evaluateTrigger', () => {
       nodeId: 'a-long', type: 'execution.open_position',
       market: 'BTC-PERP',
       config: { side: 'long', size: { type: 'equity_percent', value: 5 }, leverage: 2 },
-      idempotencyKey: 't-15m:interval:2026-09-03T08:15:00.000Z:market:BTC-PERP:action:a-long',
+      idempotencyKey: 'trigger:v2:t-15m:interval:2026-09-03T08%3A15%3A00.000Z:market:BTC-PERP:action:a-long',
     })]);
     expect(result.trace.map((event) => event.type)).toEqual([
       'trigger.received',

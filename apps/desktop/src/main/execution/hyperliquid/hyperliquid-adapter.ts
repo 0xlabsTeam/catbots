@@ -127,6 +127,16 @@ export class HyperliquidAdapter implements PerpDexAdapter {
     };
   }
 
+  async getOrderExecutionEvents(clientOrderIds: readonly string[], signal: AbortSignal): Promise<ExecutionEventPage> {
+    if (this.options.account === undefined) throw fixedError('HYPERLIQUID_ACCOUNT_REQUIRED');
+    if (this.options.client.getOrderExecutionEvents === undefined) return this.getExecutionEvents(null, signal);
+    const identities = new Map(clientOrderIds.map((id) => [/^0x[a-f0-9]{32}$/i.test(id) ? id : toHyperliquidCloid(id), id]));
+    const events = await this.options.client.getOrderExecutionEvents(normalizeAddress(this.options.account), [...identities.keys()], signal);
+    return { events: events.filter((event) => identities.has(event.clientOrderId)).map((event) => ({
+      ...event, clientOrderId: identities.get(event.clientOrderId)!,
+    })), cursor: null };
+  }
+
   private async getMeta(signal: AbortSignal): Promise<HyperliquidMeta> {
     return this.meta ?? this.fetchAndPublishMeta(signal);
   }
@@ -158,7 +168,13 @@ export class HyperliquidAdapter implements PerpDexAdapter {
 }
 
 function receipt(result: HyperliquidActionResult, clientOrderId: string): ExecutionReceipt {
-  if (result.status === 'ok') return { status: result.filled === true ? 'filled' : 'acknowledged', clientOrderId, ...(result.venueOrderId === undefined ? {} : { venueOrderId: result.venueOrderId }) };
+  if (result.status === 'ok') return {
+    status: result.partialTerminal !== undefined ? `partially_filled_${result.partialTerminal}` : result.filled === true ? 'filled' : 'acknowledged',
+    clientOrderId, ...(result.venueOrderId === undefined ? {} : { venueOrderId: result.venueOrderId }),
+    ...(result.filledQuantity === undefined ? {} : { filledQuantity: result.filledQuantity }),
+    ...(result.originalQuantity === undefined ? {} : { originalQuantity: result.originalQuantity }),
+    ...(result.filledNotionalUsd === undefined ? {} : { filledNotionalUsd: result.filledNotionalUsd }),
+  };
   return {
     status: result.status === 'unknown' ? 'unknown' : 'rejected',
     clientOrderId,

@@ -193,7 +193,7 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
       version: node.version,
       market: context.currentMarket,
       config: node.config,
-      idempotencyKey: `${idempotencyKey}:market:${context.currentMarket}:action:${node.id}`,
+      idempotencyKey: `${idempotencyKey}:market:${encodeURIComponent(context.currentMarket)}:action:${encodeURIComponent(node.id)}`,
     });
     effects.push(effect);
     trace.append('action.proposed', { effect }, nodeIdentity(node));

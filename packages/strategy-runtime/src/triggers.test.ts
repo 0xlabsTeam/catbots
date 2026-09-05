@@ -82,14 +82,19 @@ describe('matchesEventTrigger', () => {
 });
 
 describe('trigger determinism', () => {
+  it('separates colon-bearing Trigger and Event identity components', () => {
+    const first = deriveTriggerIdempotencyKey('t', { kind: 'event', event: { ...etfEvent, id: 'a:event:b' } });
+    const second = deriveTriggerIdempotencyKey('t:event:a', { kind: 'event', event: { ...etfEvent, id: 'b' } });
+    expect(first).not.toBe(second);
+  });
   it('derives repeatable keys from the Trigger node and source identity', () => {
     expect(deriveTriggerIdempotencyKey('t-etf', { kind: 'event', event: etfEvent })).toBe(
-      't-etf:event:evt-etf-1',
+      'trigger:v2:t-etf:event:evt-etf-1',
     );
     expect(deriveTriggerIdempotencyKey('t-15m', {
       kind: 'interval',
       occurredAt: '2026-09-03T08:15:00.000Z',
-    })).toBe('t-15m:interval:2026-09-03T08:15:00.000Z');
+    })).toBe('trigger:v2:t-15m:interval:2026-09-03T08%3A15%3A00.000Z');
   });
 
   it('uses source kind and stable identity to order equal timestamps', () => {

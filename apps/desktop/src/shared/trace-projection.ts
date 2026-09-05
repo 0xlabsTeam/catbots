@@ -58,7 +58,7 @@ function safeTraceEffect(value: unknown): Record<string, unknown> | undefined {
   }
   if (effect.type === 'execution.close_position') {
     const side = config.side === 'long' || config.side === 'short' ? config.side : undefined;
-    const percent = finitePositiveNumber(config.percent);
+    const percent = config.percent === undefined ? 100 : finitePositiveNumber(config.percent);
     if (percent === undefined || percent > 100) return undefined;
     return {
       type: effect.type,

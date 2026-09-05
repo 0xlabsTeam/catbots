@@ -61,6 +61,13 @@ export function replayBacktest(
     timestamp: clock.now(),
     contributions: Object.freeze(Object.fromEntries([...selected].sort().map((market) => [market, '0']))),
   }];
+  const recordPeak = () => {
+    const equity = adapter.snapshot().equity;
+    if (Number(equity) <= peakEquity) return;
+    peakEquity = Number(equity);
+    equityCurve.push({ timestamp: clock.now(), equity });
+    marketContributionCurve.push({ timestamp: clock.now(), contributions: adapter.marketEquityContributions() });
+  };
   const traces: CoordinatedEvaluation[] = [];
   const replayWarnings = new Set<string>();
   let status: 'completed' | 'cancelled' = 'completed';
@@ -85,6 +92,7 @@ export function replayBacktest(
       marketContexts.set(market, context);
     }
     const markResult = adapter.markPortfolio([...marketContexts.values()]);
+    recordPeak();
     const markedMarkets = new Set(markResult.markedMarkets);
     const unavailableMarks = new Map(
       markResult.unavailableMarks.map(({ market, reason }) => [market, reason]),
@@ -97,6 +105,7 @@ export function replayBacktest(
       if (!markedMarkets.has(market)) continue;
       const fundingRate = input.fundingRates?.[market];
       if (fundingRate !== undefined) adapter.applyFunding(fundingRate, context);
+      recordPeak();
     }
 
     const coordinated = coordinateEvaluation({
@@ -136,7 +145,7 @@ export function replayBacktest(
           const market = universe.markets.find(({ symbol }) => symbol === effect.market);
           const snapshot = adapter.snapshot();
           const equity = Number(snapshot.equity);
-          peakEquity = Math.max(peakEquity, equity);
+          recordPeak();
           const size = effect.config.size;
           const intent: NormalizedOrderIntent | undefined = effect.type === 'execution.close_position'
             ? { type: 'close_position', market: effect.market, percent: Number(effect.config.percent ?? 100), clientOrderId: effect.idempotencyKey }
@@ -161,16 +170,18 @@ export function replayBacktest(
             universeFresh: true, evaluatedAt: context.evaluatedAt });
           if (!decision.approved) return { events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } }] };
           orderTimes.push(context.evaluatedAt);
-          return adapter.execute(effect, context);
+          const outcome = adapter.execute(effect, context);
+          recordPeak();
+          return outcome;
         },
       },
     });
     traces.push(coordinated);
-    equityCurve.push({ timestamp: clock.now(), equity: adapter.snapshot().equity });
-    marketContributionCurve.push({
-      timestamp: clock.now(),
-      contributions: adapter.marketEquityContributions(),
-    });
+    const endingEquity = adapter.snapshot().equity;
+    if (equityCurve.at(-1)?.timestamp !== clock.now() || equityCurve.at(-1)?.equity !== endingEquity) {
+      equityCurve.push({ timestamp: clock.now(), equity: endingEquity });
+      marketContributionCurve.push({ timestamp: clock.now(), contributions: adapter.marketEquityContributions() });
+    }
   }
 
   request.onProgress?.({ phase: 'calculating', completed: traces.length, total });

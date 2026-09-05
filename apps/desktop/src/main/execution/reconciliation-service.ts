@@ -32,8 +32,10 @@ export class ReconciliationService {
     ];
     if (uncertain.length === 0) return;
 
-    const page = await this.dependencies.adapter.getExecutionEvents(null, signal);
-    await this.dependencies.adapter.getPositions(this.dependencies.account, signal);
+    const page = this.dependencies.adapter.getOrderExecutionEvents === undefined
+      ? await this.dependencies.adapter.getExecutionEvents(null, signal)
+      : await this.dependencies.adapter.getOrderExecutionEvents(uncertain.map(({ clientOrderId }) => clientOrderId), signal);
+    try { await this.dependencies.adapter.getPositions(this.dependencies.account, signal); } catch { /* Independent order evidence remains valid. */ }
     for (const item of uncertain) {
       const venueCloid = toHyperliquidCloid(item.clientOrderId);
       const venueEvent = [...page.events].reverse().find(({ clientOrderId }) => (
@@ -43,8 +45,16 @@ export class ReconciliationService {
         this.complete(item, venueEvent, 'acknowledged', 'execution.filled', 'Reconciliation confirmed the order fill.');
         continue;
       }
+      if (venueEvent?.type === 'partially_filled_cancelled' || venueEvent?.type === 'partially_filled_rejected') {
+        this.complete(item, venueEvent, 'rejected', `execution.${venueEvent.type}`,
+          'Reconciliation confirmed a partial fill; the unexecuted remainder is terminal.');
+        continue;
+      }
       if (venueEvent?.type === 'rejected' || venueEvent?.type === 'cancelled') {
-        this.complete(item, venueEvent, 'rejected', `execution.${venueEvent.type}`, 'Reconciliation confirmed the order did not execute.');
+        const partial = Number(venueEvent.filledQuantity ?? 0) > 0;
+        this.complete(item, venueEvent, 'rejected', partial ? `execution.partially_filled_${venueEvent.type}` : `execution.${venueEvent.type}`,
+          partial ? 'Reconciliation confirmed a partial fill; the unexecuted remainder is terminal.'
+            : 'Reconciliation confirmed the order did not execute.');
         continue;
       }
       if (item.status !== 'acknowledged' && this.dependencies.repository.getDeployment(deploymentId).status !== 'suspended') {
@@ -90,6 +100,11 @@ export class ReconciliationService {
       ...trace,
       nodeType: item.intent.type === 'open_position' ? 'execution.open_position' : 'execution.close_position',
       summary, riskRuleIds: [],
+      ...(venueEvent?.filledQuantity === undefined || !(Number(venueEvent.filledQuantity) > 0) ? {} : { fill: {
+        quantity: venueEvent.filledQuantity,
+        ...(venueEvent.originalQuantity === undefined ? {} : { originalQuantity: venueEvent.originalQuantity }),
+        ...(venueEvent.filledNotionalUsd === undefined ? {} : { notionalUsd: venueEvent.filledNotionalUsd }),
+      } }),
       ...(venueEvent === undefined ? {} : { adapter: { venue: 'hyperliquid' as const, requestId } }),
     };
   }

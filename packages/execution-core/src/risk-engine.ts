@@ -20,6 +20,8 @@ export type RiskAccountState = Readonly<{
   dailyRealizedPnlUsd: string;
   drawdownPercent: number;
   positions: readonly RiskPosition[];
+  /** Trusted account snapshot after this instant includes all earlier terminal fills. */
+  positionsObservedAt?: string;
   recentOrderTimestamps: readonly string[];
   accountKillSwitchActive: boolean;
   botKillSwitchActive: boolean;

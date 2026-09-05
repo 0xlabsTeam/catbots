@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RiskLimits } from '@catbots/contracts';
 import type { ExecutionReceipt, PerpDexAdapter } from '@catbots/execution-core';
-import { createEvaluationContext, parseStrategyDocument, type MarketUniverseSnapshot } from '@catbots/strategy-runtime';
+import { coordinateEvaluation, createBuiltinRegistry, createEvaluationContext, parseStrategyDocument, validateStrategy, type MarketUniverseSnapshot } from '@catbots/strategy-runtime';
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { DeploymentService } from '../src/main/execution/deployment-service';
 import { ExecutionRepository } from '../src/main/execution/execution-repository';
@@ -84,6 +84,61 @@ it('queues a validated close with omitted percent as a full close', async () => 
   expect(f.repository.listOutboxItems(f.deployment.id)[0]?.intent).toMatchObject({ type: 'close_position', percent: 100 });
 });
 
+it('rate-limits delayed queued submissions atomically by claim time across restart without starving the queue', async () => {
+  const f = fixture(false, { ...limits, maxTotalExposureUsd: '5000', maxOrdersPerMinute: 1 });
+  const arrivalOrder = ['2026-09-05T08:30:00.000Z', '2026-09-05T08:45:00.000Z', now];
+  for (const timestamp of arrivalOrder) {
+    expect((await f.service.ingestLive(f.request(timestamp))).outboxCount).toBe(1);
+  }
+  const items = arrivalOrder.map((timestamp) => f.repository.listOutboxItems(f.deployment.id).find(({ createdAt }) => createdAt === timestamp)!);
+  let submissionTime = '2026-09-05T09:00:00.000Z';
+  const adapter = venue('', 'acknowledged');
+  vi.mocked(adapter.placeOrder).mockImplementation(async (intent) => ({ status: 'acknowledged', clientOrderId: intent.clientOrderId }));
+  const executor = new OutboxExecutor({ repository: f.repository, adapter, clock: () => new Date(submissionTime) });
+  // A later item may be polled first, but cannot steal the oldest pending reservation.
+  expect((await executor.runOnce(items[2]!.idempotencyKey, new AbortController().signal)).status).toBe('pending');
+  await Promise.all(items.map((item) => executor.runOnce(item.idempotencyKey, new AbortController().signal)));
+  expect(adapter.placeOrder).toHaveBeenCalledTimes(1);
+  expect(items.map(({ idempotencyKey }) => f.repository.getOutboxItem(idempotencyKey)?.status)).toEqual(['acknowledged', 'pending', 'pending']);
+  const restarted = new OutboxExecutor({ repository: new ExecutionRepository(database), adapter, clock: () => new Date(submissionTime) });
+  await restarted.runOnce(items[1]!.idempotencyKey, new AbortController().signal);
+  expect(adapter.placeOrder).toHaveBeenCalledTimes(1);
+  submissionTime = '2026-09-05T09:01:00.000Z';
+  await restarted.runOnce(items[1]!.idempotencyKey, new AbortController().signal);
+  submissionTime = '2026-09-05T09:02:00.000Z';
+  await restarted.runOnce(items[2]!.idempotencyKey, new AbortController().signal);
+  expect(adapter.placeOrder).toHaveBeenCalledTimes(3);
+  expect(items.map(({ idempotencyKey }) => {
+    const item = f.repository.getOutboxItem(idempotencyKey)!;
+    return [item.attempts, item.claimedAt];
+  })).toEqual([
+    [1, '2026-09-05T09:00:00.000Z'], [1, '2026-09-05T09:01:00.000Z'], [1, '2026-09-05T09:02:00.000Z'],
+  ]);
+});
+
+it('keeps an in-flight submission reservation occupied beyond a minute and through its receipt window', async () => {
+  const f = fixture(false, { ...limits, maxTotalExposureUsd: '5000', maxOrdersPerMinute: 1 });
+  await f.service.ingestLive(f.request());
+  await f.service.ingestLive(f.request('2026-09-05T08:30:00.000Z'));
+  const [first, second] = f.repository.listOutboxItems(f.deployment.id);
+  let submissionTime = '2026-09-05T09:00:00.000Z';
+  let resolveReceipt!: (receipt: ExecutionReceipt) => void;
+  const adapter = venue('', 'acknowledged');
+  vi.mocked(adapter.placeOrder).mockImplementationOnce(() => new Promise((resolve) => { resolveReceipt = resolve; }))
+    .mockImplementation(async (intent) => ({ status: 'acknowledged', clientOrderId: intent.clientOrderId }));
+  const executor = new OutboxExecutor({ repository: f.repository, adapter, clock: () => new Date(submissionTime) });
+  const inFlight = executor.runOnce(first!.idempotencyKey, new AbortController().signal);
+  submissionTime = '2026-09-05T09:02:00.000Z';
+  const restarted = new OutboxExecutor({ repository: new ExecutionRepository(database), adapter, clock: () => new Date(submissionTime) });
+  expect((await restarted.runOnce(second!.idempotencyKey, new AbortController().signal)).status).toBe('pending');
+  resolveReceipt({ status: 'acknowledged', clientOrderId: first!.clientOrderId });
+  await inFlight;
+  expect((await restarted.runOnce(second!.idempotencyKey, new AbortController().signal)).status).toBe('pending');
+  submissionTime = '2026-09-05T09:03:00.000Z';
+  expect((await restarted.runOnce(second!.idempotencyKey, new AbortController().signal)).status).toBe('acknowledged');
+  expect(adapter.placeOrder).toHaveBeenCalledTimes(2);
+});
+
 it('deduplicates a trigger occurrence after universe revision changes and keeps the first evidence', async () => {
   const f = fixture();
   const first = await f.service.ingestLive(f.request());
@@ -93,6 +148,28 @@ it('deduplicates a trigger occurrence after universe revision changes and keeps 
   expect(retry).toMatchObject({ duplicate: true, parentTraceId: first.parentTraceId, outboxCount: 0 });
   expect(f.repository.listOutboxItems(f.deployment.id)).toHaveLength(1);
   expect(f.repository.listTriggerRun(first.parentTraceId).parent.universeRevision).toBe('first');
+});
+
+it('retains a legacy durable parent identity when retrying after the encoded-key upgrade', async () => {
+  const f = fixture();
+  const validation = validateStrategy(f.workbench.getStrategyDocument(f.deployment.botId, 1), createBuiltinRegistry());
+  if (!validation.valid) throw new Error('Fixture must compile');
+  const contexts = new Map([['BTC-PERP', f.request().contextFactory('BTC-PERP')]]);
+  const source = coordinateEvaluation({ compiled: validation.compiled, triggerNodeId: 'clock',
+    triggerInput: f.request().triggerInput, universe: f.universe, deployment: { id: f.deployment.id, mode: 'live' },
+    contextFactory: (market) => contexts.get(market)!, execution: { execute: () => ({ events: [
+      { type: 'risk.rejected', metadata: { violatedRuleIds: ['max-total-exposure-usd'] } },
+    ] }) },
+  });
+  const oldParent = `trace:final:v1:deployment:${f.deployment.id}:clock:interval:${now}:dex:hyperliquid:strategy:final:v1`;
+  const legacy = JSON.parse(JSON.stringify(source).replaceAll(source.parentTraceId, oldParent));
+  f.repository.recordCoordinatedTrace(f.deployment.id, legacy, { universe: f.universe, contexts });
+  const before = f.repository.listTriggerRun(oldParent);
+  f.refresh.mockResolvedValue({ ...f.universe, revision: 'second' });
+  const retry = await f.service.ingestLive(f.request());
+  expect(retry).toMatchObject({ duplicate: true, parentTraceId: oldParent, outboxCount: 0 });
+  expect(f.repository.listTriggerRun(oldParent)).toEqual(before);
+  expect(f.repository.listOutboxItems(f.deployment.id)).toEqual([]);
 });
 
 it('reserves unsettled Live exposure durably across three ingestion calls', async () => {
@@ -124,7 +201,7 @@ it('releases rejected exposure but retains durable order-rate reservations until
   const f = fixture(false, { ...limits, maxOrdersPerMinute: 1 }, true);
   await f.service.ingestLive(f.request(now, 'first'));
   const item = f.repository.listOutboxItems(f.deployment.id)[0]!;
-  await new OutboxExecutor({ repository: f.repository, adapter: venue(item.clientOrderId, 'rejected') })
+  await new OutboxExecutor({ repository: f.repository, adapter: venue(item.clientOrderId, 'rejected'), clock: () => new Date(now) })
     .runOnce(item.idempotencyKey, new AbortController().signal);
   const second = await f.service.ingestLive(f.request('2026-09-05T08:15:30.000Z', 'second'));
   expect(second.outboxCount).toBe(0);
@@ -142,6 +219,30 @@ it('does not double reserve confirmed fills already reflected in the trusted acc
     .runOnce(item.idempotencyKey, new AbortController().signal);
   f.account.positions.push({ market: 'BTC-PERP', side: 'long', notionalUsd: '700' });
   expect((await f.service.ingestLive(f.request('2026-09-05T08:30:00.000Z'))).outboxCount).toBe(1);
+});
+
+it('retains terminal partial exposure until the trusted position snapshot includes that outcome', async () => {
+  const f = fixture();
+  await f.service.ingestLive(f.request());
+  const item = f.repository.listOutboxItems(f.deployment.id)[0]!;
+  const adapter = venue(item.clientOrderId, 'acknowledged');
+  await new OutboxExecutor({ repository: f.repository, adapter, clock: () => new Date(now) })
+    .runOnce(item.idempotencyKey, new AbortController().signal);
+  vi.mocked(adapter.getExecutionEvents).mockResolvedValue({ events: [{
+    id: 'partial-terminal', clientOrderId: item.clientOrderId, type: 'cancelled',
+    occurredAt: '2026-09-05T08:15:01.000Z', filledQuantity: '0.002', originalQuantity: '0.007', filledNotionalUsd: '200',
+  }], cursor: null });
+  await new ReconciliationService({ repository: f.repository, adapter, account: 'test' })
+    .reconcileDeployment(f.deployment.id, new AbortController().signal);
+  expect(f.repository.withLiveRiskReservations(f.deployment.id, ({ positions }) => positions)).toEqual([
+    expect.objectContaining({ notionalUsd: '200' }),
+  ]);
+  f.account.positions.push({ market: 'BTC-PERP', side: 'long', notionalUsd: '200' });
+  expect((await f.service.ingestLive(f.request('2026-09-05T08:30:00.000Z'))).outboxCount).toBe(0);
+  const next = f.request('2026-09-05T08:45:00.000Z');
+  expect((await f.service.ingestLive({ ...next, riskAccountFactory: () => ({
+    ...f.account, positionsObservedAt: '2026-09-05T08:44:59.000Z',
+  }) })).outboxCount).toBe(1);
 });
 
 it('rejects increases when a trusted active snapshot cannot be refreshed', async () => {
