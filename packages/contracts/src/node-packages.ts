@@ -27,8 +27,10 @@ export type CommunityNode = z.infer<typeof CommunityNodeSchema>;
 export type InstalledNodePackage = { manifest: NodePackage; integrity: string; enabled: boolean };
 export const NodePackageCommandSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('list') }).strict(),
+  z.object({ action: z.literal('simulate'), example: z.enum(['dca','grid','smart_order']) }).strict(),
   z.object({ action: z.literal('install'), source: z.string().min(1).max(200000) }).strict(),
   z.object({ action: z.literal('enable'), integrity: z.string().regex(/^sha256:[a-f0-9]{64}$/), enabled: z.boolean() }).strict(),
 ]);
 export type NodePackageCommand = z.infer<typeof NodePackageCommandSchema>;
-export type NodePackageStatus = { packages: InstalledNodePackage[] };
+export type RuntimeNodePackageView = { name: string; version: string; mode: 'simulation'; nodes: { type: string; version: number; category: string; title: string; inputs: Record<string,string>; outputs: Record<string,string> }[] };
+export type NodePackageStatus = { packages: InstalledNodePackage[]; runtimePackages?: RuntimeNodePackageView[]; simulation?: { example: string; runId: string; steps: { price: number; proposed: number; cancellations: number; state: unknown; outputs: Record<string, unknown> }[] } };

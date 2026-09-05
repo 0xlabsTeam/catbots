@@ -1,14 +1,17 @@
 {
-  "name": "@catbots/node-sdk",
+  "name": "@catbots/nodes-action",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
   "dependencies": {
-    "@catbots/contracts": "workspace:*",
-    "@catbots/strategy-runtime": "workspace:*",
+    "zod": "^4.3.6",
     "@catbots/node-kit": "workspace:*"
   }
 }

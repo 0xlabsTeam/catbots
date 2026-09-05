@@ -16,7 +16,17 @@
   "dependencies": {
     "@catbots/contracts": "workspace:*",
     "@catbots/execution-core": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@catbots/node-kit": "workspace:*",
+    "@catbots/nodes-trigger": "workspace:*",
+    "@catbots/nodes-condition": "workspace:*",
+    "@catbots/nodes-action": "workspace:*",
+    "@catbots/nodes-data": "workspace:*",
+    "@catbots/nodes-indicator": "workspace:*",
+    "@catbots/nodes-process": "workspace:*",
+    "@catbots/nodes-risk": "workspace:*",
+    "@catbots/nodes-strategy": "workspace:*",
+    "@catbots/nodes-output": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

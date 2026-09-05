@@ -21,6 +21,7 @@
     "@catbots/execution-core": "workspace:*",
     "@catbots/strategy-runtime": "workspace:*",
     "@cloudflare/kumo": "^2.13.0",
+    "@dagrejs/dagre": "^3.1.1",
     "@earendil-works/pi-agent-core": "0.84.3",
     "@earendil-works/pi-ai": "0.84.4",
     "@nktkas/hyperliquid": "0.33.3",

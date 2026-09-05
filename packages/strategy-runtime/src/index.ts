@@ -15,3 +15,5 @@ export * from './simulated-adapter';
 export * from './strategy-schema';
 export * from './triggers';
 export * from './community-nodes';
+export * from './node-packages';
+export * from './package-examples';
