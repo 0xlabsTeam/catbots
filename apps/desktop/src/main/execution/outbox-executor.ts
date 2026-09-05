@@ -16,7 +16,10 @@ export class OutboxExecutor {
     const existing = this.dependencies.repository.getOutboxItem(idempotencyKey);
     if (existing === null) throw executionError('EXECUTION_OUTBOX_NOT_FOUND');
     if (existing.status === 'unknown') throw executionError('EXECUTION_RECONCILIATION_REQUIRED');
-    if (existing.status !== 'pending') return existing;
+    if (existing.status !== 'pending') {
+      this.finalizeTraceIfReady(existing);
+      return existing;
+    }
 
     const submitted = this.event(existing, 'execution.submitted', 'Order submission durably started.');
     const claimed = this.dependencies.repository.claimOutboxItem(idempotencyKey, submitted.occurredAt, submitted);
@@ -52,11 +55,20 @@ export class OutboxExecutor {
     const recorded = this.dependencies.repository.recordAdapterOutcome(idempotencyKey, outcome, receipt.status);
     if (receipt.status === 'unknown') throw executionError('EXECUTION_OUTCOME_UNKNOWN');
 
-    const terminalType = receipt.status === 'acknowledged' ? 'flow.completed' : 'flow.failed';
-    this.dependencies.repository.appendTerminalTrace(claimed.traceId, [
-      this.event(recorded, terminalType, receipt.status === 'acknowledged' ? 'Live action completed.' : 'Live action failed.'),
-    ]);
+    this.finalizeTraceIfReady(recorded);
     return recorded;
+  }
+
+  private finalizeTraceIfReady(item: ExecutionOutboxItem): void {
+    const status = this.dependencies.repository.liveTraceTerminalStatus(item.traceId);
+    if (status === null) return;
+    this.dependencies.repository.appendTerminalTrace(item.traceId, [
+      this.event(
+        item,
+        status === 'completed' ? 'flow.completed' : 'flow.failed',
+        status === 'completed' ? 'All Live actions completed.' : 'One or more Live actions failed.',
+      ),
+    ]);
   }
 
   private event(

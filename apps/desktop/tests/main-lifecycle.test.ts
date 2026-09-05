@@ -263,6 +263,29 @@ describe('main window lifecycle', () => {
     expect(universeCache.stopPeriodicRefresh).toHaveBeenCalledOnce();
   });
 
+  it('opens offline, starts periodic universe recovery, and reports no network details', async () => {
+    const secret = 'provider network failure api-key=secret-sentinel';
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    universeCache.initialize.mockRejectedValueOnce(new Error(secret));
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 });
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(runtime.start).toHaveBeenCalledOnce();
+    expect(universeCache.startPeriodicRefresh).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith('Catbots universe metadata unavailable');
+    expect(JSON.stringify(report.mock.calls)).not.toContain(secret);
+    expect(electron.app.quit).not.toHaveBeenCalled();
+
+    const periodicSignal = universeCache.startPeriodicRefresh.mock.calls[0]?.[0];
+    const options = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
+    await options.quit();
+    expect(periodicSignal?.aborted).toBe(true);
+    expect(universeCache.stopPeriodicRefresh).toHaveBeenCalledOnce();
+  });
+
   it('keeps intercepting native Quit after a cancellation and then performs ordered cleanup', async () => {
     electron.app.whenReady.mockResolvedValueOnce(undefined);
     electron.dialog.showMessageBox

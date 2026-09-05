@@ -80,4 +80,42 @@ describe('OutboxExecutor', () => {
     expect(serialized).not.toContain('secret-sentinel');
     expect(serialized).toContain('ADAPTER_REJECTED');
   });
+
+  it('submits every action on a shared child trace before closing it exactly once', async () => {
+    const fixture = createLiveFixture();
+    databases.push(fixture.database);
+    const second = fixture.proposal;
+    fixture.repository.proposeLiveAction({
+      trace: second.trace,
+      events: [
+        { ...second.events[0], id: 'action-2', sequence: 3, nodeId: 'open-2', summary: 'Second action proposed.' },
+        { ...second.events[1], id: 'risk-2', sequence: 4, nodeId: 'open-2', summary: 'Second risk approved.' },
+      ],
+      outbox: {
+        ...second.outbox, id: '158f3f75-89ab-7def-8123-456789abcdef', actionNodeId: 'open-2',
+        idempotencyKey: 'sha256:action-2', clientOrderId: 'cb_action_2',
+        intent: { ...second.outbox.intent, clientOrderId: 'cb_action_2' },
+      },
+    });
+    const venue = adapter({ status: 'acknowledged', clientOrderId: 'cb_action_1', venueOrderId: 'one' });
+    vi.mocked(venue.placeOrder)
+      .mockResolvedValueOnce({ status: 'acknowledged', clientOrderId: 'cb_action_1', venueOrderId: 'one' })
+      .mockResolvedValueOnce({ status: 'acknowledged', clientOrderId: 'cb_action_2', venueOrderId: 'two' });
+    const executor = new OutboxExecutor({ repository: fixture.repository, adapter: venue });
+
+    await executor.runOnce(liveIdempotencyKey, new AbortController().signal);
+    expect(fixture.repository.listAuditEvents(second.trace.id).some(({ type }) => type.startsWith('flow.'))).toBe(false);
+    const appendTerminal = vi.spyOn(fixture.repository, 'appendTerminalTrace')
+      .mockImplementationOnce(() => { throw new Error('simulated crash before terminal trace'); });
+    await expect(executor.runOnce('sha256:action-2', new AbortController().signal)).rejects.toThrow(/simulated crash/i);
+    expect(fixture.repository.getOutboxItem('sha256:action-2')).toMatchObject({ status: 'acknowledged' });
+    expect(fixture.repository.listAuditEvents(second.trace.id).some(({ type }) => type.startsWith('flow.'))).toBe(false);
+    appendTerminal.mockRestore();
+    await executor.runOnce('sha256:action-2', new AbortController().signal);
+    await executor.runOnce(liveIdempotencyKey, new AbortController().signal);
+
+    expect(venue.placeOrder).toHaveBeenCalledTimes(2);
+    expect(fixture.repository.listAuditEvents(second.trace.id).filter(({ type }) => type.startsWith('flow.')))
+      .toEqual([expect.objectContaining({ type: 'flow.completed' })]);
+  });
 });

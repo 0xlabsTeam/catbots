@@ -38,9 +38,6 @@ export class ReconciliationService {
         this.complete(item, venueEvent, 'rejected', `execution.${venueEvent.type}`, 'Reconciliation confirmed the order did not execute.');
         continue;
       }
-      this.dependencies.repository.appendTerminalTrace(item.traceId, [
-        this.event(item, 'flow.failed', 'Reconciliation could not prove a safe order outcome.'),
-      ]);
       if (this.dependencies.repository.getDeployment(deploymentId).status !== 'suspended') {
         this.dependencies.repository.suspendDeployment(deploymentId, this.now());
       }
@@ -55,9 +52,16 @@ export class ReconciliationService {
     summary: string,
   ): void {
     this.dependencies.repository.recordReconciledOutcome(item.idempotencyKey, this.event(item, type, summary, venueEvent), status);
-    this.dependencies.repository.appendTerminalTrace(item.traceId, [
-      this.event(item, status === 'acknowledged' ? 'flow.completed' : 'flow.failed', `Reconciled Live action ${status}.`),
-    ]);
+    const terminal = this.dependencies.repository.liveTraceTerminalStatus(item.traceId);
+    if (terminal !== null) {
+      this.dependencies.repository.appendTerminalTrace(item.traceId, [
+        this.event(
+          item,
+          terminal === 'completed' ? 'flow.completed' : 'flow.failed',
+          terminal === 'completed' ? 'All reconciled Live actions completed.' : 'One or more reconciled Live actions failed.',
+        ),
+      ]);
+    }
   }
 
   private event(item: ExecutionOutboxItem, type: AuditEventView['type'], summary: string, venueEvent?: ExecutionEvent): AuditEventView {

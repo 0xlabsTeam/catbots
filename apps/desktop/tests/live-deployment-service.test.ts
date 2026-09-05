@@ -94,10 +94,12 @@ describe('DeploymentService Live gate', () => {
         { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
         { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
         { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+        { id: 'oversized', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 2000 }, leverage: 2 } },
       ],
       edges: [
         { id: 'e1', source: 'clock', sourcePort: 'activation', target: 'flat', targetPort: 'activation' },
         { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
+        { id: 'e3', source: 'flat', sourcePort: 'result', target: 'oversized', targetPort: 'condition' },
       ],
     }));
     workbench.approveRevision(botId, 1);
@@ -143,6 +145,17 @@ describe('DeploymentService Live gate', () => {
     expect(first.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(run.children.every(({ status }) => status === 'open')).toBe(true);
+    expect(run.children.every(({ events }) => (
+      events.filter(({ type }) => type === 'action.proposed').length === 2
+      && events.some(({ type, nodeId }) => type === 'risk.approved' && nodeId === 'open')
+      && events.some(({ type, nodeId }) => type === 'risk.rejected' && nodeId === 'oversized')
+    ))).toBe(true);
+    expect(run.children.every(({ events }) => (
+      events.some(({ type, nodeId, effect }) => type === 'action.proposed' && nodeId === 'open'
+        && effect?.type === 'execution.open_position' && effect.config.size?.value === 500)
+      && events.some(({ type, nodeId, effect }) => type === 'action.proposed' && nodeId === 'oversized'
+        && effect?.type === 'execution.open_position' && effect.config.size?.value === 2000)
+    ))).toBe(true);
     expect(duplicate).toMatchObject({ duplicate: true, parentTraceId: first.parentTraceId });
     expect(repository.listOutboxItems(deploymentId).map(({ traceId, intent }) => ({ traceId, market: intent.market })))
       .toEqual(run.children.map(({ traceId, market }) => ({ traceId, market })));

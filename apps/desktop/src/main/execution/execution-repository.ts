@@ -175,9 +175,11 @@ export class ExecutionRepository {
       requireCompleteLiveActions(source, actions);
       const pendingTraceIds = new Set(actions.map(({ childTraceId }) => childTraceId));
       this.insertCoordinatedTrace(deploymentId, source, metadata, pendingTraceIds);
-      const outboxItems = actions.map((action) => {
-        const child = source.children.find(({ evaluation }) => evaluation.traceId === action.childTraceId);
-        if (child === undefined || child.market !== action.effect.market) throw new Error('Coordinated Live child identity does not match');
+      const actionByIdentity = new Map(actions.map((action) => [
+        `${action.childTraceId}\0${action.effect.nodeId}`, action,
+      ]));
+      const outboxItems: ExecutionOutboxItem[] = [];
+      for (const child of source.children.filter(({ evaluation }) => pendingTraceIds.has(evaluation.traceId))) {
         const context = metadata.contexts.get(child.market);
         const references = context === undefined ? [] : toDataReferences(context);
         const observedAt = observedContextTime(context, references);
@@ -190,32 +192,50 @@ export class ExecutionRepository {
           contextObservedAt: observedAt,
           dataReferences: references,
         } satisfies PersistedAuditIdentity;
-        const actionEvent = child.evaluation.trace.find((event) => event.type === 'action.proposed' && event.nodeId === action.effect.nodeId);
-        const riskEvent = child.evaluation.trace.find((event) => event.type === 'risk.approved' && event.nodeId === action.effect.nodeId);
-        if (actionEvent === undefined || riskEvent === undefined) throw new Error('Approved coordinated Live action events are required');
-        const nextSequence = this.nextAuditSequence(child.evaluation.traceId);
-        const actionView = toAuditEventView(actionEvent, identity);
-        const riskView = toAuditEventView(riskEvent, identity);
-        return this.proposeLiveAction({
-          trace: {
-            id: child.evaluation.traceId, deploymentId,
-            triggerEventId: triggerEventId(child.evaluation.trace),
-            idempotencyKey: `child:${source.parentTraceId}:${child.market}`,
-            parentTraceId: source.parentTraceId, market: child.market, dex: metadata.universe.dex,
-            universeRevision: metadata.universe.revision, contextObservedAt: observedAt,
-            createdAt: traceCreatedAt(child.evaluation.trace),
-          },
-          events: [
-            { ...actionView, id: `${child.evaluation.traceId}:proposal:${action.effect.nodeId}`, sequence: nextSequence },
-            { ...riskView, id: `${child.evaluation.traceId}:risk:${action.effect.nodeId}`, sequence: nextSequence + 1 },
-          ],
-          outbox: {
-            id: action.outboxId, deploymentId, traceId: child.evaluation.traceId,
-            actionNodeId: action.effect.nodeId, idempotencyKey: action.idempotencyKey,
-            clientOrderId: action.clientOrderId, intent: action.intent, createdAt: action.createdAt,
-          },
-        });
-      });
+        for (const effect of child.evaluation.effects) {
+          const proposed = child.evaluation.trace.find((event) => event.type === 'action.proposed' && event.nodeId === effect.nodeId);
+          if (proposed === undefined) throw new Error('Coordinated Live action evidence is incomplete');
+          const approved = child.evaluation.trace.find((event) => event.type === 'risk.approved' && event.nodeId === effect.nodeId);
+          const rejected = child.evaluation.trace.find((event) => event.type === 'risk.rejected' && event.nodeId === effect.nodeId);
+          const next = this.nextAuditSequence(child.evaluation.traceId);
+          const proposedView = toAuditEventView(proposed, identity);
+          if (approved !== undefined) {
+            const action = actionByIdentity.get(`${child.evaluation.traceId}\0${effect.nodeId}`);
+            if (action === undefined || child.market !== action.effect.market) {
+              throw new Error('Coordinated Live child identity does not match');
+            }
+            const approvedView = toAuditEventView(approved, identity);
+            outboxItems.push(this.proposeLiveAction({
+              trace: {
+                id: child.evaluation.traceId, deploymentId,
+                triggerEventId: triggerEventId(child.evaluation.trace),
+                idempotencyKey: `child:${source.parentTraceId}:${child.market}`,
+                parentTraceId: source.parentTraceId, market: child.market, dex: metadata.universe.dex,
+                universeRevision: metadata.universe.revision, contextObservedAt: observedAt,
+                createdAt: traceCreatedAt(child.evaluation.trace),
+              },
+              events: [
+                { ...proposedView, id: `${child.evaluation.traceId}:proposal:${effect.nodeId}`, sequence: next },
+                { ...approvedView, id: `${child.evaluation.traceId}:risk:${effect.nodeId}`, sequence: next + 1 },
+              ],
+              outbox: {
+                id: action.outboxId, deploymentId, traceId: child.evaluation.traceId,
+                actionNodeId: effect.nodeId, idempotencyKey: action.idempotencyKey,
+                clientOrderId: action.clientOrderId, intent: action.intent, createdAt: action.createdAt,
+              },
+            }));
+            continue;
+          }
+          if (rejected === undefined) throw new Error('Coordinated Live risk decision is incomplete');
+          const rejectedView = toAuditEventView(rejected, identity);
+          this.insertAuditEvent({
+            ...proposedView, id: `${child.evaluation.traceId}:proposal:${effect.nodeId}`, sequence: next,
+          });
+          this.insertAuditEvent({
+            ...rejectedView, id: `${child.evaluation.traceId}:risk:${effect.nodeId}`, sequence: next + 1,
+          });
+        }
+      }
       return Object.freeze({
         duplicate: false,
         run: this.listTriggerRun(source.parentTraceId),
@@ -373,6 +393,18 @@ export class ExecutionRepository {
       ? this.database.prepare('SELECT * FROM execution_outbox WHERE deployment_id = ? ORDER BY created_at, rowid').all(deploymentId)
       : this.database.prepare('SELECT * FROM execution_outbox WHERE deployment_id = ? AND status = ? ORDER BY created_at, rowid').all(deploymentId, status);
     return rows.map((row) => toOutboxItem(row as OutboxRow));
+  }
+
+  liveTraceTerminalStatus(traceId: string): 'completed' | 'failed' | null {
+    const trace = this.database.prepare('SELECT status FROM audit_traces WHERE id = ?')
+      .get(traceId) as { status: unknown } | undefined;
+    if (trace?.status !== 'open') return null;
+    const statuses = this.database.prepare('SELECT status FROM execution_outbox WHERE trace_id = ? ORDER BY rowid')
+      .all(traceId).map((row) => (row as { status: ExecutionOutboxItem['status'] }).status);
+    if (statuses.length === 0 || statuses.some((status) => (
+      status === 'pending' || status === 'claimed' || status === 'unknown'
+    ))) return null;
+    return statuses.some((status) => status === 'rejected') ? 'failed' : 'completed';
   }
 
   recordReconciledOutcome(

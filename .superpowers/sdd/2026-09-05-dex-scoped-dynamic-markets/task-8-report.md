@@ -54,3 +54,26 @@ Addressed all three Important review findings:
 3. Main now initializes the universe cache, starts its periodic refresh under an owned abort signal, and aborts/stops it before runtime/database shutdown. Lifecycle and real cache timer tests cover startup, refresh ownership, cancellation, and idempotent stop behavior.
 
 Fix-round RED evidence: missing `ingestLive`; missing condition/effect DTOs; a durably queued Live evaluation ending `flow.failed`; and zero cache lifecycle calls from Main. Fix-round GREEN evidence: 7 focused desktop suites / 50 tests, 11 strategy-runtime suites / 126 tests, 2 execution-core suites / 21 tests, and desktop/workspace typechecks all pass under Node 22.23.2.
+
+## Fix round 2
+
+Addressed all three Important re-review findings:
+
+1. Shared child traces now derive completion from every outbox on that trace. A terminal adapter outcome leaves the child open while any sibling action is pending, claimed, or unknown; the final acknowledged/rejected or reconciled outcome appends exactly one terminal flow event. Re-running an already terminal item performs no venue call and safely repairs a missing terminal trace after a crash.
+2. Main treats an initial universe refresh failure as unavailable metadata instead of a fatal startup error. It logs only a fixed sanitized status, continues IPC/runtime/UI startup, and starts periodic refresh for recovery under the same owned abort signal. Shutdown still aborts the owner and cancels the refresher before closing runtime/database resources. Live ingestion continues to refresh and fail closed when current metadata is unavailable, while stop/close lifecycle operations do not depend on a snapshot.
+3. Coordinated Live persistence now retains every bounded `action.proposed` and `risk.approved`/`risk.rejected` decision for mixed children, while creating outbox rows only for approved actions. The complete parent, children, decisions, and approved outboxes remain one immediate transaction, so a staging failure rolls the hierarchy back.
+
+Round-two RED evidence was observed for premature child completion after the first of two approved actions, loss of the rejected action/decision in a mixed evaluation, and Main abandoning startup when the initial universe fetch rejected.
+
+Round-two GREEN verification under Node 22.23.2:
+
+- Focused Live ingestion/execution/reconciliation/lifecycle: **PASS**, 4 files / 25 tests.
+- Task 8 repository, Paper, Live, outbox, reconciliation, cache, and Main lifecycle suites: **PASS**, 7 files / 52 tests.
+- Contracts: **PASS**, 4 files / 31 tests.
+- Strategy runtime: **PASS**, 11 files / 126 tests.
+- Execution core: **PASS**, 2 files / 21 tests.
+- Desktop typecheck: **PASS**.
+- Workspace typecheck: **PASS**.
+- `git diff --check`: **PASS**.
+
+The broad desktop run reached 319 passing tests and one skipped test. Its sole failure remains the previously documented, unrelated `apps/desktop/tests/agent-tools.test.ts` malformed Strategy union diagnostic expectation; no Task 8 file participates in that failure.

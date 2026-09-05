@@ -91,7 +91,11 @@ void app.whenReady()
       adapter: new HyperliquidAdapter({ client: createHyperliquidPublicClient() }),
     });
     marketUniverseRefreshOwner = new AbortController();
-    await marketUniverseCache.initialize(marketUniverseRefreshOwner.signal);
+    try {
+      await marketUniverseCache.initialize(marketUniverseRefreshOwner.signal);
+    } catch {
+      console.error('Catbots universe metadata unavailable');
+    }
     stopMarketUniverseRefresh = marketUniverseCache.startPeriodicRefresh(marketUniverseRefreshOwner.signal);
     const deploymentService = new DeploymentService({
       executionRepository: new ExecutionRepository(connection),
