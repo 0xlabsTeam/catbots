@@ -154,6 +154,36 @@ describe('coordinateEvaluation', () => {
     );
   });
 
+  it('scopes parent and child trace IDs to the deployment', () => {
+    const baseRequest = {
+      compiled: compiledStrategy(),
+      triggerNodeId: 't-15m',
+      triggerInput: { kind: 'interval' as const, occurredAt },
+      universe: snapshot('universe:42', ['BTC-PERP']),
+      contextFactory: (market: string) => createEvaluationContext({
+        evaluatedAt: occurredAt,
+        currentMarket: market,
+        values: {
+          'account.positions': {
+            value: [], provider: 'fixture.account', observedAt: occurredAt, freshnessSeconds: 0,
+            quality: { status: 'verified' as const }, integrityHash: `positions:${market}`,
+          },
+        },
+      }),
+      execution: filledExecution(),
+    };
+
+    const first = coordinateEvaluation({
+      ...baseRequest, deployment: { id: 'paper-1', mode: 'paper' as const },
+    });
+    const second = coordinateEvaluation({
+      ...baseRequest, deployment: { id: 'paper-2', mode: 'paper' as const },
+    });
+
+    expect(first.parentTraceId).not.toBe(second.parentTraceId);
+    expect(first.children[0]?.evaluation.traceId).not.toBe(second.children[0]?.evaluation.traceId);
+  });
+
   it('rejects duplicate universe symbols after whitespace normalization', () => {
     const contextFactory = vi.fn();
 

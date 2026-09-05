@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createHyperliquidClient,
+  createHyperliquidPublicClient,
   HyperliquidTestnetTransport,
   resolveHyperliquidSignerAddress,
 } from '../src/main/execution/hyperliquid/hyperliquid-client';
@@ -9,6 +10,28 @@ import {
 const signal = new AbortController().signal;
 
 describe('createHyperliquidClient', () => {
+  it('creates a public metadata client without constructing an exchange signer', async () => {
+    const transport = {};
+    const info = {
+      meta: vi.fn().mockResolvedValue({ universe: [], marginTables: [], collateralToken: 0 }),
+      clearinghouseState: vi.fn(), allMids: vi.fn(), userRole: vi.fn(), userFills: vi.fn(),
+    };
+    const sdk = {
+      createTransport: vi.fn(() => transport),
+      createInfo: vi.fn(() => info),
+      createExchange: vi.fn(),
+    };
+
+    const client = createHyperliquidPublicClient({ timeoutMs: 4_000 }, sdk);
+    await client.getMeta(signal);
+
+    expect(sdk.createInfo).toHaveBeenCalledWith(transport);
+    expect(sdk.createExchange).not.toHaveBeenCalled();
+    await expect(client.placeOrder({} as never, signal)).rejects.toMatchObject({
+      code: 'HYPERLIQUID_SIGNER_REQUIRED',
+    });
+  });
+
   it('sends bounded JSON only to the fixed Hyperliquid testnet API origin', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ BTC: '100000' }), {
       status: 200, headers: { 'content-type': 'application/json' },

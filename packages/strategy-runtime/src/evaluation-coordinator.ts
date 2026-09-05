@@ -83,6 +83,7 @@ export function coordinateEvaluation(request: CoordinateEvaluationRequest): Coor
 
   const triggerKey = deriveTriggerIdempotencyKey(triggerNodeId, triggerInput);
   const parentIdempotencyKey = [
+    'deployment', traceComponent(deployment.id),
     triggerKey,
     'dex', traceComponent(universe.dex),
     'universe', traceComponent(universe.revision),

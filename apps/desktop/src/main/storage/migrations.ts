@@ -180,6 +180,21 @@ const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE audit_traces ADD COLUMN parent_trace_id TEXT;
+      ALTER TABLE audit_traces ADD COLUMN market TEXT;
+      ALTER TABLE audit_traces ADD COLUMN dex TEXT CHECK (dex IN ('hyperliquid'));
+      ALTER TABLE audit_traces ADD COLUMN universe_revision TEXT;
+      ALTER TABLE audit_traces ADD COLUMN context_observed_at TEXT;
+
+      CREATE INDEX audit_traces_by_deployment_parent
+        ON audit_traces (deployment_id, parent_trace_id);
+      CREATE INDEX audit_traces_by_deployment_market_created
+        ON audit_traces (deployment_id, market, created_at);
+    `,
+  },
 ];
 
 export function migrateDatabase(database: Database.Database): void {

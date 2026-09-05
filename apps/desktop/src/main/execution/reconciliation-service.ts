@@ -62,6 +62,7 @@ export class ReconciliationService {
 
   private event(item: ExecutionOutboxItem, type: AuditEventView['type'], summary: string, venueEvent?: ExecutionEvent): AuditEventView {
     const deployment = this.dependencies.repository.getDeployment(item.deploymentId);
+    const trace = this.dependencies.repository.getAuditTraceContext(item.traceId);
     const requestId = (this.dependencies.idFactory ?? randomUUID)();
     return {
       id: requestId, traceId: item.traceId,
@@ -69,6 +70,7 @@ export class ReconciliationService {
       type, occurredAt: venueEvent?.occurredAt ?? this.now(),
       strategyId: deployment.strategyId, strategyVersion: deployment.strategyVersion,
       deploymentId: deployment.id, mode: 'live', nodeId: item.actionNodeId,
+      ...trace,
       nodeType: item.intent.type === 'open_position' ? 'execution.open_position' : 'execution.close_position',
       summary, riskRuleIds: [],
       ...(venueEvent === undefined ? {} : { adapter: { venue: 'hyperliquid' as const, requestId } }),

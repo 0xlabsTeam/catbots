@@ -294,7 +294,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       const request = parseRequest(StartPaperInputSchema, input);
       let deploymentId: string | undefined;
       try {
-        const deployment = dependencies.deploymentService.startPaper(request);
+        const deployment = await dependencies.deploymentService.startPaper(request, new AbortController().signal);
         deploymentId = deployment.id;
         dependencies.runtime.startDeployment(deployment.id);
         return PaperDeploymentViewSchema.parse(dependencies.deploymentService.getPaperDeployment(deployment.id));

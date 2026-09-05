@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LegacyRiskLimits, RiskLimits } from '@catbots/contracts';
 import { createEvaluationContext, parseStrategyDocument } from '@catbots/strategy-runtime';
 
@@ -22,6 +22,15 @@ const legacyLimits: LegacyRiskLimits = {
   maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
   maxDailyLossUsd: '300', maxDrawdownPercent: 12,
   allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+};
+const dynamicUniverse = {
+  dex: 'hyperliquid' as const,
+  revision: 'sha256:paper-universe',
+  observedAt: now,
+  markets: [
+    { symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 40 },
+    { symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 30 },
+  ],
 };
 
 let database: Database.Database;
@@ -52,31 +61,38 @@ beforeEach(() => {
 
 afterEach(() => database.close());
 
-function context(evaluatedAt = now) {
-  return createEvaluationContext({
-    evaluatedAt,
-    currentMarket: 'BTC-PERP',
-    values: {
-      'market.price': {
-        value: { market: 'BTC-PERP', bid: 99, ask: 101, mark: 100 },
-        provider: 'paper.fixture', observedAt: evaluatedAt, freshnessSeconds: 0,
-        quality: { status: 'verified' }, integrityHash: 'sha256:price',
-      },
-      'account.positions': {
-        value: [], provider: 'caller.fixture', observedAt: evaluatedAt, freshnessSeconds: 0,
-        quality: { status: 'verified' }, integrityHash: 'sha256:positions',
-      },
-    },
-  });
+function createDynamicBot(approve = true): string {
+  const dynamicBotId = new BotRepository(database, () => new Date(now))
+    .createDraft({ name: 'Dynamic Paper', dex: 'hyperliquid' }).id;
+  workbench.createValidatedRevision(dynamicBotId, parseStrategyDocument({
+    schemaVersion: '2.0',
+    strategy: { id: 'dynamic-paper', name: 'Dynamic Paper', version: 1 },
+    marketScope: { type: 'dex_universe' },
+    nodes: [
+      { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+      { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
+      { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+    ],
+    edges: [
+      { id: 'e1', source: 'clock', sourcePort: 'activation', target: 'flat', targetPort: 'activation' },
+      { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
+    ],
+  }));
+  if (approve) workbench.approveRevision(dynamicBotId, 1);
+  return dynamicBotId;
 }
 
-function service() {
-  return new DeploymentService({
-    executionRepository: executions,
-    workbenchRepository: workbench,
-    clock: () => new Date(now),
-    idFactory: randomUUID,
-  });
+function dynamicService(refresh = vi.fn().mockResolvedValue(dynamicUniverse)) {
+  return {
+    refresh,
+    deployments: new DeploymentService({
+      executionRepository: executions,
+      workbenchRepository: workbench,
+      marketUniverseCache: { refresh, freshness: () => ({ fresh: true }) },
+      clock: () => new Date(now),
+      idFactory: randomUUID,
+    }),
+  };
 }
 
 function dynamicPaperAdapter(totalExposure = '5000') {
@@ -156,13 +172,16 @@ function executeDynamic(
 }
 
 describe('Paper deployment', () => {
-  it('fails closed for a DEX-scoped bot with no legacy market hint', () => {
-    const newBotId = new BotRepository(database, () => new Date(now)).createDraft({ name: 'DEX Paper', dex: 'hyperliquid' }).id;
-    workbench.createValidatedRevision(newBotId, parseStrategyDocument({
-      schemaVersion: '1.0', strategy: { id: 'dex-paper', name: 'DEX Paper', version: 1 },
+  it('starts only an approved Strategy 2.0 deployment after refreshing its DEX universe', async () => {
+    const dynamicBotId = new BotRepository(database, () => new Date(now))
+      .createDraft({ name: 'Dynamic Paper', dex: 'hyperliquid' }).id;
+    workbench.createValidatedRevision(dynamicBotId, parseStrategyDocument({
+      schemaVersion: '2.0',
+      strategy: { id: 'dynamic-paper', name: 'Dynamic Paper', version: 1 },
+      marketScope: { type: 'dex_universe' },
       nodes: [
         { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
-        { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 1, config: { state: 'flat', market: 'BTC-PERP' } },
+        { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
         { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
       ],
       edges: [
@@ -170,137 +189,129 @@ describe('Paper deployment', () => {
         { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
       ],
     }));
-    workbench.approveRevision(newBotId, 1);
-
-    expect(() => service().startPaper({ botId: newBotId, strategyVersion: 1, riskLimits: limits })).toThrow('DYNAMIC_MARKET_RUNTIME_NOT_READY');
-  });
-
-  it('runs an approved strategy through the canonical evaluator and persists the full trace', () => {
-    workbench.approveRevision(botId, 1);
-    const deployments = service();
-    const deployment = deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits });
-
-    const result = deployments.ingest({
-      deploymentId: deployment.id,
-      triggerNodeId: 'clock',
-      triggerInput: { kind: 'interval', occurredAt: now },
-      context: context(),
+    workbench.approveRevision(dynamicBotId, 1);
+    const refresh = vi.fn().mockResolvedValue(dynamicUniverse);
+    const deployments = new DeploymentService({
+      executionRepository: executions,
+      workbenchRepository: workbench,
+      marketUniverseCache: { refresh, freshness: () => ({ fresh: true }) },
+      clock: () => new Date(now),
+      idFactory: randomUUID,
     });
 
-    expect(result.duplicate).toBe(false);
-    expect(result.events.map(({ type }) => type)).toEqual([
-      'trigger.received', 'context.resolution_started', 'context.resolved',
-      'condition.evaluated', 'action.proposed', 'risk.approved', 'execution.queued',
-      'execution.submitted', 'execution.acknowledged', 'execution.filled', 'flow.completed',
+    await expect(deployments.startPaper({
+      botId: dynamicBotId, strategyVersion: 1, riskLimits: limits,
+    }, new AbortController().signal)).resolves.toMatchObject({
+      recordVersion: 2,
+      dex: 'hyperliquid',
+      executionVenue: 'paper',
+      marketAccess: { mode: 'all_active_perpetuals' },
+      riskLimits: limits,
+    });
+    expect(refresh).toHaveBeenCalledOnce();
+
+    workbench.approveRevision(botId, 1);
+    await expect(deployments.startPaper({
+      botId, strategyVersion: 1, riskLimits: limits,
+    }, new AbortController().signal)).rejects.toThrow('Strategy 2.0 is required');
+  });
+
+  it('coordinates, audits, and deduplicates one interval across all active Paper markets', async () => {
+    const dynamicBotId = createDynamicBot();
+    const { deployments } = dynamicService();
+    const deployment = await deployments.startPaper(
+      { botId: dynamicBotId, strategyVersion: 1, riskLimits: limits },
+      new AbortController().signal,
+    );
+    const request = {
+      deploymentId: deployment.id,
+      triggerNodeId: 'clock',
+      triggerInput: { kind: 'interval' as const, occurredAt: now },
+      contextFactory: (market: string) => createEvaluationContext({
+        evaluatedAt: now,
+        currentMarket: market,
+        values: {
+          'market.price': {
+            value: { market, bid: 99, ask: 101, mark: 100 },
+            provider: 'paper.fixture', observedAt: now, freshnessSeconds: 0,
+            quality: { status: 'verified' as const }, integrityHash: `sha256:price:${market}`,
+          },
+        },
+      }),
+    };
+
+    const first = await deployments.ingest(request);
+    const duplicate = await deployments.ingest(request);
+
+    expect(first.duplicate).toBe(false);
+    expect(first.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(duplicate).toMatchObject({ parentTraceId: first.parentTraceId, duplicate: true });
+    expect(deployments.getPaperState(deployment.id).orders.map(({ market }) => market)).toEqual([
+      'BTC-PERP', 'ETH-PERP',
     ]);
-    expect(executions.listAuditEvents(result.traceId).map(({ type }) => type)).toEqual(result.events.map(({ type }) => type));
-    expect(deployments.getPaperState(deployment.id)).toMatchObject({
-      orders: [expect.objectContaining({ market: 'BTC-PERP', side: 'long', notionalUsd: '500' })],
-      positions: [expect.objectContaining({ market: 'BTC-PERP', side: 'long', leverage: 2 })],
-    });
+    expect(executions.listTriggerRun(first.parentTraceId).children).toEqual([
+      expect.objectContaining({ market: 'BTC-PERP', universeRevision: dynamicUniverse.revision }),
+      expect.objectContaining({ market: 'ETH-PERP', universeRevision: dynamicUniverse.revision }),
+    ]);
   });
 
-  it('records a risk rejection without queueing or filling an order', () => {
+  it('keeps legacy deployments readable and stoppable without allowing a new legacy start', async () => {
     workbench.approveRevision(botId, 1);
-    const deployments = service();
-    const deployment = deployments.startPaper({
-      botId,
-      strategyVersion: 1,
-      riskLimits: { ...limits, maxOrderUsd: '100' },
+    const legacy = executions.createDeployment({
+      id: randomUUID(), botId, strategyId: 'paper-btc', strategyVersion: 1,
+      recordVersion: 1, mode: 'paper', venue: 'paper', network: 'paper',
+      marketBindings: ['BTC-PERP'], riskLimits: legacyLimits, status: 'running',
+      createdAt: now, updatedAt: now,
     });
+    const { deployments } = dynamicService();
 
-    const result = deployments.ingest({
+    await expect(deployments.startPaper(
+      { botId, strategyVersion: 1, riskLimits: limits },
+      new AbortController().signal,
+    )).rejects.toThrow('Strategy 2.0 is required');
+    expect(executions.getDeployment(legacy.id)).toMatchObject({ recordVersion: 1, marketBindings: ['BTC-PERP'] });
+    expect(deployments.stop(legacy.id)).toMatchObject({ status: 'stopped' });
+  });
+
+  it('records per-market risk rejection without queueing or filling orders', async () => {
+    const dynamicBotId = createDynamicBot();
+    const { deployments } = dynamicService();
+    const deployment = await deployments.startPaper({
+      botId: dynamicBotId, strategyVersion: 1, riskLimits: { ...limits, maxOrderUsd: '100' },
+    });
+    const result = await deployments.ingest({
       deploymentId: deployment.id,
       triggerNodeId: 'clock',
       triggerInput: { kind: 'interval', occurredAt: now },
-      context: context(),
+      contextFactory: (market) => dynamicContext(market),
     });
 
-    expect(result.events.map(({ type }) => type)).toContain('risk.rejected');
-    expect(result.events.map(({ type }) => type)).not.toContain('execution.queued');
+    expect(result.children.every(({ evaluation }) => evaluation.trace.some(({ type }) => type === 'risk.rejected'))).toBe(true);
     expect(deployments.getPaperState(deployment.id).orders).toEqual([]);
   });
 
-  it('resolves position conditions from current Paper state instead of caller-supplied account data', () => {
-    workbench.approveRevision(botId, 1);
-    const deployments = service();
-    const deployment = deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits });
-    deployments.ingest({
-      deploymentId: deployment.id,
-      triggerNodeId: 'clock',
-      triggerInput: { kind: 'interval', occurredAt: now },
-      context: context(),
-    });
-    const next = '2026-09-05T08:30:00.000Z';
+  it('rolls back all market state on audit failure and preserves pause and Stop controls', async () => {
+    const unapprovedBotId = createDynamicBot(false);
+    const first = dynamicService().deployments;
+    await expect(first.startPaper({ botId: unapprovedBotId, strategyVersion: 1, riskLimits: limits }))
+      .rejects.toThrow(/approved/i);
 
-    const result = deployments.ingest({
-      deploymentId: deployment.id,
-      triggerNodeId: 'clock',
-      triggerInput: { kind: 'interval', occurredAt: next },
-      context: context(next),
-    });
-
-    expect(result.events.at(-1)?.type).toBe('flow.skipped');
-    expect(deployments.getPaperState(deployment.id).orders).toHaveLength(1);
-  });
-
-  it('deduplicates the same trigger and keeps Stop persistent', () => {
-    workbench.approveRevision(botId, 1);
-    const deployments = service();
-    const deployment = deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits });
-    const request = {
-      deploymentId: deployment.id,
-      triggerNodeId: 'clock',
-      triggerInput: { kind: 'interval' as const, occurredAt: now },
-      context: context(),
-    };
-
-    const first = deployments.ingest(request);
-    const duplicate = deployments.ingest(request);
-
-    expect(duplicate).toMatchObject({ traceId: first.traceId, duplicate: true });
-    expect(deployments.getPaperState(deployment.id).orders).toHaveLength(1);
-    expect(deployments.stop(deployment.id)).toMatchObject({ status: 'stopped' });
-    expect(executions.listRecoverableDeployments()).toEqual([]);
-    expect(() => deployments.ingest(request)).toThrow(/not running/i);
-  });
-
-  it('pauses evaluation without discarding the Paper position or preventing Stop', () => {
-    workbench.approveRevision(botId, 1);
-    const deployments = service();
-    const deployment = deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits });
-    const request = {
-      deploymentId: deployment.id,
-      triggerNodeId: 'clock',
-      triggerInput: { kind: 'interval' as const, occurredAt: now },
-      context: context(),
-    };
-    deployments.ingest(request);
-
-    expect(deployments.pause(deployment.id)).toMatchObject({ status: 'paused' });
-    expect(() => deployments.ingest(request)).toThrow(/not running/i);
-    expect(deployments.getPaperState(deployment.id).positions).toHaveLength(1);
-    expect(deployments.stop(deployment.id)).toMatchObject({ status: 'stopped' });
-  });
-
-  it('requires approval and rolls back staged Paper state when audit persistence fails', () => {
-    const deployments = service();
-    expect(() => deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits })).toThrow(/approved/i);
-
-    workbench.approveRevision(botId, 1);
-    const deployment = deployments.startPaper({ botId, strategyVersion: 1, riskLimits: limits });
+    workbench.approveRevision(unapprovedBotId, 1);
+    const deployment = await first.startPaper({ botId: unapprovedBotId, strategyVersion: 1, riskLimits: limits });
     database.exec(`
       CREATE TRIGGER force_paper_audit_failure BEFORE INSERT ON audit_events
       BEGIN SELECT RAISE(ABORT, 'forced paper audit failure'); END;
     `);
-    expect(() => deployments.ingest({
+    await expect(first.ingest({
       deploymentId: deployment.id,
       triggerNodeId: 'clock',
       triggerInput: { kind: 'interval', occurredAt: now },
-      context: context(),
-    })).toThrow(/forced paper audit failure/i);
-    expect(deployments.getPaperState(deployment.id).orders).toEqual([]);
-    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 0 });
+      contextFactory: (market) => dynamicContext(market),
+    })).rejects.toThrow(/forced paper audit failure/i);
+    expect(first.getPaperState(deployment.id).orders).toEqual([]);
+    database.exec('DROP TRIGGER force_paper_audit_failure');
+    expect(first.pause(deployment.id)).toMatchObject({ status: 'paused' });
+    expect(first.stop(deployment.id)).toMatchObject({ status: 'stopped' });
   });
 });
 

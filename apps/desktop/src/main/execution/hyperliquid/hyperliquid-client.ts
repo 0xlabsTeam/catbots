@@ -166,6 +166,31 @@ export function createHyperliquidClient(
   );
 }
 
+export function createHyperliquidPublicClient(
+  options: Readonly<{ timeoutMs?: number }> = {},
+  sdk: SdkFactory = defaultSdk,
+): HyperliquidClientPort {
+  const timeout = options.timeoutMs ?? 8_000;
+  if (!Number.isInteger(timeout) || timeout < 250 || timeout > 30_000) throw fixedError('HYPERLIQUID_TIMEOUT_INVALID');
+  const transport = sdk.createTransport({ isTestnet: true, timeout });
+  const signerRequired = async (): Promise<never> => { throw fixedError('HYPERLIQUID_SIGNER_REQUIRED'); };
+  const client = new SdkHyperliquidClient(sdk.createInfo(transport), {
+    order: signerRequired,
+    cancelByCloid: signerRequired,
+    updateLeverage: signerRequired,
+  });
+  return {
+    getMeta: (signal) => client.getMeta(signal),
+    getClearinghouseState: (account, signal) => client.getClearinghouseState(account, signal),
+    getAllMids: (signal) => client.getAllMids(signal),
+    getUserRole: (address, signal) => client.getUserRole(address, signal),
+    getUserFills: (account, signal) => client.getUserFills(account, signal),
+    placeOrder: signerRequired,
+    cancelByCloid: signerRequired,
+    updateLeverage: signerRequired,
+  };
+}
+
 export async function resolveHyperliquidSignerAddress(agentPrivateKey: string): Promise<string> {
   return privateKeyToAccount(privateKeyHex(agentPrivateKey)).address.toLowerCase();
 }

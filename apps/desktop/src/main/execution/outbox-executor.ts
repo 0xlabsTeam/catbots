@@ -37,6 +37,8 @@ export class OutboxExecutor {
     }
     if (receipt.clientOrderId !== claimed.clientOrderId) {
       receipt = { status: 'unknown', clientOrderId: claimed.clientOrderId, errorCode: 'ADAPTER_IDENTITY_MISMATCH' };
+    } else {
+      receipt = sanitizeReceipt(receipt);
     }
 
     const auditType = receipt.status === 'acknowledged' ? 'execution.acknowledged'
@@ -64,6 +66,7 @@ export class OutboxExecutor {
     receipt?: ExecutionReceipt,
   ): AuditEventView {
     const deployment = this.dependencies.repository.getDeployment(item.deploymentId);
+    const trace = this.dependencies.repository.getAuditTraceContext(item.traceId);
     const occurredAt = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     const requestId = (this.dependencies.idFactory ?? randomUUID)();
     return {
@@ -76,6 +79,7 @@ export class OutboxExecutor {
       strategyVersion: deployment.strategyVersion,
       deploymentId: deployment.id,
       mode: 'live',
+      ...trace,
       nodeId: item.actionNodeId,
       nodeType: item.intent.type === 'open_position' ? 'execution.open_position' : 'execution.close_position',
       summary,
@@ -88,6 +92,24 @@ export class OutboxExecutor {
       },
     };
   }
+}
+
+function sanitizeReceipt(receipt: ExecutionReceipt): ExecutionReceipt {
+  const errorCode = receipt.errorCode === undefined
+    ? undefined
+    : /^[A-Z][A-Z0-9_]{0,119}$/.test(receipt.errorCode)
+      ? receipt.errorCode
+      : receipt.status === 'rejected' ? 'ADAPTER_REJECTED' : 'ADAPTER_REQUEST_FAILED';
+  const venueOrderId = receipt.venueOrderId !== undefined
+    && /^[A-Za-z0-9._:-]{1,120}$/.test(receipt.venueOrderId)
+    ? receipt.venueOrderId
+    : undefined;
+  return {
+    status: receipt.status,
+    clientOrderId: receipt.clientOrderId,
+    ...(venueOrderId === undefined ? {} : { venueOrderId }),
+    ...(errorCode === undefined ? {} : { errorCode }),
+  };
 }
 
 function executionError(code: string): Error & { code: string } {

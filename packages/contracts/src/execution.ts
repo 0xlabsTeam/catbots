@@ -219,9 +219,20 @@ const SanitizedAdapterMetadataSchema = z.object({
   errorCode: NonEmptyTextSchema.max(120).optional(),
 }).strict();
 
+export const AuditDataReferenceSchema = z.object({
+  key: NonEmptyTextSchema.max(160),
+  provider: NonEmptyTextSchema.max(160),
+  observedAt: TimestampSchema,
+  freshnessSeconds: z.number().finite().nonnegative(),
+  qualityStatus: z.enum(['verified', 'stale', 'unauthorized', 'invalid']),
+  integrityHash: NonEmptyTextSchema.max(240),
+}).strict();
+
+export type AuditDataReference = z.infer<typeof AuditDataReferenceSchema>;
+
 export const AuditEventViewSchema = z.object({
-  id: NonEmptyTextSchema.max(240),
-  traceId: NonEmptyTextSchema.max(120),
+  id: NonEmptyTextSchema.max(560),
+  traceId: NonEmptyTextSchema.max(500),
   sequence: z.number().int().positive(),
   type: AuditEventTypeSchema,
   occurredAt: TimestampSchema,
@@ -229,6 +240,12 @@ export const AuditEventViewSchema = z.object({
   strategyVersion: z.number().int().positive(),
   deploymentId: DeploymentIdSchema,
   mode: z.enum(['paper', 'live']),
+  parentTraceId: NonEmptyTextSchema.max(500).optional(),
+  market: NonEmptyTextSchema.max(40).optional(),
+  dex: DexIdSchema.optional(),
+  universeRevision: NonEmptyTextSchema.max(240).optional(),
+  contextObservedAt: TimestampSchema.optional(),
+  dataReferences: z.array(AuditDataReferenceSchema).optional(),
   nodeId: NonEmptyTextSchema.max(120).optional(),
   nodeType: NonEmptyTextSchema.max(120).optional(),
   summary: NonEmptyTextSchema.max(500),

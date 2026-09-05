@@ -10,47 +10,51 @@ import {
   type StartLiveInput,
   StartPaperInputSchema,
   type Deployment,
-  type LegacyRiskLimits,
-  LegacyRiskLimitsSchema,
   type PaperDeploymentView,
-  type RiskLimits,
   type StartPaperInput,
 } from '@catbots/contracts';
 import {
   createBuiltinRegistry,
   createEvaluationContext,
-  evaluateTrigger,
+  coordinateEvaluation,
   validateStrategy,
   type AuditEvent,
   type CompiledStrategy,
+  type CoordinatedEvaluation,
   type EvaluationContext,
+  type EvaluationContextFactory,
+  type MarketUniverseSnapshot,
   type TriggerInput,
 } from '@catbots/strategy-runtime';
 
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 import type { ExecutionRepository } from './execution-repository';
+import type { MarketUniverseCache } from './market-universe-cache';
 import { createHyperliquidClient, resolveHyperliquidSignerAddress, type HyperliquidClientPort } from './hyperliquid/hyperliquid-client';
 import { runHyperliquidPreflight } from './hyperliquid/hyperliquid-preflight';
 import { PaperAdapter, type PaperState } from './paper-adapter';
 
-type ActivePaperDeployment = Readonly<{
+type ActivePaperDeployment = {
   deployment: Deployment;
   compiled: CompiledStrategy;
   adapter: PaperAdapter;
   evaluations: Map<string, readonly AuditEvent[]>;
-}>;
+  universe: MarketUniverseSnapshot;
+};
 
 export type PaperIngestInput = Readonly<{
   deploymentId: string;
   triggerNodeId: string;
   triggerInput: TriggerInput;
-  context: EvaluationContext;
+  contextFactory?: EvaluationContextFactory;
 }>;
 
 export type PaperEvaluationResult = Readonly<{
   traceId: string;
+  parentTraceId: string;
   duplicate: boolean;
   events: readonly AuditEvent[];
+  children: CoordinatedEvaluation['children'];
   state: PaperState;
 }>;
 
@@ -62,12 +66,14 @@ export class DeploymentService {
     botName: string;
     accountAddress: string;
     signerAddress: string | null;
+    universe: MarketUniverseSnapshot;
   }>>();
 
   constructor(private readonly dependencies: Readonly<{
     executionRepository: ExecutionRepository;
     workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument' | 'getStoredIdentity'>;
     configRepository?: Readonly<{ load(): Promise<LocalConfig | null> }>;
+    marketUniverseCache?: Pick<MarketUniverseCache, 'refresh' | 'freshness'>;
     runtimeReady?: () => boolean;
     createHyperliquidClient?: (options: Readonly<{ agentPrivateKey: string }>) => HyperliquidClientPort;
     resolveSignerAddress?: (privateKey: string) => Promise<string>;
@@ -78,6 +84,22 @@ export class DeploymentService {
   async prepareLive(source: PrepareLiveInput, signal: AbortSignal): Promise<LivePreflightView> {
     const input = PrepareLiveInputSchema.parse(source);
     const state = this.dependencies.workbenchRepository.getState(input.botId, input.strategyVersion);
+    const document = this.dependencies.workbenchRepository.getStrategyDocument(input.botId, input.strategyVersion);
+    if (document.schemaVersion !== '2.0' || document.marketScope.type !== 'dex_universe') {
+      throw new Error('Strategy 2.0 is required');
+    }
+    const bot = this.dependencies.workbenchRepository.getStoredIdentity(input.botId).summary;
+    const marketUniverseCache = this.dependencies.marketUniverseCache;
+    if (marketUniverseCache === undefined) throw new Error('DEX universe unavailable');
+    let universe: MarketUniverseSnapshot;
+    try {
+      universe = await marketUniverseCache.refresh(signal);
+    } catch {
+      throw new Error('DEX universe unavailable');
+    }
+    if (!marketUniverseCache.freshness().fresh || universe.dex !== bot.dex) {
+      throw new Error('DEX universe unavailable');
+    }
     const config = await this.dependencies.configRepository?.load();
     const exchange = config?.exchanges.hyperliquid;
     let client: HyperliquidClientPort = unavailableHyperliquidClient();
@@ -92,7 +114,8 @@ export class DeploymentService {
     if (exchange !== undefined) {
       try {
         const mids = await client.getAllMids(signal);
-        dataFresh = Object.values(mids).some((mid) => Number(mid) > 0);
+        dataFresh = universe.markets.some(({ active }) => active)
+          && Object.values(mids).some((mid) => Number(mid) > 0);
       } catch {
         dataFresh = false;
       }
@@ -129,6 +152,7 @@ export class DeploymentService {
       botName: state.bot.name,
       accountAddress: exchange?.accountAddress ?? 'unconfigured',
       signerAddress: signerAddress?.toLowerCase() ?? null,
+      universe,
     });
     return view;
   }
@@ -156,18 +180,22 @@ export class DeploymentService {
     const state = this.dependencies.workbenchRepository.getState(input.botId, input.strategyVersion);
     if (state.currentRevision?.status !== 'approved') throw new Error('Live deployment requires an approved strategy revision');
     const document = this.dependencies.workbenchRepository.getStrategyDocument(input.botId, input.strategyVersion);
+    if (document.schemaVersion !== '2.0' || document.marketScope.type !== 'dex_universe') {
+      throw new Error('Strategy 2.0 is required');
+    }
     const validation = validateStrategy(document, createBuiltinRegistry());
     if (!validation.valid) throw new Error('Approved strategy is no longer valid');
-    const legacyMarket = this.requireLegacyMarketHint(input.botId);
+    const bot = this.dependencies.workbenchRepository.getStoredIdentity(input.botId).summary;
+    if (prepared.universe.dex !== bot.dex) throw new Error('DEX universe does not match Bot');
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     const deployment = DeploymentSchema.parse({
       id: (this.dependencies.idFactory ?? randomUUID)(),
       botId: input.botId,
       strategyId: document.strategy.id,
       strategyVersion: input.strategyVersion,
-      recordVersion: 1, mode: 'live', venue: 'hyperliquid', network: 'testnet',
+      recordVersion: 2, dex: bot.dex, mode: 'live', executionVenue: 'hyperliquid', network: 'testnet',
       maskedAccount: prepared.view.maskedAccount,
-      marketBindings: [legacyMarket], riskLimits: this.toLegacyRiskLimits(input.riskLimits, legacyMarket),
+      marketAccess: { mode: 'all_active_perpetuals' }, riskLimits: input.riskLimits,
       status: 'running', createdAt: timestamp, updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
@@ -185,110 +213,157 @@ export class DeploymentService {
     return this.dependencies.executionRepository.getActiveDeploymentForBot(botId);
   }
 
-  startPaper(source: StartPaperInput): Deployment {
+  async startPaper(
+    source: StartPaperInput,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<Deployment> {
     const input = StartPaperInputSchema.parse(source);
     const state = this.dependencies.workbenchRepository.getState(input.botId, input.strategyVersion);
     if (state.currentRevision?.status !== 'approved') throw new Error('Paper deployment requires an approved strategy revision');
     const document = this.dependencies.workbenchRepository.getStrategyDocument(input.botId, input.strategyVersion);
+    if (document.schemaVersion !== '2.0' || document.marketScope.type !== 'dex_universe') {
+      throw new Error('Strategy 2.0 is required');
+    }
     const validation = validateStrategy(document, createBuiltinRegistry());
     if (!validation.valid) throw new Error('Approved strategy is no longer valid');
-    const legacyMarket = this.requireLegacyMarketHint(input.botId);
+    const marketUniverseCache = this.dependencies.marketUniverseCache;
+    if (marketUniverseCache === undefined) throw new Error('DEX universe unavailable');
+    let universe;
+    try {
+      universe = await marketUniverseCache.refresh(signal);
+    } catch {
+      throw new Error('DEX universe unavailable');
+    }
+    if (!marketUniverseCache.freshness().fresh) throw new Error('DEX universe unavailable');
+    const bot = this.dependencies.workbenchRepository.getStoredIdentity(input.botId).summary;
+    if (universe.dex !== bot.dex) throw new Error('DEX universe does not match Bot');
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     const deployment = DeploymentSchema.parse({
       id: (this.dependencies.idFactory ?? randomUUID)(),
       botId: input.botId,
       strategyId: document.strategy.id,
       strategyVersion: input.strategyVersion,
-      recordVersion: 1,
+      recordVersion: 2,
+      dex: bot.dex,
       mode: 'paper',
-      venue: 'paper',
-      network: 'paper',
-      marketBindings: [legacyMarket],
-      riskLimits: this.toLegacyRiskLimits(input.riskLimits, legacyMarket),
+      executionVenue: 'paper',
+      marketAccess: { mode: 'all_active_perpetuals' },
+      riskLimits: input.riskLimits,
       status: 'running',
       createdAt: timestamp,
       updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
-    if (persisted.recordVersion !== 1) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
+    if (persisted.recordVersion !== 2) throw new Error('Dynamic Paper deployment required');
     this.active.set(persisted.id, {
       deployment: persisted,
       compiled: validation.compiled,
       adapter: new PaperAdapter({
+        recordVersion: 2,
         deploymentId: persisted.id,
         strategyId: persisted.strategyId,
         strategyVersion: persisted.strategyVersion,
-        market: persisted.marketBindings[0]!,
+        botDex: bot.dex,
+        deploymentDex: persisted.dex,
         riskLimits: persisted.riskLimits,
+        universe,
+        universeFresh: true,
       }),
       evaluations: new Map(),
+      universe,
     });
     return persisted;
   }
 
-  private requireLegacyMarketHint(botId: string): string {
-    const market = this.dependencies.workbenchRepository.getStoredIdentity(botId).legacyMarketHint;
-    if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
-    return market;
-  }
-
-  private toLegacyRiskLimits(limits: RiskLimits, market: string): LegacyRiskLimits {
-    return LegacyRiskLimitsSchema.parse({
-      maxOrderUsd: limits.maxOrderUsd,
-      maxPositionUsd: limits.maxPositionUsd,
-      maxLeverage: limits.maxLeverage,
-      maxDailyLossUsd: limits.maxDailyLossUsd,
-      maxDrawdownPercent: limits.maxDrawdownPercent,
-      allowedMarkets: [market],
-      allowedSides: limits.allowedSides,
-      maxOrdersPerMinute: limits.maxOrdersPerMinute,
-    });
-  }
-
-  ingest(input: PaperIngestInput): PaperEvaluationResult {
+  async ingest(
+    input: PaperIngestInput,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<PaperEvaluationResult> {
     const runtime = this.active.get(input.deploymentId);
     if (runtime === undefined || this.dependencies.executionRepository.getDeployment(input.deploymentId).status !== 'running') {
       throw new Error('Paper deployment is not running');
     }
-    runtime.adapter.beginEvaluation();
+    const deployment = runtime.deployment;
+    if (deployment.recordVersion !== 2 || input.contextFactory === undefined) {
+      throw new Error('Dynamic market context factory is required');
+    }
+    let universe = runtime.universe;
+    let universeFresh = false;
+    try {
+      universe = await this.dependencies.marketUniverseCache!.refresh(signal);
+      universeFresh = this.dependencies.marketUniverseCache!.freshness().fresh;
+    } catch {
+      universeFresh = false;
+    }
+    if (universe.dex !== deployment.dex) throw new Error('DEX universe does not match deployment');
+    runtime.universe = universe;
+    runtime.adapter.updateMarketUniverse({ universe, fresh: universeFresh });
+    runtime.adapter.beginCoordinatedEvaluation();
     try {
       const paperState = runtime.adapter.snapshot();
-      const context = createEvaluationContext({
-        ...input.context,
-        values: {
-          ...input.context.values,
-          'account.positions': {
-            value: paperState.positions,
-            provider: 'catbots.paper',
-            observedAt: input.context.evaluatedAt,
-            freshnessSeconds: 0,
-            quality: { status: 'verified' },
-            integrityHash: `paper:${runtime.deployment.id}:positions:${paperState.orders.length}`,
-          },
-        },
-      });
-      const evaluation = evaluateTrigger({
+      const contexts = new Map<string, EvaluationContext>();
+      const coordinated = coordinateEvaluation({
         compiled: runtime.compiled,
         triggerNodeId: input.triggerNodeId,
         triggerInput: input.triggerInput,
-        context,
+        universe: runtime.universe,
+        contextFactory: (market, metadata) => {
+          const supplied = input.contextFactory!(market, metadata);
+          const context = createEvaluationContext({
+            ...supplied,
+            values: {
+              ...supplied.values,
+              'account.positions': {
+                value: paperState.positions,
+                provider: 'catbots.paper',
+                observedAt: supplied.evaluatedAt,
+                freshnessSeconds: 0,
+                quality: { status: 'verified' },
+                integrityHash: `paper:${runtime.deployment.id}:positions:${paperState.orders.length}`,
+              },
+            },
+          });
+          contexts.set(market, context);
+          return context;
+        },
         deployment: { id: runtime.deployment.id, mode: 'paper' },
-        execution: runtime.adapter,
+        execution: {
+          execute: (effect, context) => {
+            runtime.adapter.selectMarketEvaluation({
+              dex: deployment.dex,
+              currentMarket: context.currentMarket,
+              universeRevision: runtime.universe.revision,
+            });
+            return runtime.adapter.execute(effect, context);
+          },
+        },
       });
-      const previous = runtime.evaluations.get(evaluation.traceId);
-      if (previous !== undefined || this.dependencies.executionRepository.hasTrace(evaluation.traceId)) {
+      const previous = runtime.evaluations.get(coordinated.parentTraceId);
+      if (previous !== undefined || this.dependencies.executionRepository.hasTrace(coordinated.parentTraceId)) {
         runtime.adapter.rollbackEvaluation();
         return {
-          traceId: evaluation.traceId,
+          traceId: coordinated.parentTraceId,
+          parentTraceId: coordinated.parentTraceId,
           duplicate: true,
-          events: previous ?? evaluation.trace,
+          events: previous ?? coordinated.parentTrace,
+          children: coordinated.children,
           state: runtime.adapter.snapshot(),
         };
       }
-      this.dependencies.executionRepository.recordPaperTrace(runtime.deployment.id, evaluation.trace);
+      this.dependencies.executionRepository.recordCoordinatedTrace(runtime.deployment.id, coordinated, {
+        universe: runtime.universe,
+        contexts,
+      });
       runtime.adapter.commitEvaluation();
-      runtime.evaluations.set(evaluation.traceId, evaluation.trace);
-      return { traceId: evaluation.traceId, duplicate: false, events: evaluation.trace, state: runtime.adapter.snapshot() };
+      runtime.evaluations.set(coordinated.parentTraceId, coordinated.parentTrace);
+      return {
+        traceId: coordinated.parentTraceId,
+        parentTraceId: coordinated.parentTraceId,
+        duplicate: false,
+        events: coordinated.parentTrace,
+        children: coordinated.children,
+        state: runtime.adapter.snapshot(),
+      };
     } catch (error) {
       runtime.adapter.rollbackEvaluation();
       throw error;

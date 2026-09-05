@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export type ExecutionIdentity = Readonly<{
+export type LegacyExecutionIdentity = Readonly<{
   deploymentId: string;
   strategyId: string;
   strategyVersion: number;
@@ -9,15 +9,38 @@ export type ExecutionIdentity = Readonly<{
   effectIdempotencyKey: string;
 }>;
 
+export type DynamicExecutionIdentity = Readonly<{
+  deploymentId: string;
+  strategyId: string;
+  strategyVersion: number;
+  parentTraceId: string;
+  childTraceId: string;
+  market: string;
+  actionNodeId: string;
+}>;
+
+export type ExecutionIdentity = LegacyExecutionIdentity | DynamicExecutionIdentity;
+
 export function executionIdempotencyKey(input: ExecutionIdentity): string {
-  const canonicalIdentity = JSON.stringify([
-    input.deploymentId,
-    input.strategyId,
-    input.strategyVersion,
-    input.traceId,
-    input.actionNodeId,
-    input.effectIdempotencyKey,
-  ]);
+  const canonicalIdentity = 'parentTraceId' in input
+    ? JSON.stringify([
+        2,
+        input.deploymentId,
+        input.strategyId,
+        input.strategyVersion,
+        input.parentTraceId,
+        input.childTraceId,
+        input.market,
+        input.actionNodeId,
+      ])
+    : JSON.stringify([
+        input.deploymentId,
+        input.strategyId,
+        input.strategyVersion,
+        input.traceId,
+        input.actionNodeId,
+        input.effectIdempotencyKey,
+      ]);
   return `sha256:${createHash('sha256').update(canonicalIdentity).digest('hex')}`;
 }
 

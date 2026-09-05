@@ -80,12 +80,23 @@ export class PaperAdapter implements RuntimeExecutionPort {
   }
 
   beginEvaluation(identity?: PaperEvaluationIdentity): void {
-    if (this.staged !== undefined) throw new Error('Paper evaluation is already active');
     if (isDynamic(this.input) && identity === undefined) throw new Error('Dynamic Paper evaluation identity is required');
     if (!isDynamic(this.input) && identity !== undefined) throw new Error('Legacy Paper evaluation does not accept dynamic identity');
+    this.beginCoordinatedEvaluation();
+    if (identity !== undefined) this.selectMarketEvaluation(identity);
+  }
+
+  beginCoordinatedEvaluation(): void {
+    if (this.staged !== undefined) throw new Error('Paper evaluation is already active');
     this.staged = cloneState(this.committed);
     this.stagedUniverse = this.currentUniverse;
-    this.evaluationIdentity = identity === undefined ? undefined : Object.freeze({ ...identity });
+    this.evaluationIdentity = undefined;
+  }
+
+  selectMarketEvaluation(identity: PaperEvaluationIdentity): void {
+    if (!isDynamic(this.input)) throw new Error('Legacy Paper deployment does not accept dynamic identity');
+    if (this.staged === undefined) throw new Error('Paper evaluation is not active');
+    this.evaluationIdentity = Object.freeze({ ...identity });
   }
 
   commitEvaluation(): void {

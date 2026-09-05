@@ -25,14 +25,15 @@ export type LiveFixture = Readonly<{
 export function createLiveFixture(): LiveFixture {
   const database = openDatabase(':memory:');
   migrateDatabase(database);
-  const botId = new BotRepository(database, () => new Date(liveNow)).createDraft({ name: 'BTC Risk', market: 'BTC-PERP' }).id;
+  const botId = new BotRepository(database, () => new Date(liveNow)).createDraft({ name: 'BTC Risk', dex: 'hyperliquid' }).id;
   const workbench = new WorkbenchRepository(database, () => new Date(liveNow), randomUUID);
   workbench.createValidatedRevision(botId, parseStrategyDocument({
-    schemaVersion: '1.0',
+    schemaVersion: '2.0',
     strategy: { id: 'btc-risk', name: 'BTC Risk', version: 99 },
+    marketScope: { type: 'dex_universe' },
     nodes: [
       { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
-      { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 1, config: { state: 'flat', market: 'BTC-PERP' } },
+      { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
       { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
     ],
     edges: [
@@ -44,23 +45,33 @@ export function createLiveFixture(): LiveFixture {
   const repository = new ExecutionRepository(database);
   const deployment: Deployment = {
     id: liveDeploymentId, botId, strategyId: 'btc-risk', strategyVersion: 1,
-    recordVersion: 1,
-    mode: 'live', venue: 'hyperliquid', network: 'testnet', maskedAccount: '0x1234…cdef',
-    marketBindings: ['BTC-PERP'], status: 'running', createdAt: liveNow, updatedAt: liveNow,
+    recordVersion: 2, dex: 'hyperliquid',
+    mode: 'live', executionVenue: 'hyperliquid', network: 'testnet', maskedAccount: '0x1234…cdef',
+    marketAccess: { mode: 'all_active_perpetuals' }, status: 'running', createdAt: liveNow, updatedAt: liveNow,
     riskLimits: {
-      maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+      maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
       maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-      allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+      allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
     },
   };
   repository.createDeployment(deployment);
   const makeEvent = (id: string, sequence: number, type: AuditEventView['type']): AuditEventView => ({
     id, traceId: liveTraceId, sequence, type, occurredAt: liveNow,
     strategyId: 'btc-risk', strategyVersion: 1, deploymentId: liveDeploymentId, mode: 'live',
+    parentTraceId: 'parent:interval-1', market: 'BTC-PERP', dex: 'hyperliquid',
+    universeRevision: 'sha256:live-universe', contextObservedAt: liveNow,
+    dataReferences: [{
+      key: 'market.price', provider: 'fixture.price', observedAt: liveNow,
+      freshnessSeconds: 0, qualityStatus: 'verified', integrityHash: 'sha256:price:btc',
+    }],
     nodeId: 'open', nodeType: 'execution.open_position', summary: type, riskRuleIds: [],
   });
   const proposal: LiveActionProposal = {
-    trace: { id: liveTraceId, deploymentId: liveDeploymentId, triggerEventId: 'event-1', idempotencyKey: 'trigger-key-1', createdAt: liveNow },
+    trace: {
+      id: liveTraceId, deploymentId: liveDeploymentId, triggerEventId: 'event-1', idempotencyKey: 'trigger-key-1',
+      parentTraceId: 'parent:interval-1', market: 'BTC-PERP', dex: 'hyperliquid',
+      universeRevision: 'sha256:live-universe', contextObservedAt: liveNow, createdAt: liveNow,
+    },
     events: [
       makeEvent('038f3f75-89ab-7def-8123-456789abcdef', 1, 'action.proposed'),
       makeEvent('048f3f75-89ab-7def-8123-456789abcdef', 2, 'risk.approved'),

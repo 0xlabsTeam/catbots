@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AuditEventView, Deployment } from '@catbots/contracts';
-import { parseStrategyDocument } from '@catbots/strategy-runtime';
+import {
+  coordinateEvaluation,
+  createBuiltinRegistry,
+  createEvaluationContext,
+  parseStrategyDocument,
+  validateStrategy,
+} from '@catbots/strategy-runtime';
 
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { ExecutionRepository, type LiveActionProposal } from '../src/main/execution/execution-repository';
@@ -48,16 +54,17 @@ function liveDeployment(): Deployment {
     botId,
     strategyId: 'btc-risk',
     strategyVersion: 1,
-    recordVersion: 1,
+    recordVersion: 2,
+    dex: 'hyperliquid',
     mode: 'live',
-    venue: 'hyperliquid',
+    executionVenue: 'hyperliquid',
     network: 'testnet',
     maskedAccount: '0x1234…cdef',
-    marketBindings: ['BTC-PERP'],
+    marketAccess: { mode: 'all_active_perpetuals' },
     riskLimits: {
-      maxOrderUsd: '1000', maxPositionUsd: '2500', maxLeverage: 3,
+      maxOrderUsd: '1000', maxPositionUsd: '2500', maxTotalExposureUsd: '5000', maxLeverage: 3,
       maxDailyLossUsd: '300', maxDrawdownPercent: 12,
-      allowedMarkets: ['BTC-PERP'], allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
+      allowedSides: ['long', 'short'], maxOrdersPerMinute: 4,
     },
     status: 'preflight',
     createdAt: now,
@@ -98,6 +105,11 @@ function event(id: string, sequence: number, type: AuditEventView['type']): Audi
     strategyVersion: 1,
     deploymentId,
     mode: 'live',
+    parentTraceId: 'parent:interval-1',
+    market: 'BTC-PERP',
+    dex: 'hyperliquid',
+    universeRevision: 'sha256:fixture',
+    contextObservedAt: now,
     nodeId: 'open',
     nodeType: 'execution.open_position',
     summary: type === 'action.proposed' ? 'Open long proposed.' : 'Risk limits approved.',
@@ -112,6 +124,11 @@ function proposal(): LiveActionProposal {
       deploymentId,
       triggerEventId: 'event-1',
       idempotencyKey: 'trigger-key-1',
+      parentTraceId: 'parent:interval-1',
+      market: 'BTC-PERP',
+      dex: 'hyperliquid',
+      universeRevision: 'sha256:fixture',
+      contextObservedAt: now,
       createdAt: now,
     },
     events: [
@@ -135,6 +152,99 @@ function proposal(): LiveActionProposal {
 }
 
 describe('ExecutionRepository', () => {
+  it('applies migration 6 without changing prior migrations and adds indexed trace identity columns', () => {
+    expect(database.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
+      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 },
+    ]);
+    expect(database.prepare("SELECT name FROM pragma_table_info('audit_traces') ORDER BY cid").all()).toEqual(
+      expect.arrayContaining([
+        { name: 'parent_trace_id' }, { name: 'market' }, { name: 'dex' },
+        { name: 'universe_revision' }, { name: 'context_observed_at' },
+      ]),
+    );
+    expect(database.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'index' AND name LIKE 'audit_traces_by_%'
+      ORDER BY name
+    `).all()).toEqual([
+      { name: 'audit_traces_by_deployment_market_created' },
+      { name: 'audit_traces_by_deployment_parent' },
+    ]);
+  });
+
+  it('atomically persists one parent trace and market children with sanitized context freshness', () => {
+    repository.createDeployment({ ...dynamicPaperDeployment(), status: 'running' });
+    const document = parseStrategyDocument({
+      schemaVersion: '2.0',
+      strategy: { id: 'btc-risk', name: 'BTC Risk', version: 1 },
+      marketScope: { type: 'dex_universe' },
+      nodes: [
+        { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+        { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
+        { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'clock', sourcePort: 'activation', target: 'flat', targetPort: 'activation' },
+        { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
+      ],
+    });
+    const validation = validateStrategy(document, createBuiltinRegistry());
+    if (!validation.valid) throw new Error('fixture must compile');
+    const contexts = new Map<string, ReturnType<typeof createEvaluationContext>>();
+    const coordinated = coordinateEvaluation({
+      compiled: validation.compiled,
+      triggerNodeId: 'clock',
+      triggerInput: { kind: 'interval', occurredAt: now },
+      universe: {
+        dex: 'hyperliquid', revision: 'sha256:fixture', observedAt: now,
+        markets: [
+          { symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 20 },
+          { symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 20 },
+        ],
+      },
+      contextFactory: (market) => {
+        const context = createEvaluationContext({
+          evaluatedAt: now,
+          currentMarket: market,
+          values: {
+            'account.positions': {
+              value: [], provider: market === 'BTC-PERP' ? 'secret provider token' : 'fixture.account',
+              observedAt: now, freshnessSeconds: 0,
+              quality: { status: 'verified' },
+              integrityHash: market === 'BTC-PERP' ? 'secret hash material' : `sha256:positions:${market}`,
+            },
+          },
+        });
+        contexts.set(market, context);
+        return context;
+      },
+      deployment: { id: deploymentId, mode: 'paper' },
+      execution: { execute: () => ({ events: [{ type: 'risk.approved' }, { type: 'execution.filled' }] }) },
+    });
+
+    repository.recordCoordinatedTrace(deploymentId, coordinated, {
+      universe: {
+        dex: 'hyperliquid', revision: 'sha256:fixture', observedAt: now,
+        markets: [],
+      },
+      contexts,
+    });
+
+    const run = repository.listTriggerRun(coordinated.parentTraceId);
+    expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(run.children.every(({ universeRevision }) => universeRevision === 'sha256:fixture')).toBe(true);
+    expect(run.children.every(({ parentTraceId }) => parentTraceId === coordinated.parentTraceId)).toBe(true);
+    expect(repository.listDeploymentAuditEvents(deploymentId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'condition.evaluated', market: 'ETH-PERP', dex: 'hyperliquid' }),
+      expect.objectContaining({ type: 'risk.approved', market: 'ETH-PERP', universeRevision: 'sha256:fixture' }),
+    ]));
+    expect(JSON.stringify(repository.listDeploymentAuditEvents(deploymentId))).not.toContain('value');
+    expect(JSON.stringify(repository.listDeploymentAuditEvents(deploymentId))).not.toContain('secret');
+    expect(run.children[0]?.dataReferences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'account.positions', provider: 'redacted', integrityHash: 'redacted', freshnessSeconds: 0 }),
+    ]));
+  });
+
   it('persists explicit version 2 DEX scope without fixed market bindings', () => {
     const created = repository.createDeployment(dynamicPaperDeployment());
 

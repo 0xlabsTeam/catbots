@@ -69,6 +69,16 @@ function seedVersion3Database(): Database.Database {
     ON deployments
     BEGIN SELECT RAISE(ABORT, 'deployment binding is immutable'); END;
 
+    CREATE TABLE audit_traces (
+      id TEXT PRIMARY KEY,
+      deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE RESTRICT,
+      trigger_event_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     INSERT INTO bots VALUES (
       '018f47a2-4a2a-7c5d-9b61-3a83f64406a8', 'Legacy bot', 'BTC-PERP', 'paper',
       '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'
@@ -120,6 +130,7 @@ describe('migrateDatabase', () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
+      { version: 6 },
     ]);
     expect(db.prepare("SELECT name FROM pragma_table_info('bots') ORDER BY cid").all()).not.toContainEqual({ name: 'market' });
     expect(db.prepare(`
@@ -172,7 +183,7 @@ describe('migrateDatabase', () => {
       { id: 'bot-1', name: 'Existing bot', dex: 'hyperliquid', legacy_market_hint: 'BTC-PERP' },
     ]);
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
-      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 },
+      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 },
     ]);
   });
 
@@ -211,7 +222,7 @@ describe('migrateDatabase', () => {
       dex: 'hyperliquid', legacy_market_hint: 'BTC-PERP',
     });
     expect(db.prepare("SELECT name FROM pragma_table_info('bots') WHERE name = 'market'").get()).toBeUndefined();
-    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').get()).toEqual({ version: 5 });
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').get()).toEqual({ version: 6 });
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
@@ -262,6 +273,7 @@ describe('ApplicationDatabase', () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
+      { version: 6 },
     ]);
     lifecycle.close();
     expect(db.open).toBe(false);

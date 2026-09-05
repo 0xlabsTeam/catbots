@@ -12,6 +12,9 @@ import { registerAppProtocol } from './register-app-protocol';
 import { RuntimeSupervisor } from './runtime/runtime-supervisor';
 import { DeploymentService } from './execution/deployment-service';
 import { ExecutionRepository } from './execution/execution-repository';
+import { HyperliquidAdapter } from './execution/hyperliquid/hyperliquid-adapter';
+import { createHyperliquidPublicClient } from './execution/hyperliquid/hyperliquid-client';
+import { MarketUniverseCache } from './execution/market-universe-cache';
 import { ApplicationDatabase } from './storage/database';
 import { createTray, type TrayController } from './tray/create-tray';
 import { WorkbenchRepository } from './workbench/workbench-repository';
@@ -82,10 +85,14 @@ void app.whenReady()
     const botRepository = new BotRepository(connection);
     const workbenchRepository = new WorkbenchRepository(connection);
     const workbenchService = new WorkbenchService({ repository: workbenchRepository, configRepository });
+    const marketUniverseCache = new MarketUniverseCache({
+      adapter: new HyperliquidAdapter({ client: createHyperliquidPublicClient() }),
+    });
     const deploymentService = new DeploymentService({
       executionRepository: new ExecutionRepository(connection),
       workbenchRepository,
       configRepository,
+      marketUniverseCache,
       runtimeReady: () => runtime.getStatus().state === 'ready',
     });
     startupPhase = 'runtime';

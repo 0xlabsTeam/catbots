@@ -31,7 +31,10 @@ describe('ReconciliationService', () => {
 
     expect(venue.placeOrder).toHaveBeenCalledTimes(1);
     expect(fixture.repository.getOutboxItem(liveIdempotencyKey)).toMatchObject({ status: 'acknowledged' });
-    expect(fixture.repository.listAuditEvents(fixture.proposal.trace.id).at(-1)?.type).toBe('flow.completed');
+    expect(fixture.repository.listAuditEvents(fixture.proposal.trace.id).at(-1)).toMatchObject({
+      type: 'flow.completed', parentTraceId: 'parent:interval-1', market: 'BTC-PERP',
+      dex: 'hyperliquid', universeRevision: 'sha256:live-universe',
+    });
   });
 
   it('suspends Live execution when an unknown order cannot be proven safe', async () => {

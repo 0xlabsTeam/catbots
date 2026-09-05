@@ -171,7 +171,7 @@ function createDependencies() {
       subscribeActivity: vi.fn((_listener: (activity: AgentToolActivity) => void) => () => undefined),
     },
     deploymentService: {
-      startPaper: vi.fn(() => paperView.deployment),
+      startPaper: vi.fn(async () => paperView.deployment),
       getPaperDeployment: vi.fn(() => paperView),
       pause: vi.fn(() => ({ ...paperView.deployment, status: 'paused' as const })),
       stop: vi.fn(() => ({ ...paperView.deployment, status: 'stopped' as const })),
@@ -287,7 +287,7 @@ describe('validated IPC handlers', () => {
     await expect(handlers.pausePaperDeployment(localEvent, { deploymentId })).resolves.toEqual(paperView);
     await expect(handlers.stopPaperDeployment(localEvent, { deploymentId })).resolves.toEqual(paperView);
 
-    expect(dependencies.deploymentService.startPaper).toHaveBeenCalledWith(start);
+    expect(dependencies.deploymentService.startPaper).toHaveBeenCalledWith(start, expect.any(AbortSignal));
     expect(dependencies.deploymentService.getPaperDeployment).toHaveBeenCalledTimes(4);
     expect(dependencies.deploymentService.pause).toHaveBeenCalledWith(deploymentId);
     expect(dependencies.deploymentService.stop).toHaveBeenCalledWith(deploymentId);

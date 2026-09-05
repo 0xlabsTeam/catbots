@@ -3,18 +3,51 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   AuditEventViewSchema,
   DeploymentSchema,
+  type AuditDataReference,
   type AuditEventView,
   type Deployment,
 } from '@catbots/contracts';
 import type { NormalizedOrderIntent } from '@catbots/execution-core';
-import type { AuditEvent } from '@catbots/strategy-runtime';
+import type {
+  AuditEvent,
+  CoordinatedEvaluation,
+  EvaluationContext,
+  MarketUniverseSnapshot,
+} from '@catbots/strategy-runtime';
 
 export type AuditTraceIdentity = Readonly<{
   id: string;
   deploymentId: string;
   triggerEventId: string;
   idempotencyKey: string;
+  parentTraceId?: string;
+  market?: string;
+  dex?: 'hyperliquid';
+  universeRevision?: string;
+  contextObservedAt?: string;
   createdAt: string;
+}>;
+
+export type CoordinatedTraceMetadata = Readonly<{
+  universe: MarketUniverseSnapshot;
+  contexts: ReadonlyMap<string, EvaluationContext>;
+}>;
+
+export type StoredAuditTrace = Readonly<{
+  traceId: string;
+  parentTraceId: string | null;
+  market: string | null;
+  dex: 'hyperliquid' | null;
+  universeRevision: string | null;
+  contextObservedAt: string | null;
+  dataReferences: readonly AuditDataReference[];
+  status: 'open' | 'completed' | 'failed';
+  events: readonly AuditEventView[];
+}>;
+
+export type TriggerRun = Readonly<{
+  parent: StoredAuditTrace;
+  children: readonly StoredAuditTrace[];
 }>;
 
 export type ExecutionOutboxInput = Readonly<{
@@ -98,6 +131,80 @@ export class ExecutionRepository {
     return row === undefined ? null : toDeployment(row);
   }
 
+  recordCoordinatedTrace(
+    deploymentId: string,
+    source: CoordinatedEvaluation,
+    metadata: CoordinatedTraceMetadata,
+  ): TriggerRun {
+    if (this.hasTrace(source.parentTraceId)) return this.listTriggerRun(source.parentTraceId);
+    return this.database.transaction(() => {
+      const deployment = this.getDeployment(deploymentId);
+      if (deployment.status !== 'running') throw new Error('Running deployment not found');
+      if (deployment.recordVersion !== 2 || deployment.dex !== metadata.universe.dex) {
+        throw new Error('Dynamic trace DEX identity does not match');
+      }
+      this.insertTrace({
+        id: source.parentTraceId,
+        deploymentId,
+        triggerEventId: triggerEventId(source.parentTrace),
+        idempotencyKey: `parent:${source.parentTraceId}`,
+        status: traceStatus(source.parentTrace),
+        createdAt: traceCreatedAt(source.parentTrace),
+        updatedAt: traceUpdatedAt(source.parentTrace),
+        parentTraceId: null,
+        market: null,
+        dex: metadata.universe.dex,
+        universeRevision: metadata.universe.revision,
+        contextObservedAt: null,
+      });
+      for (const event of source.parentTrace) {
+        this.insertAuditEvent(toAuditEventView(event, {
+          dex: metadata.universe.dex,
+          universeRevision: metadata.universe.revision,
+        }));
+      }
+      for (const child of source.children) {
+        const context = metadata.contexts.get(child.market);
+        const dataReferences = context === undefined ? [] : toDataReferences(context);
+        const contextObservedAt = observedContextTime(context, dataReferences);
+        this.insertTrace({
+          id: child.evaluation.traceId,
+          deploymentId,
+          triggerEventId: triggerEventId(child.evaluation.trace),
+          idempotencyKey: `child:${source.parentTraceId}:${child.market}`,
+          status: traceStatus(child.evaluation.trace),
+          createdAt: traceCreatedAt(child.evaluation.trace),
+          updatedAt: traceUpdatedAt(child.evaluation.trace),
+          parentTraceId: source.parentTraceId,
+          market: child.market,
+          dex: metadata.universe.dex,
+          universeRevision: metadata.universe.revision,
+          contextObservedAt,
+        });
+        for (const event of child.evaluation.trace) {
+          this.insertAuditEvent(toAuditEventView(event, {
+            parentTraceId: source.parentTraceId,
+            market: child.market,
+            dex: metadata.universe.dex,
+            universeRevision: metadata.universe.revision,
+            ...(contextObservedAt === null ? {} : { contextObservedAt }),
+            dataReferences,
+          }));
+        }
+      }
+      return this.listTriggerRun(source.parentTraceId);
+    }).immediate();
+  }
+
+  listTriggerRun(parentTraceId: string): TriggerRun {
+    const parent = this.getStoredTrace(parentTraceId);
+    if (parent.parentTraceId !== null) throw new Error('Parent audit trace required');
+    const children = this.database.prepare(`
+      SELECT id FROM audit_traces WHERE parent_trace_id = ? ORDER BY market, created_at, rowid
+    `).all(parentTraceId).map((row) => this.getStoredTrace(String((row as { id: unknown }).id)));
+    return Object.freeze({ parent, children: Object.freeze(children) });
+  }
+
   proposeLiveAction(input: LiveActionProposal): ExecutionOutboxItem {
     const existing = this.getOutboxItem(input.outbox.idempotencyKey);
     if (existing !== null) {
@@ -109,8 +216,9 @@ export class ExecutionRepository {
       validateProposal(input, deployment);
       this.database.prepare(`
         INSERT INTO audit_traces (
-          id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'open', ?, ?)
+          id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at,
+          parent_trace_id, market, dex, universe_revision, context_observed_at
+        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         input.trace.id,
         input.trace.deploymentId,
@@ -118,6 +226,11 @@ export class ExecutionRepository {
         input.trace.idempotencyKey,
         input.trace.createdAt,
         input.trace.createdAt,
+        input.trace.parentTraceId ?? null,
+        input.trace.market ?? null,
+        input.trace.dex ?? null,
+        input.trace.universeRevision ?? null,
+        input.trace.contextObservedAt ?? null,
       );
       const append = this.database.prepare(`
         INSERT INTO audit_events (id, trace_id, sequence, type, event_json, created_at)
@@ -305,6 +418,18 @@ export class ExecutionRepository {
     });
   }
 
+  getAuditTraceContext(traceId: string): PersistedAuditIdentity {
+    const trace = this.getStoredTrace(traceId);
+    return Object.freeze({
+      ...(trace.parentTraceId === null ? {} : { parentTraceId: trace.parentTraceId }),
+      ...(trace.market === null ? {} : { market: trace.market }),
+      ...(trace.dex === null ? {} : { dex: trace.dex }),
+      ...(trace.universeRevision === null ? {} : { universeRevision: trace.universeRevision }),
+      ...(trace.contextObservedAt === null ? {} : { contextObservedAt: trace.contextObservedAt }),
+      ...(trace.dataReferences.length === 0 ? {} : { dataReferences: [...trace.dataReferences] }),
+    });
+  }
+
   listDeploymentAuditEvents(deploymentId: string, limit = 200): AuditEventView[] {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) throw new Error('Audit event limit is invalid');
     return this.database.prepare(`
@@ -331,7 +456,7 @@ export class ExecutionRepository {
     return this.database.transaction(() => {
       const deployment = this.getDeployment(deploymentId);
       if (deployment.mode !== 'paper' || deployment.status !== 'running') throw new Error('Running Paper deployment not found');
-      const events = sourceEvents.map(toAuditEventView);
+      const events = sourceEvents.map((event) => toAuditEventView(event));
       if (events.some((event, index) => event.deploymentId !== deploymentId || event.sequence !== index + 1 || event.traceId !== traceId)) {
         throw new Error('Paper trace identity or sequence does not match');
       }
@@ -385,6 +510,55 @@ export class ExecutionRepository {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(event.id, event.traceId, event.sequence, event.type, JSON.stringify(event), event.occurredAt);
   }
+
+  private insertTrace(input: Readonly<{
+    id: string;
+    deploymentId: string;
+    triggerEventId: string;
+    idempotencyKey: string;
+    status: StoredAuditTrace['status'];
+    createdAt: string;
+    updatedAt: string;
+    parentTraceId: string | null;
+    market: string | null;
+    dex: 'hyperliquid' | null;
+    universeRevision: string | null;
+    contextObservedAt: string | null;
+  }>): void {
+    this.database.prepare(`
+      INSERT INTO audit_traces (
+        id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at,
+        parent_trace_id, market, dex, universe_revision, context_observed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.id, input.deploymentId, input.triggerEventId, input.idempotencyKey, input.status,
+      input.createdAt, input.updatedAt, input.parentTraceId, input.market, input.dex,
+      input.universeRevision, input.contextObservedAt,
+    );
+  }
+
+  private getStoredTrace(traceId: string): StoredAuditTrace {
+    const row = this.database.prepare(`
+      SELECT id, parent_trace_id, market, dex, universe_revision, context_observed_at, status
+      FROM audit_traces WHERE id = ?
+    `).get(traceId) as Record<string, unknown> | undefined;
+    if (row === undefined || typeof row.id !== 'string'
+      || (row.status !== 'open' && row.status !== 'completed' && row.status !== 'failed')) {
+      throw new Error('Audit trace not found');
+    }
+    const events = this.listAuditEvents(traceId);
+    return Object.freeze({
+      traceId: row.id,
+      parentTraceId: typeof row.parent_trace_id === 'string' ? row.parent_trace_id : null,
+      market: typeof row.market === 'string' ? row.market : null,
+      dex: row.dex === 'hyperliquid' ? row.dex : null,
+      universeRevision: typeof row.universe_revision === 'string' ? row.universe_revision : null,
+      contextObservedAt: typeof row.context_observed_at === 'string' ? row.context_observed_at : null,
+      dataReferences: events.find(({ dataReferences }) => dataReferences !== undefined)?.dataReferences ?? [],
+      status: row.status,
+      events,
+    });
+  }
 }
 
 function sameOutboxIdentity(existing: ExecutionOutboxItem, proposed: ExecutionOutboxInput): boolean {
@@ -397,6 +571,7 @@ function sameOutboxIdentity(existing: ExecutionOutboxItem, proposed: ExecutionOu
 
 function validateProposal(input: LiveActionProposal, deployment: Deployment): void {
   if (deployment.mode !== 'live') throw new Error('Live outbox requires a Live deployment');
+  if (deployment.recordVersion !== 2) throw new Error('Strategy 2.0 dynamic deployment is required');
   if (input.trace.deploymentId !== deployment.id || input.outbox.deploymentId !== deployment.id) {
     throw new Error('Proposal deployment does not match');
   }
@@ -409,9 +584,21 @@ function validateProposal(input: LiveActionProposal, deployment: Deployment): vo
     if (event.traceId !== input.trace.id || event.deploymentId !== deployment.id || event.sequence !== index + 1) {
       throw new Error('Proposal audit event identity or sequence does not match');
     }
+    if (source.parentTraceId !== input.trace.parentTraceId
+      || source.market !== input.trace.market
+      || source.dex !== input.trace.dex
+      || source.universeRevision !== input.trace.universeRevision
+      || source.contextObservedAt !== input.trace.contextObservedAt) {
+      throw new Error('Proposal market trace identity does not match');
+    }
   }
   if (input.outbox.intent.clientOrderId !== input.outbox.clientOrderId) {
     throw new Error('Outbox client order ID does not match its intent');
+  }
+  if (input.trace.parentTraceId === undefined || input.trace.market === undefined
+    || input.trace.dex !== deployment.dex || input.trace.universeRevision === undefined
+    || input.trace.contextObservedAt === undefined || input.outbox.intent.market !== input.trace.market) {
+    throw new Error('Dynamic outbox market identity does not match');
   }
 }
 
@@ -485,7 +672,16 @@ function parseStoredJson(value: unknown): unknown {
   return JSON.parse(value);
 }
 
-function toAuditEventView(event: AuditEvent): AuditEventView {
+type PersistedAuditIdentity = Readonly<{
+  parentTraceId?: string;
+  market?: string;
+  dex?: 'hyperliquid';
+  universeRevision?: string;
+  contextObservedAt?: string;
+  dataReferences?: AuditDataReference[];
+}>;
+
+function toAuditEventView(event: AuditEvent, identity: PersistedAuditIdentity = {}): AuditEventView {
   const violatedRuleIds = Array.isArray(event.details.violatedRuleIds)
     ? event.details.violatedRuleIds.filter((value): value is string => typeof value === 'string')
     : [];
@@ -499,9 +695,60 @@ function toAuditEventView(event: AuditEvent): AuditEventView {
     strategyVersion: event.strategyVersion,
     deploymentId: event.deploymentId,
     mode: event.mode,
+    ...identity,
     ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
     ...(event.nodeType === undefined ? {} : { nodeType: event.nodeType }),
     summary: event.type.replaceAll('.', ' '),
     riskRuleIds: violatedRuleIds,
   });
+}
+
+function triggerEventId(events: readonly AuditEvent[]): string {
+  const first = events[0];
+  if (first === undefined) throw new Error('Audit trace events are required');
+  return first.triggerEventId ?? `interval:${first.evaluationTime}`;
+}
+
+function traceCreatedAt(events: readonly AuditEvent[]): string {
+  const first = events[0];
+  if (first === undefined) throw new Error('Audit trace events are required');
+  return first.createdAt;
+}
+
+function traceUpdatedAt(events: readonly AuditEvent[]): string {
+  const last = events.at(-1);
+  if (last === undefined) throw new Error('Audit trace events are required');
+  return last.createdAt;
+}
+
+function traceStatus(events: readonly AuditEvent[]): StoredAuditTrace['status'] {
+  const terminal = events.at(-1)?.type;
+  if (terminal === 'flow.failed') return 'failed';
+  if (terminal === 'flow.completed' || terminal === 'flow.skipped') return 'completed';
+  return 'open';
+}
+
+function toDataReferences(context: EvaluationContext): AuditDataReference[] {
+  return Object.entries(context.values).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => ({
+    key: sanitizedReferenceText(key, 160),
+    provider: sanitizedReferenceText(value.provider, 160),
+    observedAt: value.observedAt,
+    freshnessSeconds: value.freshnessSeconds,
+    qualityStatus: value.quality.status,
+    integrityHash: sanitizedReferenceText(value.integrityHash, 240),
+  }));
+}
+
+function sanitizedReferenceText(value: string, maxLength: number): string {
+  return /^[A-Za-z0-9._:%-]+$/.test(value) && value.length <= maxLength ? value : 'redacted';
+}
+
+function observedContextTime(
+  context: EvaluationContext | undefined,
+  references: readonly AuditDataReference[],
+): string | null {
+  if (context === undefined) return null;
+  const timestamps = references.map(({ observedAt }) => Date.parse(observedAt));
+  if (timestamps.length === 0 || timestamps.some((value) => !Number.isFinite(value))) return context.evaluatedAt;
+  return new Date(Math.max(...timestamps)).toISOString();
 }
