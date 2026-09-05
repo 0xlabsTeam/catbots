@@ -13,7 +13,7 @@ This separation lets a single Bot express an ETH-only rule, a finite set of name
 5. Run a Backtest. Check aggregate metrics, declared **Dataset coverage**, **By market** metrics, warnings, and child traces.
 6. Select **Approve v…**, then **Confirm approval** for the exact revision you reviewed. Editing later creates another draft and does not change the approved revision.
 7. Select **Run Paper** or **Review Live**, review the scope and shared risk limits, then start the deployment.
-8. Use **Performance** for Paper positions/orders and **Logs** for ordered audit events. Pause or Stop Paper; use **Stop Live** for a running testnet deployment.
+8. The new deployment waits for external/runtime Trigger ingestion. After an ingestion source invokes the coordinator, use **Performance** for Paper positions/orders and **Logs** for ordered audit events. Pause or Stop Paper; use **Stop Live** for a running testnet deployment.
 
 The Workbench displays `Hyperliquid · Dynamic markets`. Deployment review displays `DEX: Hyperliquid` and `Market access: All active perpetual markets`.
 
@@ -87,6 +87,14 @@ Mainnet is not selectable. Treat testnet credentials as sensitive and never ente
 Before Paper starts, review the DEX-wide scope and shared portfolio limits: maximum order, per-market position, total exposure, leverage, daily loss, drawdown, allowed sides, and order rate. Live adds account, connection, data freshness, audit, runtime, and reconciliation checks plus an exact bot-name confirmation.
 
 An approved revision is immutable. New Paper and Live deployments require an approved Strategy 2.0 revision; a legacy Strategy cannot be used to create a new dynamic deployment.
+
+### Deployment start and Trigger ingestion
+
+Starting is initialization, not a market event. **Start Paper** validates the approved Strategy and current DEX universe, persists the deployment, creates its local Paper adapter, and leaves it waiting. **Start Live** validates the exact preflight and confirmation, persists the testnet deployment, and also leaves it waiting.
+
+The normal app in this release has no autonomous market-trigger ingestion or interval scheduler. Start alone therefore produces no Strategy evaluations, proposed Actions, orders, or execution-event flow; Paper Logs display **Waiting for the first trigger**. A running status means the deployment is eligible to receive input, not that the configured interval is being scheduled in the background.
+
+An external/runtime integration is the ingestion source. It must observe a Trigger occurrence, resolve typed and timestamped Evaluation Context values, and invoke the deployment coordinator (`DeploymentService.ingest` for Paper or `DeploymentService.ingestLive` for testnet Live). That production entry refreshes the DEX universe, fans out child evaluations with immutable `currentMarket`, applies risk, and records the audit trail. Approved Live Actions become durable outbox items before the Hyperliquid adapter submits them. Venue and data adapters supply normalized inputs or perform approved side effects; they do not schedule the Strategy or choose an Action's market.
 
 ## Listings, inactive markets, and freshness
 

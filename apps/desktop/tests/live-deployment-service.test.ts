@@ -21,6 +21,12 @@ const limits: RiskLimits = {
 };
 let database: Database.Database;
 
+function secretScan(value: unknown, secret: string): string[] {
+  const serialized = JSON.stringify(value);
+  return [secret, '"agentPrivateKey"', '"apiKey"', '"authorization"']
+    .filter((needle) => serialized.includes(needle));
+}
+
 beforeEach(() => { database = openDatabase(':memory:'); migrateDatabase(database); });
 afterEach(() => database.close());
 
@@ -85,7 +91,7 @@ describe('DeploymentService Live gate', () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
-  it('coordinates two Live markets into one durable parent without duplicating child orders', async () => {
+  it('binds coordinator-generated Live actions to each child through risk, outbox, and durable audit', async () => {
     const botId = new BotRepository(database, () => new Date(now)).createDraft({ name: 'Live Coordinator', dex: 'hyperliquid' }).id;
     const workbench = new WorkbenchRepository(database, () => new Date(now), randomUUID);
     workbench.createValidatedRevision(botId, parseStrategyDocument({
@@ -124,26 +130,50 @@ describe('DeploymentService Live gate', () => {
       marketUniverseCache: { refresh: async () => universe, freshness: () => ({ fresh: true }) },
       clock: () => new Date(now), idFactory: randomUUID,
     });
+    const secret = 'coordinator-secret-sentinel';
+    const contextFor = (selectedMarket: string, currentMarket = selectedMarket) => createEvaluationContext({
+      evaluatedAt: now, currentMarket,
+      values: {
+        'account.positions': { value: [], provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: `sha256:positions:${selectedMarket}` },
+        'account.equity': { value: 10000, provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: 'sha256:equity' },
+        'runtime.private-state': {
+          value: { apiKey: secret, agentPrivateKey: secret, authorization: `Bearer ${secret}` },
+          provider: 'live.runtime', observedAt: now, freshnessSeconds: 0,
+          quality: { status: 'verified' as const }, integrityHash: 'sha256:private-state',
+        },
+      },
+    });
+    expect(secretScan(contextFor('BTC-PERP'), secret)).toEqual([
+      secret, '"agentPrivateKey"', '"apiKey"', '"authorization"',
+    ]);
+    const riskBindings: Array<{ market: string; currentMarket: string }> = [];
     const request = {
       deploymentId, triggerNodeId: 'clock', triggerInput: { kind: 'interval' as const, occurredAt: now },
-      contextFactory: (market: string) => createEvaluationContext({
-        evaluatedAt: now, currentMarket: market,
-        values: {
-          'account.positions': { value: [], provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: `sha256:positions:${market}` },
-          'account.equity': { value: 10000, provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: 'sha256:equity' },
-        },
-      }),
-      riskAccountFactory: () => ({
-        equityUsd: '10000', dailyRealizedPnlUsd: '0', drawdownPercent: 0, positions: [],
-        recentOrderTimestamps: [], accountKillSwitchActive: false, botKillSwitchActive: false,
-      }),
+      contextFactory: (market: string) => contextFor(market),
+      riskAccountFactory: (market: string, context: { currentMarket: string }) => {
+        riskBindings.push({ market, currentMarket: context.currentMarket });
+        return {
+          equityUsd: '10000', dailyRealizedPnlUsd: '0', drawdownPercent: 0, positions: [],
+          recentOrderTimestamps: [], accountKillSwitchActive: false, botKillSwitchActive: false,
+        };
+      },
     };
 
     const first = await service.ingestLive(request);
-    const duplicate = await service.ingestLive(request);
     const run = repository.listTriggerRun(first.parentTraceId);
+    const generatedBindings = first.children.flatMap((child) => child.evaluation.effects.map((effect) => ({
+      childMarket: child.market, effectMarket: effect.market, nodeId: effect.nodeId,
+    })));
 
     expect(first.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(generatedBindings).toEqual([
+      { childMarket: 'BTC-PERP', effectMarket: 'BTC-PERP', nodeId: 'open' },
+      { childMarket: 'BTC-PERP', effectMarket: 'BTC-PERP', nodeId: 'oversized' },
+      { childMarket: 'ETH-PERP', effectMarket: 'ETH-PERP', nodeId: 'open' },
+      { childMarket: 'ETH-PERP', effectMarket: 'ETH-PERP', nodeId: 'oversized' },
+    ]);
+    expect(riskBindings).toHaveLength(4);
+    expect(riskBindings.every(({ market, currentMarket }) => market === currentMarket)).toBe(true);
     expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
     expect(run.children.every(({ status }) => status === 'open')).toBe(true);
     expect(run.children.every(({ events }) => (
@@ -157,9 +187,26 @@ describe('DeploymentService Live gate', () => {
       && events.some(({ type, nodeId, effect }) => type === 'action.proposed' && nodeId === 'oversized'
         && effect?.type === 'execution.open_position' && effect.config.size?.value === 2000)
     ))).toBe(true);
+    expect(run.children.every((child) => child.events
+      .filter(({ type }) => type === 'action.proposed' || type.startsWith('risk.'))
+      .every(({ market, effect }) => market === child.market && (effect === undefined || effect.market === child.market))
+    )).toBe(true);
+    const duplicate = await service.ingestLive(request);
     expect(duplicate).toMatchObject({ duplicate: true, parentTraceId: first.parentTraceId });
-    expect(repository.listOutboxItems(deploymentId).map(({ traceId, intent }) => ({ traceId, market: intent.market })))
+    const outboxItems = repository.listOutboxItems(deploymentId);
+    expect(outboxItems.map(({ traceId, intent }) => ({ traceId, market: intent.market })))
       .toEqual(run.children.map(({ traceId, market }) => ({ traceId, market })));
+    const storedAuditEvents = (database.prepare(`
+      SELECT event_json FROM audit_events
+      WHERE trace_id IN (SELECT id FROM audit_traces WHERE deployment_id = ?)
+      ORDER BY rowid
+    `).all(deploymentId) as Array<{ event_json: string }>)
+      .map(({ event_json: eventJson }) => JSON.parse(eventJson) as unknown);
+    expect(secretScan({
+      generatedActions: first.children.flatMap(({ evaluation }) => evaluation.effects),
+      generatedAuditDetails: first.children.flatMap(({ evaluation }) => evaluation.trace),
+    }, secret)).toEqual([]);
+    expect(secretScan({ run, outboxItems, storedAuditEvents }, secret)).toEqual([]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
     expect(database.prepare('SELECT COUNT(DISTINCT client_order_id) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
     expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 3 });
@@ -184,14 +231,30 @@ describe('DeploymentService Live gate', () => {
       && events.at(-1)?.type === 'flow.failed'
     ))).toBe(true);
 
+    const mismatched = await service.ingestLive({
+      ...request,
+      triggerInput: { kind: 'interval', occurredAt: '2026-09-05T08:30:00.000Z' },
+      contextFactory: (market: string) => contextFor(market, 'BTC-PERP'),
+    });
+    const mismatchedRun = repository.listTriggerRun(mismatched.parentTraceId);
+    const failedEth = mismatched.children.find(({ market }) => market === 'ETH-PERP');
+    expect(failedEth?.evaluation.effects).toEqual([]);
+    expect(failedEth?.evaluation.trace.map(({ type }) => type)).toContain('context.failed');
+    expect(mismatchedRun.children.find(({ market }) => market === 'ETH-PERP')).toMatchObject({ status: 'failed' });
+    expect(repository.listOutboxItems(deploymentId)
+      .filter(({ traceId }) => traceId === failedEth?.evaluation.traceId)).toEqual([]);
+    expect(mismatched).toMatchObject({ duplicate: false, outboxCount: 1 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 3 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 6 });
+
     database.exec(`CREATE TRIGGER force_live_outbox_failure BEFORE INSERT ON execution_outbox
       BEGIN SELECT RAISE(ABORT, 'forced live outbox failure'); END;`);
     await expect(service.ingestLive({
       ...request,
-      triggerInput: { kind: 'interval', occurredAt: '2026-09-05T08:30:00.000Z' },
+      triggerInput: { kind: 'interval', occurredAt: '2026-09-05T08:45:00.000Z' },
     })).rejects.toThrow(/forced live outbox failure/i);
-    expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
-    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 3 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 3 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 6 });
   });
 
   it('rejects a legacy strategy before creating a new Live deployment', async () => {

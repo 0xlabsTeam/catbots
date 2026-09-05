@@ -119,3 +119,54 @@ The renderer secret-field name scan reported only two intentional categories: co
 
 - Manual Paper logs remain empty until an actual trigger is ingested; this is the expected no-autonomous-scheduler boundary and is stated rather than presented as an executed manual trade.
 - Paper adapter positions and orders remain in-memory and are not rehydrated after restart. The guide and acceptance report explicitly distinguish durable record restoration from adapter continuation.
+
+## Fix Round 1 — 2026-09-05
+
+### Outcome
+
+- Replaced the hard-coded fixture assertion in `live-execution.test.ts` with acceptance at the production `DeploymentService.ingestLive` seam.
+- The coordinated two-market test now verifies all four generated effects independently: the normal and oversized Actions for the BTC child carry `BTC-PERP`, and the corresponding ETH Actions carry `ETH-PERP`.
+- The same run records the market passed into the risk-account factory and its Evaluation Context `currentMarket`, then verifies equality for every generated Action. It also checks child audit identity/effect market, normalized outbox-intent market, and durable audit `event_json` after parsing it back from SQLite.
+- The source Evaluation Context contains an unused private-state value with `apiKey`, `agentPrivateKey`, `authorization`, and a sentinel. Scans over the actual generated Actions and pre-projection audit details, plus persisted audit events and outbox items, prove that neither sensitive names nor the value cross those boundaries.
+- A sensitivity case supplies `BTC-PERP` context for the selected ETH child. Coordination converts that mismatch into a failed ETH child with `context.failed`, emits no ETH effect, and creates no ETH outbox item. The independently valid BTC child remains isolated and may proceed.
+- README Quick Start and the detailed guide now state that starting Paper or Live initializes a waiting deployment. The normal app has no autonomous Trigger ingestion or interval scheduler in this release; a runtime integration must invoke `DeploymentService.ingest` or `DeploymentService.ingestLive` with a Trigger and typed Evaluation Context before evaluations, orders, or execution-log flow can exist.
+
+### TDD and sensitivity evidence
+
+The production-seam assertion was first forced to expect `WRONG-PERP` for the first coordinator-generated Action:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/live-deployment-service.test.ts -t "coordinates two Live markets"
+```
+
+RED result: one expected failure; the real generated Action reported `BTC-PERP`, not `WRONG-PERP`.
+
+The initial mismatch probe expected the whole ingestion promise to reject. It instead showed the coordinator's intended fault isolation: the ETH child produced `context.failed` while the valid BTC child proceeded. The permanent assertion captures that stronger fail-closed behavior and proves there is no wrong-market ETH effect or order.
+
+Focused GREEN:
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop exec vitest run tests/live-deployment-service.test.ts tests/live-execution.test.ts tests/release-artifact.test.ts
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm --filter @catbots/desktop typecheck
+```
+
+Result: 3 files / 16 tests passed; desktop typecheck passed.
+
+### Full relevant verification
+
+```sh
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm test
+PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm typecheck
+git diff --check
+```
+
+Results:
+
+- Contracts 32, strategy runtime 126, execution core 21, and desktop 353 tests passed; one opt-in LM Studio test skipped.
+- All workspace typechecks passed.
+- Documentation boundary/placeholder scans and local-link checks passed.
+- `git diff --check` passed.
+
+### Fix Round 1 concerns
+
+- Trigger production remains an external/runtime integration responsibility. The docs now present the waiting state as the current operational boundary, without implying that starting a deployment schedules evaluation.

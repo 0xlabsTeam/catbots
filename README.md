@@ -34,6 +34,8 @@ In Catbots:
 4. Inspect **Flow**, then **Backtest**. Review the declared dataset coverage and the **By market** results before approving the revision.
 5. Select **Approve v…**, confirm approval, then select **Run Paper**. Review the DEX-wide scope and portfolio limits, start Paper, and inspect **Performance** and **Logs**.
 
+Starting Paper or Live initializes the deployment and leaves it waiting. This release has no autonomous market-trigger ingestion or interval scheduler in the normal app, so starting by itself produces no evaluations, orders, or execution-log flow. A runtime integration must supply a Trigger and market context to the tested coordinator ingestion path described in [Dynamic markets](docs/dynamic-markets.md#deployment-start-and-trigger-ingestion).
+
 The Workbench header should read `Hyperliquid · Dynamic markets`. See [Dynamic markets](docs/dynamic-markets.md) for the complete user workflow, safety rules, Backtest semantics, legacy compatibility, and recovery behavior.
 
 ## What you can build
