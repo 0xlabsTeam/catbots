@@ -84,6 +84,12 @@ export function createLiveFixture(): LiveFixture {
       createdAt: liveNow,
     },
   };
+  database.prepare(`
+    INSERT INTO audit_traces (
+      id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at,
+      parent_trace_id, market, dex, universe_revision, context_observed_at
+    ) VALUES ('parent:interval-1', ?, 'event-1', 'parent:key', 'completed', ?, ?, NULL, NULL, 'hyperliquid', 'sha256:live-universe', NULL)
+  `).run(liveDeploymentId, liveNow, liveNow);
   repository.proposeLiveAction(proposal);
   return { database, repository, deployment, proposal };
 }

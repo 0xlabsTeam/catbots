@@ -280,6 +280,19 @@ describe('evaluateTrigger', () => {
     ]);
   });
 
+  it('completes a Live evaluation when its action is durably queued', () => {
+    const result = evaluateTrigger({
+      compiled: compiledStrategy(), triggerNodeId: 't-15m', triggerInput,
+      context: context(25), deployment: { id: 'live-1', mode: 'live' },
+      execution: { execute: () => ({ events: [
+        { type: 'risk.approved', metadata: { evaluator: 'live.risk-engine' } },
+        { type: 'execution.queued', metadata: { durable: true } },
+      ] }) },
+    });
+
+    expect(result.trace.at(-1)?.type).toBe('flow.completed');
+  });
+
   it('records a real risk rejection without inventing approval or queue events', () => {
     const rejectingRiskPort: RuntimeExecutionPort = {
       execute: () => ({

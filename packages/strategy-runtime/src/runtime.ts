@@ -85,8 +85,12 @@ function triggerTime(input: TriggerInput): string {
   return input.kind === 'event' ? input.event.occurredAt : input.occurredAt;
 }
 
-function endsExecutionSuccessfully(events: readonly ExecutionTraceEvent[]): boolean {
-  return events.at(-1)?.type === 'execution.filled';
+function endsExecutionSuccessfully(
+  events: readonly ExecutionTraceEvent[],
+  mode: RuntimeEvaluationRequestBase['deployment']['mode'],
+): boolean {
+  return events.at(-1)?.type === 'execution.filled'
+    || (mode === 'live' && events.at(-1)?.type === 'execution.queued');
 }
 
 export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvaluation {
@@ -196,7 +200,7 @@ export function evaluateTrigger(request: RuntimeEvaluationRequest): RuntimeEvalu
     try {
       const outcome = execution.execute(effect, context);
       for (const event of outcome.events) trace.append(event.type, event.metadata ?? {}, nodeIdentity(node));
-      if (!endsExecutionSuccessfully(outcome.events)) executionFailed = true;
+      if (!endsExecutionSuccessfully(outcome.events, deployment.mode)) executionFailed = true;
     } catch (error) {
       executionFailed = true;
       trace.append('flow.failed', { code: 'execution.exception', message: error instanceof Error ? error.message : String(error) });

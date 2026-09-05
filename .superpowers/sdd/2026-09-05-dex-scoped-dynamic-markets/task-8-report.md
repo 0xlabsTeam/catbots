@@ -37,10 +37,20 @@ Each case was subsequently made GREEN with a focused regression test.
 - Workspace typecheck: **PASS**.
 - `git diff --check`: **PASS**.
 
-The optional full workspace test run reached 315 passing desktop tests and one unrelated failure in `apps/desktop/tests/agent-tools.test.ts`: its legacy malformed-document assertion expects separate `schemaVersion` and `strategy.name` paths, while the already-landed Strategy 1.0/2.0 union reports the union failure at `strategy`. Task 8 does not modify the Agent tool or Strategy document error mapping; the required Task 8 suites and all typechecks pass.
+The optional full workspace test run reached 317 passing desktop tests and one unrelated failure in `apps/desktop/tests/agent-tools.test.ts`: its legacy malformed-document assertion expects separate `schemaVersion` and `strategy.name` paths, while the already-landed Strategy 1.0/2.0 union reports the union failure at `strategy`. Task 8 does not modify the Agent tool or Strategy document error mapping; the required Task 8 suites and all typechecks pass.
 
 ## Rulings and boundary notes
 
 - Followed the progress-ledger authority that Task 2 already consumed migration 5. Task 8 uses migration 6 and changes no applied migration.
 - Narrow supporting edits were required outside the plan's nominal file list: the public audit DTO represents the new identity/reference fields; execution-core creates the required dynamic key; the coordinator includes deployment identity; PaperAdapter exposes coordinated staging; IPC awaits the now-asynchronous preflight; and Main injects a signer-free universe cache. These are integration seams for Task 8 rather than later UI/Agent behavior.
-- Live retains the existing explicit proposal/outbox execution architecture. Task 8 makes that path record-version-2 and identity-safe, with atomic per-child proposal/risk/outbox persistence and retry/reconciliation propagation. It does not introduce a new autonomous live trigger scheduler, which does not exist in the current codebase.
+- Live uses an explicitly invoked coordinated ingestion entrypoint and retains the existing durable outbox executor for adapter submission. No autonomous scheduler is introduced.
+
+## Fix round 1
+
+Addressed all three Important review findings:
+
+1. Added explicit `ingestLive`: it refreshes the dynamic universe, calls `coordinateEvaluation`, evaluates Task 7 risk with the same child market/context/revision, persists the real parent and children, and appends each approved Action proposal, risk approval, and outbox intent to its already-persisted child inside one outer transaction. Duplicate parents short-circuit before new outboxes, and a forced child outbox failure rolls back the complete new parent run.
+2. Added strict bounded audit DTOs for condition `{result, reason}` and known execution effects. Persistence round trips true, false, and unknown results plus reconstructable open/close configuration while omitting raw condition inputs/provider values and unknown Action types/configurations.
+3. Main now initializes the universe cache, starts its periodic refresh under an owned abort signal, and aborts/stops it before runtime/database shutdown. Lifecycle and real cache timer tests cover startup, refresh ownership, cancellation, and idempotent stop behavior.
+
+Fix-round RED evidence: missing `ingestLive`; missing condition/effect DTOs; a durably queued Live evaluation ending `flow.failed`; and zero cache lifecycle calls from Main. Fix-round GREEN evidence: 7 focused desktop suites / 50 tests, 11 strategy-runtime suites / 126 tests, 2 execution-core suites / 21 tests, and desktop/workspace typechecks all pass under Node 22.23.2.

@@ -118,6 +118,12 @@ function event(id: string, sequence: number, type: AuditEventView['type']): Audi
 }
 
 function proposal(): LiveActionProposal {
+  database.prepare(`
+    INSERT OR IGNORE INTO audit_traces (
+      id, deployment_id, trigger_event_id, idempotency_key, status, created_at, updated_at,
+      parent_trace_id, market, dex, universe_revision, context_observed_at
+    ) VALUES ('parent:interval-1', ?, 'event-1', 'parent:key', 'completed', ?, ?, NULL, NULL, 'hyperliquid', 'sha256:fixture', NULL)
+  `).run(deploymentId, now, now);
   return {
     trace: {
       id: traceId,
@@ -200,6 +206,7 @@ describe('ExecutionRepository', () => {
         markets: [
           { symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 20 },
           { symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 20 },
+          { symbol: 'SOL-PERP', active: true, sizeDecimals: 3, maximumLeverage: 15 },
         ],
       },
       contextFactory: (market) => {
@@ -208,9 +215,10 @@ describe('ExecutionRepository', () => {
           currentMarket: market,
           values: {
             'account.positions': {
-              value: [], provider: market === 'BTC-PERP' ? 'secret provider token' : 'fixture.account',
+              value: market === 'ETH-PERP' ? [{ market: 'ETH-PERP', side: 'long' }] : [],
+              provider: market === 'BTC-PERP' ? 'secret provider token' : 'fixture.account',
               observedAt: now, freshnessSeconds: 0,
-              quality: { status: 'verified' },
+              quality: { status: market === 'SOL-PERP' ? 'stale' : 'verified' },
               integrityHash: market === 'BTC-PERP' ? 'secret hash material' : `sha256:positions:${market}`,
             },
           },
@@ -231,14 +239,33 @@ describe('ExecutionRepository', () => {
     });
 
     const run = repository.listTriggerRun(coordinated.parentTraceId);
-    expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP', 'SOL-PERP']);
     expect(run.children.every(({ universeRevision }) => universeRevision === 'sha256:fixture')).toBe(true);
     expect(run.children.every(({ parentTraceId }) => parentTraceId === coordinated.parentTraceId)).toBe(true);
     expect(repository.listDeploymentAuditEvents(deploymentId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'condition.evaluated', market: 'ETH-PERP', dex: 'hyperliquid' }),
-      expect.objectContaining({ type: 'risk.approved', market: 'ETH-PERP', universeRevision: 'sha256:fixture' }),
+      expect.objectContaining({
+        type: 'condition.evaluated', market: 'BTC-PERP', dex: 'hyperliquid',
+        condition: { result: true, reason: 'predicate.matched' },
+      }),
+      expect.objectContaining({
+        type: 'condition.evaluated', market: 'ETH-PERP',
+        condition: { result: false, reason: 'predicate.not_matched' },
+      }),
+      expect.objectContaining({
+        type: 'condition.evaluated', market: 'SOL-PERP',
+        condition: { result: 'unknown', reason: 'data.stale' },
+      }),
+      expect.objectContaining({
+        type: 'action.proposed', market: 'BTC-PERP',
+        effect: {
+          nodeId: 'open', type: 'execution.open_position', version: 1, market: 'BTC-PERP',
+          config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 },
+          idempotencyKey: expect.any(String),
+        },
+      }),
+      expect.objectContaining({ type: 'risk.approved', market: 'BTC-PERP', universeRevision: 'sha256:fixture' }),
     ]));
-    expect(JSON.stringify(repository.listDeploymentAuditEvents(deploymentId))).not.toContain('value');
+    expect(JSON.stringify(repository.listDeploymentAuditEvents(deploymentId))).not.toContain('"value":[]');
     expect(JSON.stringify(repository.listDeploymentAuditEvents(deploymentId))).not.toContain('secret');
     expect(run.children[0]?.dataReferences).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'account.positions', provider: 'redacted', integrityHash: 'redacted', freshnessSeconds: 0 }),
@@ -327,7 +354,7 @@ describe('ExecutionRepository', () => {
     `);
 
     expect(() => repository.proposeLiveAction(proposal())).toThrow(/forced audit failure/i);
-    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 0 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 1 });
     expect(database.prepare('SELECT COUNT(*) AS count FROM audit_events').get()).toEqual({ count: 0 });
     expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 0 });
   });

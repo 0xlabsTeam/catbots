@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
+  clientOrderId,
+  evaluateRisk,
+  executionIdempotencyKey,
+  type NormalizedOrderIntent,
+  type RiskAccountState,
+} from '@catbots/execution-core';
+import {
   DeploymentSchema,
   PrepareLiveInputSchema,
   StartLiveInputSchema,
@@ -24,6 +31,7 @@ import {
   type EvaluationContext,
   type EvaluationContextFactory,
   type MarketUniverseSnapshot,
+  type ProposedEffect,
   type TriggerInput,
 } from '@catbots/strategy-runtime';
 
@@ -56,6 +64,21 @@ export type PaperEvaluationResult = Readonly<{
   events: readonly AuditEvent[];
   children: CoordinatedEvaluation['children'];
   state: PaperState;
+}>;
+
+export type LiveIngestInput = Readonly<{
+  deploymentId: string;
+  triggerNodeId: string;
+  triggerInput: TriggerInput;
+  contextFactory: EvaluationContextFactory;
+  riskAccountFactory: (market: string, context: EvaluationContext) => RiskAccountState | undefined;
+}>;
+
+export type LiveEvaluationResult = Readonly<{
+  parentTraceId: string;
+  duplicate: boolean;
+  children: CoordinatedEvaluation['children'];
+  outboxCount: number;
 }>;
 
 export class DeploymentService {
@@ -370,6 +393,117 @@ export class DeploymentService {
     }
   }
 
+  async ingestLive(
+    input: LiveIngestInput,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<LiveEvaluationResult> {
+    const deployment = this.dependencies.executionRepository.getDeployment(input.deploymentId);
+    if (deployment.mode !== 'live' || deployment.recordVersion !== 2 || deployment.status !== 'running') {
+      throw new Error('Dynamic Live deployment is not running');
+    }
+    const document = this.dependencies.workbenchRepository.getStrategyDocument(deployment.botId, deployment.strategyVersion);
+    if (document.schemaVersion !== '2.0' || document.marketScope.type !== 'dex_universe') {
+      throw new Error('Strategy 2.0 is required');
+    }
+    const validation = validateStrategy(document, createBuiltinRegistry());
+    if (!validation.valid) throw new Error('Approved strategy is no longer valid');
+    const cache = this.dependencies.marketUniverseCache;
+    if (cache === undefined) throw new Error('DEX universe unavailable');
+    const universe = await cache.refresh(signal);
+    const universeFresh = cache.freshness().fresh;
+    if (universe.dex !== deployment.dex) throw new Error('DEX universe does not match deployment');
+
+    const contexts = new Map<string, EvaluationContext>();
+    const planned = new Map<string, Readonly<{ effect: ProposedEffect; account: RiskAccountState }>>();
+    const reservedPositions: Array<{ market: string; side: 'long' | 'short'; notionalUsd: string }> = [];
+    const reservedOrderTimestamps: string[] = [];
+    const coordinated = coordinateEvaluation({
+      compiled: validation.compiled,
+      triggerNodeId: input.triggerNodeId,
+      triggerInput: input.triggerInput,
+      universe,
+      contextFactory: (market, metadata) => {
+        const context = input.contextFactory(market, metadata);
+        contexts.set(market, context);
+        return context;
+      },
+      deployment: { id: deployment.id, mode: 'live' },
+      execution: {
+        execute: (effect, context) => {
+          let account: RiskAccountState | undefined;
+          try {
+            account = input.riskAccountFactory(context.currentMarket, context);
+          } catch {
+            account = undefined;
+          }
+          const riskAccount = account === undefined ? undefined : {
+            ...account,
+            positions: [...account.positions, ...reservedPositions],
+            recentOrderTimestamps: [...account.recentOrderTimestamps, ...reservedOrderTimestamps],
+          };
+          const provisionalIntent = toLiveIntent(effect, riskAccount?.equityUsd, 'cb_risk_evaluation');
+          const selected = universe.markets.find(({ symbol }) => symbol === effect.market);
+          const decision = provisionalIntent === undefined ? { approved: false, violatedRuleIds: ['risk-state-unavailable'] as const }
+            : evaluateRisk({
+              intent: provisionalIntent, limits: deployment.riskLimits, account: riskAccount,
+              botDex: deployment.dex, deploymentDex: deployment.dex, evaluationDex: universe.dex,
+              currentMarket: context.currentMarket, effectMarket: effect.market,
+              evaluationUniverseRevision: universe.revision, marketMetadataRevision: universe.revision,
+              marketMetadataDex: universe.dex,
+              marketMetadata: selected === undefined ? undefined : {
+                market: selected.symbol, active: selected.active,
+                sizeDecimals: selected.sizeDecimals, maximumLeverage: selected.maximumLeverage,
+              },
+              universeFresh, evaluatedAt: context.evaluatedAt,
+            });
+          if (!decision.approved || account === undefined || provisionalIntent === undefined) {
+            return { events: [{ type: 'risk.rejected', metadata: { violatedRuleIds: decision.violatedRuleIds } }] };
+          }
+          planned.set(`${effect.market}\0${effect.nodeId}`, { effect, account });
+          if (provisionalIntent.type === 'open_position') {
+            reservedPositions.push({
+              market: provisionalIntent.market, side: provisionalIntent.side,
+              notionalUsd: provisionalIntent.notionalUsd,
+            });
+          }
+          reservedOrderTimestamps.push(context.evaluatedAt);
+          return { events: [
+            { type: 'risk.approved', metadata: { evaluator: 'live.risk-engine' } },
+            { type: 'execution.queued', metadata: { durable: true } },
+          ] };
+        },
+      },
+    });
+    if (this.dependencies.executionRepository.hasTrace(coordinated.parentTraceId)) {
+      return { parentTraceId: coordinated.parentTraceId, duplicate: true, children: coordinated.children, outboxCount: 0 };
+    }
+    const actions = coordinated.children.flatMap((child) => child.evaluation.effects.flatMap((effect) => {
+      const candidate = planned.get(`${effect.market}\0${effect.nodeId}`);
+      if (candidate === undefined) return [];
+      const identity = {
+        deploymentId: deployment.id, strategyId: deployment.strategyId,
+        strategyVersion: deployment.strategyVersion, parentTraceId: coordinated.parentTraceId,
+        childTraceId: child.evaluation.traceId, market: effect.market, actionNodeId: effect.nodeId,
+      } as const;
+      const idempotencyKey = executionIdempotencyKey(identity);
+      const orderId = clientOrderId(identity);
+      const intent = toLiveIntent(effect, candidate.account.equityUsd, orderId);
+      if (intent === undefined) return [];
+      return [{
+        childTraceId: child.evaluation.traceId, effect, intent,
+        outboxId: (this.dependencies.idFactory ?? randomUUID)(), idempotencyKey,
+        clientOrderId: orderId, createdAt: contexts.get(effect.market)?.evaluatedAt ?? universe.observedAt,
+      }];
+    }));
+    const persisted = this.dependencies.executionRepository.recordCoordinatedLiveRun(
+      deployment.id, coordinated, { universe, contexts }, actions,
+    );
+    return {
+      parentTraceId: coordinated.parentTraceId, duplicate: persisted.duplicate,
+      children: coordinated.children, outboxCount: persisted.outboxItems.length,
+    };
+  }
+
   getPaperState(deploymentId: string): PaperState {
     const runtime = this.active.get(deploymentId);
     if (runtime === undefined) throw new Error('Paper deployment is not active');
@@ -409,5 +543,31 @@ function unavailableHyperliquidClient(): HyperliquidClientPort {
     cancelByCloid: unavailable,
     updateLeverage: unavailable,
     getUserFills: unavailable,
+  };
+}
+
+function toLiveIntent(
+  effect: ProposedEffect,
+  equityUsd: string | undefined,
+  orderId: string,
+): NormalizedOrderIntent | undefined {
+  if (effect.type === 'execution.close_position') {
+    const percent = effect.config.percent;
+    return typeof percent === 'number' && Number.isFinite(percent) && percent > 0 && percent <= 100
+      ? { type: 'close_position', market: effect.market, percent, clientOrderId: orderId }
+      : undefined;
+  }
+  if (effect.type !== 'execution.open_position') return undefined;
+  const side = effect.config.side;
+  const leverage = effect.config.leverage ?? 1;
+  const size = effect.config.size;
+  if ((side !== 'long' && side !== 'short') || typeof leverage !== 'number'
+    || size === null || typeof size !== 'object' || Array.isArray(size) || typeof size.value !== 'number') return undefined;
+  const notional = size.type === 'quote' ? size.value
+    : size.type === 'equity_percent' ? Number(equityUsd) * size.value / 100 : Number.NaN;
+  if (!Number.isFinite(notional) || notional <= 0) return undefined;
+  return {
+    type: 'open_position', market: effect.market, side, orderType: 'market',
+    notionalUsd: String(notional), leverage, clientOrderId: orderId,
   };
 }

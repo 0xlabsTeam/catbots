@@ -30,6 +30,8 @@ let disposeIpcHandlers: (() => void) | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: TrayController | undefined;
 let shutdownPromise: Promise<void> | undefined;
+let marketUniverseRefreshOwner: AbortController | undefined;
+let stopMarketUniverseRefresh: (() => boolean) | undefined;
 let quitting = false;
 let e2eQuitResponse: number | undefined;
 let startupPhase = 'waiting-for-electron';
@@ -88,6 +90,9 @@ void app.whenReady()
     const marketUniverseCache = new MarketUniverseCache({
       adapter: new HyperliquidAdapter({ client: createHyperliquidPublicClient() }),
     });
+    marketUniverseRefreshOwner = new AbortController();
+    await marketUniverseCache.initialize(marketUniverseRefreshOwner.signal);
+    stopMarketUniverseRefresh = marketUniverseCache.startPeriodicRefresh(marketUniverseRefreshOwner.signal);
     const deploymentService = new DeploymentService({
       executionRepository: new ExecutionRepository(connection),
       workbenchRepository,
@@ -226,6 +231,7 @@ function shutdown(): Promise<void> {
   if (shutdownPromise !== undefined) return shutdownPromise;
 
   shutdownPromise = (async () => {
+    disposeMarketUniverseRefresh();
     try {
       await runtime.stop();
     } catch {
@@ -240,6 +246,13 @@ function shutdown(): Promise<void> {
     }
   })();
   return shutdownPromise;
+}
+
+function disposeMarketUniverseRefresh(): void {
+  marketUniverseRefreshOwner?.abort();
+  marketUniverseRefreshOwner = undefined;
+  stopMarketUniverseRefresh?.();
+  stopMarketUniverseRefresh = undefined;
 }
 
 function disposeTray(): void {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacktestSummary, LocalConfig, RiskLimits } from '@catbots/contracts';
-import { parseStrategyDocument } from '@catbots/strategy-runtime';
+import { createEvaluationContext, parseStrategyDocument } from '@catbots/strategy-runtime';
 
 import { BotRepository } from '../src/main/bots/bot-repository';
 import { DeploymentService } from '../src/main/execution/deployment-service';
@@ -82,6 +82,82 @@ describe('DeploymentService Live gate', () => {
       status: 'running', maskedAccount: '0x0123…4567', marketAccess: { mode: 'all_active_perpetuals' }, riskLimits: limits,
     });
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('coordinates two Live markets into one durable parent without duplicating child orders', async () => {
+    const botId = new BotRepository(database, () => new Date(now)).createDraft({ name: 'Live Coordinator', dex: 'hyperliquid' }).id;
+    const workbench = new WorkbenchRepository(database, () => new Date(now), randomUUID);
+    workbench.createValidatedRevision(botId, parseStrategyDocument({
+      schemaVersion: '2.0', strategy: { id: 'live-coordinator', name: 'Live Coordinator', version: 1 },
+      marketScope: { type: 'dex_universe' },
+      nodes: [
+        { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+        { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 2, config: { state: 'flat' } },
+        { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'clock', sourcePort: 'activation', target: 'flat', targetPort: 'activation' },
+        { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
+      ],
+    }));
+    workbench.approveRevision(botId, 1);
+    const repository = new ExecutionRepository(database);
+    const deploymentId = '128f3f75-89ab-7def-8123-456789abcdef';
+    repository.createDeployment({
+      id: deploymentId, botId, strategyId: 'live-coordinator', strategyVersion: 1,
+      recordVersion: 2, dex: 'hyperliquid', mode: 'live', executionVenue: 'hyperliquid', network: 'testnet',
+      maskedAccount: '0x0123…4567', marketAccess: { mode: 'all_active_perpetuals' }, riskLimits: limits,
+      status: 'running', createdAt: now, updatedAt: now,
+    });
+    const universe = {
+      dex: 'hyperliquid' as const, revision: 'sha256:live-two', observedAt: now,
+      markets: [
+        { symbol: 'BTC-PERP', active: true, sizeDecimals: 5, maximumLeverage: 40 },
+        { symbol: 'ETH-PERP', active: true, sizeDecimals: 4, maximumLeverage: 30 },
+      ],
+    };
+    const service = new DeploymentService({
+      executionRepository: repository, workbenchRepository: workbench,
+      marketUniverseCache: { refresh: async () => universe, freshness: () => ({ fresh: true }) },
+      clock: () => new Date(now), idFactory: randomUUID,
+    });
+    const request = {
+      deploymentId, triggerNodeId: 'clock', triggerInput: { kind: 'interval' as const, occurredAt: now },
+      contextFactory: (market: string) => createEvaluationContext({
+        evaluatedAt: now, currentMarket: market,
+        values: {
+          'account.positions': { value: [], provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: `sha256:positions:${market}` },
+          'account.equity': { value: 10000, provider: 'live.account', observedAt: now, freshnessSeconds: 0, quality: { status: 'verified' as const }, integrityHash: 'sha256:equity' },
+        },
+      }),
+      riskAccountFactory: () => ({
+        equityUsd: '10000', dailyRealizedPnlUsd: '0', drawdownPercent: 0, positions: [],
+        recentOrderTimestamps: [], accountKillSwitchActive: false, botKillSwitchActive: false,
+      }),
+    };
+
+    const first = await service.ingestLive(request);
+    const duplicate = await service.ingestLive(request);
+    const run = repository.listTriggerRun(first.parentTraceId);
+
+    expect(first.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(run.children.map(({ market }) => market)).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(run.children.every(({ status }) => status === 'open')).toBe(true);
+    expect(duplicate).toMatchObject({ duplicate: true, parentTraceId: first.parentTraceId });
+    expect(repository.listOutboxItems(deploymentId).map(({ traceId, intent }) => ({ traceId, market: intent.market })))
+      .toEqual(run.children.map(({ traceId, market }) => ({ traceId, market })));
+    expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
+    expect(database.prepare('SELECT COUNT(DISTINCT client_order_id) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 3 });
+
+    database.exec(`CREATE TRIGGER force_live_outbox_failure BEFORE INSERT ON execution_outbox
+      BEGIN SELECT RAISE(ABORT, 'forced live outbox failure'); END;`);
+    await expect(service.ingestLive({
+      ...request,
+      triggerInput: { kind: 'interval', occurredAt: '2026-09-05T08:30:00.000Z' },
+    })).rejects.toThrow(/forced live outbox failure/i);
+    expect(database.prepare('SELECT COUNT(*) AS count FROM execution_outbox').get()).toEqual({ count: 2 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM audit_traces').get()).toEqual({ count: 3 });
   });
 
   it('rejects a legacy strategy before creating a new Live deployment', async () => {

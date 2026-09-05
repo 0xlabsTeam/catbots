@@ -230,6 +230,40 @@ export const AuditDataReferenceSchema = z.object({
 
 export type AuditDataReference = z.infer<typeof AuditDataReferenceSchema>;
 
+export const AuditConditionResultSchema = z.object({
+  result: z.union([z.boolean(), z.literal('unknown')]),
+  reason: z.enum([
+    'predicate.matched', 'predicate.not_matched', 'predicate.type_mismatch',
+    'data.missing', 'data.stale', 'data.unauthorized', 'data.invalid', 'data.field_missing',
+    'combine.all_true', 'combine.child_false', 'combine.all_false', 'combine.child_true',
+    'combine.not_true', 'combine.not_false', 'combine.threshold_met',
+    'combine.threshold_unreachable', 'combine.indeterminate', 'condition.invalid_config',
+  ]),
+}).strict();
+
+const AuditExecutionEffectBaseSchema = z.object({
+  nodeId: NonEmptyTextSchema.max(120),
+  version: z.number().int().positive(),
+  market: NonEmptyTextSchema.max(40),
+  idempotencyKey: NonEmptyTextSchema.max(500),
+});
+
+export const AuditProposedEffectSchema = z.discriminatedUnion('type', [
+  AuditExecutionEffectBaseSchema.extend({
+    type: z.literal('execution.open_position'),
+    config: z.object({
+      side: z.enum(['long', 'short']),
+      size: z.object({ type: z.enum(['equity_percent', 'quote']), value: z.number().finite().positive() }).strict().optional(),
+      leverage: z.number().finite().positive().optional(),
+      stopLoss: z.object({ type: z.literal('percent'), value: z.number().finite().positive() }).strict().optional(),
+    }).strict(),
+  }).strict(),
+  AuditExecutionEffectBaseSchema.extend({
+    type: z.literal('execution.close_position'),
+    config: z.object({ side: z.enum(['long', 'short']).optional(), percent: z.number().finite().positive().max(100) }).strict(),
+  }).strict(),
+]);
+
 export const AuditEventViewSchema = z.object({
   id: NonEmptyTextSchema.max(560),
   traceId: NonEmptyTextSchema.max(500),
@@ -246,6 +280,8 @@ export const AuditEventViewSchema = z.object({
   universeRevision: NonEmptyTextSchema.max(240).optional(),
   contextObservedAt: TimestampSchema.optional(),
   dataReferences: z.array(AuditDataReferenceSchema).optional(),
+  condition: AuditConditionResultSchema.optional(),
+  effect: AuditProposedEffectSchema.optional(),
   nodeId: NonEmptyTextSchema.max(120).optional(),
   nodeType: NonEmptyTextSchema.max(120).optional(),
   summary: NonEmptyTextSchema.max(500),

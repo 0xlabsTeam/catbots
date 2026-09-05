@@ -176,6 +176,26 @@ const llmTester = vi.hoisted(() => ({
   testLlmConnection: vi.fn(async () => ({ ok: true as const, model: 'fixture-model' })),
 }));
 
+const universeCache = vi.hoisted(() => {
+  const initialize = vi.fn(async (_signal: AbortSignal) => ({
+    dex: 'hyperliquid', revision: 'sha256:lifecycle', observedAt: '2026-09-05T00:00:00.000Z', markets: [],
+  }));
+  const stopPeriodicRefresh = vi.fn(() => true);
+  const startPeriodicRefresh = vi.fn((_signal: AbortSignal) => stopPeriodicRefresh);
+  const MarketUniverseCache = vi.fn(function MarketUniverseCacheMock() {
+    return { initialize, startPeriodicRefresh };
+  });
+  return {
+    initialize, startPeriodicRefresh, stopPeriodicRefresh, MarketUniverseCache,
+    reset: () => {
+      initialize.mockClear();
+      startPeriodicRefresh.mockClear();
+      stopPeriodicRefresh.mockClear();
+      MarketUniverseCache.mockClear();
+    },
+  };
+});
+
 vi.mock('electron', () => electron);
 vi.mock('../src/main/create-window', () => ({ createMainWindow: mainWindow.create }));
 vi.mock('../src/main/register-app-protocol', () => ({ registerAppProtocol: vi.fn() }));
@@ -183,6 +203,7 @@ vi.mock('../src/main/storage/database', () => applicationDatabase);
 vi.mock('../src/main/runtime/runtime-supervisor', () => ({ RuntimeSupervisor: runtime.RuntimeSupervisor }));
 vi.mock('../src/main/tray/create-tray', () => ({ createTray: tray.create }));
 vi.mock('../src/main/llm/test-llm-connection', () => llmTester);
+vi.mock('../src/main/execution/market-universe-cache', () => ({ MarketUniverseCache: universeCache.MarketUniverseCache }));
 
 describe('main window lifecycle', () => {
   beforeEach(() => {
@@ -195,6 +216,7 @@ describe('main window lifecycle', () => {
     runtime.reset();
     tray.reset();
     llmTester.testLlmConnection.mockClear();
+    universeCache.reset();
   });
 
   it('keeps the application process alive when the last window closes', async () => {
@@ -218,6 +240,27 @@ describe('main window lifecycle', () => {
     expect(electron.session.defaultSession.setPermissionCheckHandler).toHaveBeenCalledOnce();
     expect(electron.session.defaultSession.setPermissionRequestHandler.mock.invocationCallOrder[0])
       .toBeLessThan(mainWindow.first.show.mock.invocationCallOrder[0]);
+  });
+
+  it('initializes periodic universe refresh at startup and cancels its owner on shutdown', async () => {
+    electron.app.whenReady.mockResolvedValueOnce(undefined);
+    electron.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 });
+
+    await import('../src/main/main');
+    await vi.waitFor(() => expect(mainWindow.first.show).toHaveBeenCalledOnce());
+
+    expect(universeCache.initialize).toHaveBeenCalledOnce();
+    expect(universeCache.startPeriodicRefresh).toHaveBeenCalledOnce();
+    const initializedSignal = universeCache.initialize.mock.calls[0]?.[0];
+    const periodicSignal = universeCache.startPeriodicRefresh.mock.calls[0]?.[0];
+    expect(periodicSignal).toBe(initializedSignal);
+    expect(periodicSignal?.aborted).toBe(false);
+
+    const options = tray.create.mock.calls[0]?.[0] as { quit(): Promise<void> };
+    await options.quit();
+
+    expect(periodicSignal?.aborted).toBe(true);
+    expect(universeCache.stopPeriodicRefresh).toHaveBeenCalledOnce();
   });
 
   it('keeps intercepting native Quit after a cancellation and then performs ordered cleanup', async () => {
