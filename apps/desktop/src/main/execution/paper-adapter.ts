@@ -6,7 +6,7 @@ import {
   type OpenPositionIntent,
   type PerpPosition,
 } from '@catbots/execution-core';
-import type { RiskLimits } from '@catbots/contracts';
+import type { LegacyRiskLimits } from '@catbots/contracts';
 import type {
   EvaluationContext,
   ExecutionTraceEvent,
@@ -40,7 +40,7 @@ export class PaperAdapter implements RuntimeExecutionPort {
     strategyId: string;
     strategyVersion: number;
     market: string;
-    riskLimits: RiskLimits;
+    riskLimits: LegacyRiskLimits;
   }>) {}
 
   beginEvaluation(): void {

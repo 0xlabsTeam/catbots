@@ -10,11 +10,12 @@ import {
   type StartLiveInput,
   StartPaperInputSchema,
   type Deployment,
+  type LegacyRiskLimits,
+  LegacyRiskLimitsSchema,
   type PaperDeploymentView,
   type RiskLimits,
   type StartPaperInput,
 } from '@catbots/contracts';
-import { legacyMarketBindings, legacyMarketHint } from '../../legacy-contract-compat';
 import {
   createBuiltinRegistry,
   createEvaluationContext,
@@ -65,7 +66,7 @@ export class DeploymentService {
 
   constructor(private readonly dependencies: Readonly<{
     executionRepository: ExecutionRepository;
-    workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument'>;
+    workbenchRepository: Pick<WorkbenchRepository, 'getState' | 'getStrategyDocument' | 'getLegacyMarketHint'>;
     configRepository?: Readonly<{ load(): Promise<LocalConfig | null> }>;
     runtimeReady?: () => boolean;
     createHyperliquidClient?: (options: Readonly<{ agentPrivateKey: string }>) => HyperliquidClientPort;
@@ -157,15 +158,16 @@ export class DeploymentService {
     const document = this.dependencies.workbenchRepository.getStrategyDocument(input.botId, input.strategyVersion);
     const validation = validateStrategy(document, createBuiltinRegistry());
     if (!validation.valid) throw new Error('Approved strategy is no longer valid');
+    const legacyMarket = this.requireLegacyMarketHint(input.botId);
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     const deployment = DeploymentSchema.parse({
       id: (this.dependencies.idFactory ?? randomUUID)(),
       botId: input.botId,
       strategyId: document.strategy.id,
       strategyVersion: input.strategyVersion,
-      mode: 'live', venue: 'hyperliquid', network: 'testnet',
+      recordVersion: 1, mode: 'live', venue: 'hyperliquid', network: 'testnet',
       maskedAccount: prepared.view.maskedAccount,
-      marketBindings: [legacyMarketHint(state.bot)], riskLimits: input.riskLimits,
+      marketBindings: [legacyMarket], riskLimits: this.toLegacyRiskLimits(input.riskLimits, legacyMarket),
       status: 'running', createdAt: timestamp, updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
@@ -190,22 +192,25 @@ export class DeploymentService {
     const document = this.dependencies.workbenchRepository.getStrategyDocument(input.botId, input.strategyVersion);
     const validation = validateStrategy(document, createBuiltinRegistry());
     if (!validation.valid) throw new Error('Approved strategy is no longer valid');
+    const legacyMarket = this.requireLegacyMarketHint(input.botId);
     const timestamp = (this.dependencies.clock ?? (() => new Date()))().toISOString();
     const deployment = DeploymentSchema.parse({
       id: (this.dependencies.idFactory ?? randomUUID)(),
       botId: input.botId,
       strategyId: document.strategy.id,
       strategyVersion: input.strategyVersion,
+      recordVersion: 1,
       mode: 'paper',
       venue: 'paper',
       network: 'paper',
-      marketBindings: [legacyMarketHint(state.bot)],
-      riskLimits: input.riskLimits,
+      marketBindings: [legacyMarket],
+      riskLimits: this.toLegacyRiskLimits(input.riskLimits, legacyMarket),
       status: 'running',
       createdAt: timestamp,
       updatedAt: timestamp,
     });
     const persisted = this.dependencies.executionRepository.createDeployment(deployment);
+    if (persisted.recordVersion !== 1) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
     this.active.set(persisted.id, {
       deployment: persisted,
       compiled: validation.compiled,
@@ -213,12 +218,31 @@ export class DeploymentService {
         deploymentId: persisted.id,
         strategyId: persisted.strategyId,
         strategyVersion: persisted.strategyVersion,
-        market: legacyMarketBindings(persisted)[0]!,
-        riskLimits: persisted.riskLimits as RiskLimits,
+        market: persisted.marketBindings[0]!,
+        riskLimits: persisted.riskLimits,
       }),
       evaluations: new Map(),
     });
     return persisted;
+  }
+
+  private requireLegacyMarketHint(botId: string): string {
+    const market = this.dependencies.workbenchRepository.getLegacyMarketHint(botId);
+    if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
+    return market;
+  }
+
+  private toLegacyRiskLimits(limits: RiskLimits, market: string): LegacyRiskLimits {
+    return LegacyRiskLimitsSchema.parse({
+      maxOrderUsd: limits.maxOrderUsd,
+      maxPositionUsd: limits.maxPositionUsd,
+      maxLeverage: limits.maxLeverage,
+      maxDailyLossUsd: limits.maxDailyLossUsd,
+      maxDrawdownPercent: limits.maxDrawdownPercent,
+      allowedMarkets: [market],
+      allowedSides: limits.allowedSides,
+      maxOrdersPerMinute: limits.maxOrdersPerMinute,
+    });
   }
 
   ingest(input: PaperIngestInput): PaperEvaluationResult {

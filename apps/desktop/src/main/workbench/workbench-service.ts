@@ -20,7 +20,6 @@ import {
   type WorkbenchState,
 } from '@catbots/contracts';
 
-import { legacyMarketHint } from '../../legacy-contract-compat';
 import { sanitizeAuditValue } from '@catbots/strategy-runtime';
 
 import { createAgentToolCatalog } from '../agent/agent-tools';
@@ -61,7 +60,7 @@ export class WorkbenchService {
     const onActivity = (activity: AgentToolActivity) => this.publish(activity);
     const tools = createAgentToolCatalog({
       botId: request.botId,
-      market: legacyMarketHint(state.bot),
+      market: this.requireLegacyMarketHint(request.botId),
       repository: this.dependencies.repository,
       clock: this.dependencies.clock,
       idFactory: this.dependencies.idFactory,
@@ -93,7 +92,7 @@ export class WorkbenchService {
       request.botId,
       request.revisionVersion,
       document,
-      legacyMarketHint(state.bot),
+      this.requireLegacyMarketHint(request.botId),
       request.assumptions,
       {
         clock: this.dependencies.clock,
@@ -127,6 +126,8 @@ export class WorkbenchService {
     const trace = findTrace(JSON.parse(artifact) as unknown, request.traceId);
     return TraceDetailSchema.parse({
       traceId: request.traceId,
+      parentTraceId: backtest.id,
+      market: summary.market,
       outcome: summary.outcome,
       events: trace.map((event, index) => ({
         sequence: typeof event.sequence === 'number' ? event.sequence : index + 1,
@@ -146,6 +147,12 @@ export class WorkbenchService {
 
   private publish(activity: AgentToolActivity): void {
     for (const listener of this.#listeners) listener(activity);
+  }
+
+  private requireLegacyMarketHint(botId: string): string {
+    const market = this.dependencies.repository.getLegacyMarketHint(botId);
+    if (market === null) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
+    return market;
   }
 }
 

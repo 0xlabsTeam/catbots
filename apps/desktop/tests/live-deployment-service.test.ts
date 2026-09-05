@@ -59,6 +59,7 @@ describe('DeploymentService Live gate', () => {
       workbenchRepository: {
         getState: () => ({ ...baseState, backtests: [backtest] }),
         getStrategyDocument: (requestedBotId, version) => workbench.getStrategyDocument(requestedBotId, version),
+        getLegacyMarketHint: (requestedBotId) => workbench.getLegacyMarketHint(requestedBotId),
       },
       configRepository: { load: async () => config }, runtimeReady: () => true,
       createHyperliquidClient: () => client, resolveSignerAddress: async () => '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -71,7 +72,8 @@ describe('DeploymentService Live gate', () => {
     await expect(service.startLive({ botId, strategyVersion: 1, riskLimits: limits, network: 'testnet', preflightId: preflight.id, confirmationBotName: 'btc live' })).rejects.toThrow(/confirmation/i);
 
     await expect(service.startLive({ botId, strategyVersion: 1, riskLimits: limits, network: 'testnet', preflightId: preflight.id, confirmationBotName: 'BTC Live' })).resolves.toMatchObject({
-      mode: 'live', venue: 'hyperliquid', network: 'testnet', status: 'running', maskedAccount: '0x0123…4567',
+      recordVersion: 1, mode: 'live', venue: 'hyperliquid', network: 'testnet', status: 'running', maskedAccount: '0x0123…4567',
+      marketBindings: ['BTC-PERP'], riskLimits: expect.objectContaining({ allowedMarkets: ['BTC-PERP'] }),
     });
   });
 });

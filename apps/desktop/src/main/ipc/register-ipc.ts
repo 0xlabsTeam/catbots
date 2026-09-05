@@ -14,6 +14,7 @@ import {
   PrepareLiveInputSchema,
   StartLiveInputSchema,
   DeploymentSchema,
+  DatabaseStateSchema,
   RuntimeStatusSchema,
   SendWorkbenchMessageInputSchema,
   StartPaperInputSchema,
@@ -21,6 +22,7 @@ import {
   type AgentToolActivity,
   type BootstrapState,
   type ConnectionTestResult,
+  type DatabaseState,
   type LocalConfig,
   type LocalSettingsPatch,
   type RuntimeStatus,
@@ -372,6 +374,11 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
         throw new IpcRequestError('RUNTIME_STATUS_FAILED');
       }
     },
+
+    getDatabaseState: async (event: IpcMainInvokeEvent): Promise<DatabaseState> => {
+      assertSender(event);
+      return DatabaseStateSchema.parse({ status: 'ready' });
+    },
   };
 }
 
@@ -434,6 +441,7 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['deployments:stop-live', handlers.stopLiveDeployment],
     ['deployments:get-active', handlers.getActiveDeployment],
     ['runtime:get-status', handlers.getRuntimeStatus],
+    ['runtime:get-database-state', handlers.getDatabaseState],
   ];
   const registeredChannels: string[] = [];
   let unsubscribeRuntime: (() => void) | undefined;

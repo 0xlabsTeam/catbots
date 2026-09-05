@@ -52,6 +52,7 @@ describe('migrateDatabase', () => {
       { version: 1 },
       { version: 2 },
       { version: 3 },
+      { version: 4 },
     ]);
     expect(db.prepare(`
       SELECT name FROM sqlite_master
@@ -99,8 +100,12 @@ describe('migrateDatabase', () => {
 
     migrateDatabase(db);
 
-    expect(db.prepare('SELECT id, name FROM bots').all()).toEqual([{ id: 'bot-1', name: 'Existing bot' }]);
-    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(db.prepare('SELECT id, name, dex, legacy_market_hint FROM bots').all()).toEqual([
+      { id: 'bot-1', name: 'Existing bot', dex: 'hyperliquid', legacy_market_hint: 'BTC-PERP' },
+    ]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
+      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 },
+    ]);
   });
 });
 
@@ -116,6 +121,7 @@ describe('ApplicationDatabase', () => {
       { version: 1 },
       { version: 2 },
       { version: 3 },
+      { version: 4 },
     ]);
     lifecycle.close();
     expect(db.open).toBe(false);

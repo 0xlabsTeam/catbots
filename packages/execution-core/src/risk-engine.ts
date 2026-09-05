@@ -1,4 +1,4 @@
-import type { RiskLimits } from '@catbots/contracts';
+import type { LegacyRiskLimits } from '@catbots/contracts';
 
 import type { NormalizedOrderIntent } from './adapter';
 
@@ -14,7 +14,7 @@ export type RiskAccountState = Readonly<{
 
 export type RiskEvaluationInput = Readonly<{
   intent: NormalizedOrderIntent;
-  limits: RiskLimits;
+  limits: LegacyRiskLimits;
   account: RiskAccountState | undefined;
   evaluatedAt: string;
 }>;
@@ -23,6 +23,7 @@ export type RiskRuleId =
   | 'risk-state-unavailable'
   | 'account-kill-switch'
   | 'bot-kill-switch'
+  | 'allowed-market'
   | 'allowed-side'
   | 'max-order-usd'
   | 'max-position-usd'
@@ -45,6 +46,7 @@ export function evaluateRisk(input: RiskEvaluationInput): RiskDecision {
   const violations: RiskRuleId[] = [];
   if (account.accountKillSwitchActive) violations.push('account-kill-switch');
   if (account.botKillSwitchActive) violations.push('bot-kill-switch');
+  if (!input.limits.allowedMarkets.includes(input.intent.market)) violations.push('allowed-market');
   if (input.intent.type === 'open_position') {
     if (!input.limits.allowedSides.includes(input.intent.side)) violations.push('allowed-side');
     if (state.orderNotional > state.maxOrder) violations.push('max-order-usd');

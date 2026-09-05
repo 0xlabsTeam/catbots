@@ -73,6 +73,25 @@ function service() {
 }
 
 describe('Paper deployment', () => {
+  it('fails closed for a DEX-scoped bot with no legacy market hint', () => {
+    const newBotId = new BotRepository(database, () => new Date(now)).createDraft({ name: 'DEX Paper', dex: 'hyperliquid' }).id;
+    workbench.createValidatedRevision(newBotId, parseStrategyDocument({
+      schemaVersion: '1.0', strategy: { id: 'dex-paper', name: 'DEX Paper', version: 1 },
+      nodes: [
+        { id: 'clock', kind: 'trigger', type: 'trigger.interval', version: 1, config: { every: '15m', alignment: 'utc' } },
+        { id: 'flat', kind: 'condition', type: 'predicate.position_state', version: 1, config: { state: 'flat', market: 'BTC-PERP' } },
+        { id: 'open', kind: 'action', type: 'execution.open_position', version: 1, config: { side: 'long', size: { type: 'quote', value: 500 }, leverage: 2 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'clock', sourcePort: 'activation', target: 'flat', targetPort: 'activation' },
+        { id: 'e2', source: 'flat', sourcePort: 'result', target: 'open', targetPort: 'condition' },
+      ],
+    }));
+    workbench.approveRevision(newBotId, 1);
+
+    expect(() => service().startPaper({ botId: newBotId, strategyVersion: 1, riskLimits: limits })).toThrow('DYNAMIC_MARKET_RUNTIME_NOT_READY');
+  });
+
   it('runs an approved strategy through the canonical evaluator and persists the full trace', () => {
     workbench.approveRevision(botId, 1);
     const deployments = service();

@@ -148,6 +148,16 @@ const migrations: readonly Migration[] = [
       CREATE INDEX execution_outbox_by_status ON execution_outbox (status, created_at);
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE bots ADD COLUMN dex TEXT NOT NULL DEFAULT 'hyperliquid';
+      ALTER TABLE bots ADD COLUMN legacy_market_hint TEXT;
+      UPDATE bots
+      SET legacy_market_hint = market
+      WHERE market <> '' AND legacy_market_hint IS NULL;
+    `,
+  },
 ];
 
 export function migrateDatabase(database: Database.Database): void {

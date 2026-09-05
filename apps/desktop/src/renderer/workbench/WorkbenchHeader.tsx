@@ -1,7 +1,6 @@
 import { Badge, Button, Dialog, Select } from '@cloudflare/kumo';
 import { ArrowLeftIcon, CheckCircleIcon } from '@phosphor-icons/react';
 import type { WorkbenchState } from '@catbots/contracts';
-import { legacyMarketHint } from '../../legacy-contract-compat';
 
 export type WorkbenchHeaderProps = Readonly<{
   state: WorkbenchState;
@@ -21,7 +20,7 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
           <p className="eyebrow">AI BOT WORKBENCH</p>
           <h1 id="bot-workbench-title">{state.bot.name}</h1>
         </div>
-        <Badge variant="secondary">{legacyMarketHint(state.bot)}</Badge>
+        <Badge variant="secondary">{state.bot.dex}</Badge>
         <Badge variant={revision?.status === 'approved' ? 'success' : 'info'}>{revision?.status === 'approved' ? 'Approved' : 'Draft'}</Badge>
       </div>
       <div className="workbench-header-actions">

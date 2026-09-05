@@ -188,6 +188,12 @@ export class WorkbenchRepository {
     });
   }
 
+  getLegacyMarketHint(botId: string): string | null {
+    const row = this.database.prepare('SELECT legacy_market_hint FROM bots WHERE id = ?').get(botId) as { legacy_market_hint: unknown } | undefined;
+    if (row === undefined) throw new Error('Bot not found');
+    return typeof row.legacy_market_hint === 'string' && row.legacy_market_hint.length > 0 ? row.legacy_market_hint : null;
+  }
+
   private getRevision(botId: string, version: number): StrategyRevision {
     const row = this.database.prepare(`
       SELECT bot_id, version, strategy_id, name, document_json, status, created_at, approved_at
@@ -199,13 +205,13 @@ export class WorkbenchRepository {
 
   private requireBot(botId: string) {
     const row = this.database.prepare(`
-      SELECT id, name, market, status, created_at, updated_at FROM bots WHERE id = ?
+      SELECT id, name, dex, status, created_at, updated_at FROM bots WHERE id = ?
     `).get(botId) as Record<string, unknown> | undefined;
     if (row === undefined) throw new Error('Bot not found');
     return BotSummarySchema.parse({
       id: row.id,
       name: row.name,
-      market: row.market,
+      dex: row.dex,
       status: row.status,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

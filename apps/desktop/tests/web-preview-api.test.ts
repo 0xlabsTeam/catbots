@@ -38,10 +38,10 @@ describe('web preview API', () => {
   it('creates valid drafts and returns them from the same preview session', async () => {
     const api = createWebPreviewApi();
 
-    const draft = await api.bots.createDraft({ name: ' BTC Flow ', market: ' BTC-PERP ' });
+    const draft = await api.bots.createDraft({ name: ' BTC Flow ', dex: 'hyperliquid' });
 
     expect(BotSummarySchema.parse(draft)).toEqual(draft);
-    expect(draft).toMatchObject({ name: 'BTC Flow', market: 'BTC-PERP' });
+    expect(draft).toMatchObject({ name: 'BTC Flow', dex: 'hyperliquid' });
     expect(draft.status).toBe('draft');
     expect(await api.bots.list()).toEqual([draft]);
   });

@@ -1,6 +1,5 @@
 import { AgentToolActivitySchema, type AgentToolActivity, type WorkbenchState } from '@catbots/contracts';
 
-import { legacyMarketHint } from '../../legacy-contract-compat';
 import type { AgentToolCatalog, AgentToolName } from './agent-tools';
 import type {
   AgentConversationMessage,
@@ -117,7 +116,7 @@ function systemPrompt(state: WorkbenchState): string {
     'A strategy must follow Trigger → Condition → Action and may combine conditions.',
     'Validate every complete structural change before describing it as a draft.',
     'Backtests use Bundled sample data and are not investment promises.',
-    `Bot: ${state.bot.name}; market: ${legacyMarketHint(state.bot)}.`,
+    `Bot: ${state.bot.name}; DEX: ${state.bot.dex}.`,
     revision,
   ].join('\n');
 }

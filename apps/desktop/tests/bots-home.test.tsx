@@ -103,12 +103,11 @@ describe('BotsHomeScreen', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create new bot' }));
     await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
-    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
 
     expect(await screen.findByText('BTC Flow')).toBeTruthy();
     expect(screen.getByText('Draft')).toBeTruthy();
-    expect(api.createDraft).toHaveBeenCalledWith({ name: 'BTC Flow', market: 'BTC-PERP' });
+    expect(api.createDraft).toHaveBeenCalledWith({ name: 'BTC Flow', dex: 'hyperliquid' });
     expect(screen.getByText('PnL unavailable')).toBeTruthy();
     expect(screen.getByText('Drawdown unavailable')).toBeTruthy();
     expect(screen.getByRole('table', { name: 'Local bots' }).parentElement?.className).toContain('ring-kumo-line');
@@ -143,7 +142,6 @@ describe('BotsHomeScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Create new bot' }));
     await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
-    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
     await screen.findByText('BTC Flow');
     await act(async () => list.resolve([existingBot]));
@@ -160,7 +158,6 @@ describe('BotsHomeScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Create new bot' }));
     await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
-    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
     await screen.findByText('BTC Flow');
     await act(async () => initialList.reject(new Error('dependency detail /Users/secret/catbots.db')));
@@ -182,7 +179,6 @@ describe('BotsHomeScreen', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create new bot' }));
     await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
-    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
     fireEvent.submit(screen.getByRole('button', { name: 'Create draft' }).closest('form')!);
     fireEvent.submit(screen.getByRole('button', { name: /Create draft/ }).closest('form')!);
     expect(createDraft).toHaveBeenCalledTimes(1);
@@ -200,7 +196,6 @@ describe('BotsHomeScreen', () => {
     const onCreated = vi.fn();
     const view = render(<CreateDraftBotDialog api={makeApi({ createDraft: vi.fn().mockReturnValue(createDraft.promise) })} open onOpenChange={vi.fn()} onCreated={onCreated} />);
     await user.type(screen.getByLabelText('Bot name'), 'BTC Flow');
-    await user.type(screen.getByLabelText('Market'), 'BTC-PERP');
     await user.click(screen.getByRole('button', { name: 'Create draft' }));
     view.unmount();
     await act(async () => createDraft.resolve(draftBot));

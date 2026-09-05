@@ -460,6 +460,7 @@ describe('validated IPC handlers', () => {
     await expect(handlers.showMainWindow(localEvent)).resolves.toBeUndefined();
     await expect(handlers.quitApplication(localEvent)).resolves.toBeUndefined();
     await expect(handlers.getRuntimeStatus(localEvent)).resolves.toEqual({ state: 'stopped', activeBots: 0 });
+    await expect(handlers.getDatabaseState(localEvent)).resolves.toEqual({ status: 'ready' });
 
     expect(dependencies.app.showMainWindow).toHaveBeenCalledOnce();
     expect(dependencies.app.quitApplication).toHaveBeenCalledOnce();
@@ -537,10 +538,11 @@ describe('validated IPC handlers', () => {
       'deployments:stop-live',
       'deployments:get-active',
       'runtime:get-status',
+      'runtime:get-database-state',
     ]);
 
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
   });
 
   it('forwards only validated runtime status to live trusted renderer targets and unsubscribes on cleanup', () => {
@@ -617,9 +619,9 @@ describe('validated IPC handlers', () => {
     removeFirst();
 
     expect(firstDependencies.runtime.subscribeStatus).toHaveBeenCalledOnce();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
   });
 
   it('restores the previous owned registration after a replacement failure', () => {
@@ -650,11 +652,11 @@ describe('validated IPC handlers', () => {
     const removeFirst = registerIpcHandlers(firstDependencies);
 
     expect(() => removeFirst()).toThrow('runtime unsubscribe failed');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
 
     const removeSecond = registerIpcHandlers(secondDependencies);
     removeSecond();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
   });
 
   it('replaces a registration whose runtime unsubscriber throws without leaving stale handlers', () => {
@@ -665,9 +667,9 @@ describe('validated IPC handlers', () => {
     registerIpcHandlers(firstDependencies);
 
     const removeReplacement = registerIpcHandlers(createDependencies());
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
     removeReplacement();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
   });
 
   it('rolls back handlers after an invalid runtime unsubscribe return and permits a later registration', () => {
@@ -675,11 +677,11 @@ describe('validated IPC handlers', () => {
     invalidDependencies.runtime.subscribeStatus.mockReturnValueOnce({} as never);
 
     expect(() => registerIpcHandlers(invalidDependencies)).toThrow('Invalid runtime subscription');
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(23);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(24);
 
     const remove = registerIpcHandlers(createDependencies());
     remove();
-    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(46);
+    expect(electronBridge.removeHandler).toHaveBeenCalledTimes(48);
   });
 
   it('rolls back only partially registered owned channels when an external handler blocks registration', () => {
@@ -714,6 +716,9 @@ describe('preload bridge', () => {
     expect(Object.keys(api)).toEqual(['app', 'config', 'bots', 'workbench', 'deployments', 'runtime']);
     expect(JSON.stringify(api)).not.toContain('ipcRenderer');
     expect(JSON.stringify(api)).not.toContain('process');
+    electronBridge.invoke.mockResolvedValueOnce({ status: 'ready' });
+    await expect((api.runtime as { getDatabaseState(): Promise<unknown> }).getDatabaseState()).resolves.toEqual({ status: 'ready' });
+    expect(electronBridge.invoke).toHaveBeenCalledWith('runtime:get-database-state');
   });
 
   it('does not call a listener after it unsubscribes before the initial status resolves', async () => {

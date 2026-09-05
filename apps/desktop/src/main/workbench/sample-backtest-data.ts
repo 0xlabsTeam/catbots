@@ -40,8 +40,11 @@ export function runBundledSampleBacktest(
   });
   const completedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
   const artifactHash = `sha256:${createHash('sha256').update(result.serializedArtifact).digest('hex')}`;
+  const id = (dependencies.idFactory ?? randomUUID)();
+  const realizedPnl = result.trades.reduce((total, trade) => total + Number(trade.realizedPnl ?? '0'), 0).toString();
+  const endingEquity = result.equityCurve.at(-1)?.equity ?? assumptions.startingCapital;
   const summary = BacktestSummarySchema.parse({
-    id: (dependencies.idFactory ?? randomUUID)(),
+    id,
     botId,
     revisionVersion,
     status: result.status,
@@ -49,14 +52,22 @@ export function runBundledSampleBacktest(
     startedAt,
     completedAt,
     assumptions,
-    metrics: result.metrics,
+    metrics: { ...result.metrics, endingEquity, realizedPnl },
+    datasetCoverage: { markets: [market], from: assumptions.from, to: assumptions.to },
+    perMarket: [{
+      market,
+      realizedPnl,
+      tradeCount: result.metrics.tradeCount,
+      winRatePercent: result.metrics.winRatePercent,
+      drawdownContributionPercent: result.metrics.maximumDrawdownPercent,
+    }],
     equityCurve: result.equityCurve,
     trades: toBacktestTrades(result.trades, result.traces),
     warnings: [
       'Bundled sample data is synthetic and is not live market data.',
       ...result.warnings,
     ],
-    traces: result.traces.map(toTraceSummary),
+    traces: result.traces.map((trace) => toTraceSummary(trace, id, market)),
     artifactHash,
   });
   return { summary, artifact: result.serializedArtifact };
@@ -140,7 +151,7 @@ function sampleValues(strategy: StrategyDocument, market: string, observedAt: st
   }]));
 }
 
-function toTraceSummary(trace: readonly AuditEvent[]) {
+function toTraceSummary(trace: readonly AuditEvent[], parentTraceId: string, market: string) {
   const last = trace.at(-1);
   const types = new Set(trace.map((event) => event.type));
   const outcome = types.has('flow.failed') ? 'failed'
@@ -150,6 +161,8 @@ function toTraceSummary(trace: readonly AuditEvent[]) {
           : 'unknown';
   return {
     traceId: trace[0]?.traceId ?? 'unknown-trace',
+    parentTraceId,
+    market,
     outcome,
     occurredAt: trace[0]?.evaluationTime ?? new Date(0).toISOString(),
     summary: last?.type.replaceAll('.', ' ') ?? 'No trace events',

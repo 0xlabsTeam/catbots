@@ -19,19 +19,23 @@ afterEach(() => {
 
 describe('BotRepository', () => {
   it('persists a Draft bot with deterministic timestamps', () => {
-    const bots = new BotRepository(createDatabase(), () => new Date('2026-09-03T12:00:00.000Z'));
+    const database = createDatabase();
+    const bots = new BotRepository(database, () => new Date('2026-09-03T12:00:00.000Z'));
 
-    const created = bots.createDraft({ name: 'BTC Flow', market: 'BTC-PERP' });
+    const created = bots.createDraft({ name: 'BTC Flow', dex: 'hyperliquid' });
 
     expect(created).toMatchObject({
       name: 'BTC Flow',
-      market: 'BTC-PERP',
+      dex: 'hyperliquid',
       status: 'draft',
       createdAt: '2026-09-03T12:00:00.000Z',
       updatedAt: '2026-09-03T12:00:00.000Z',
     });
     expect(created.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(bots.list()).toEqual([created]);
+    expect(database.prepare('SELECT market, dex, legacy_market_hint FROM bots WHERE id = ?').get(created.id)).toEqual({
+      market: '', dex: 'hyperliquid', legacy_market_hint: null,
+    });
   });
 
   it('returns draft bots in creation order', () => {

@@ -5,9 +5,7 @@ import {
   DeploymentSchema,
   type AuditEventView,
   type Deployment,
-  type LegacyDeployment,
 } from '@catbots/contracts';
-import { legacyDeploymentFields } from '../../legacy-contract-compat';
 import type { NormalizedOrderIntent } from '@catbots/execution-core';
 import type { AuditEvent } from '@catbots/strategy-runtime';
 
@@ -45,13 +43,12 @@ export type LiveActionProposal = Readonly<{
 
 type DeploymentRow = Record<string, unknown>;
 type OutboxRow = Record<string, unknown>;
-type LegacyDeploymentInput = Omit<LegacyDeployment, 'recordVersion'> & { recordVersion?: 1 };
-
 export class ExecutionRepository {
   constructor(private readonly database: Database.Database) {}
 
-  createDeployment(input: Deployment | LegacyDeploymentInput): Deployment {
+  createDeployment(input: Deployment): Deployment {
     const deployment = DeploymentSchema.parse(input);
+    if (deployment.recordVersion !== 1) throw new Error('DYNAMIC_MARKET_RUNTIME_NOT_READY');
     const revision = this.database.prepare(`
       SELECT strategy_id, status FROM strategy_revisions
       WHERE bot_id = ? AND version = ?
@@ -59,7 +56,6 @@ export class ExecutionRepository {
     if (revision?.status !== 'approved' || revision.strategy_id !== deployment.strategyId) {
       throw new Error('Deployment requires the matching approved strategy revision');
     }
-    const legacy = legacyDeploymentFields(deployment);
     this.database.prepare(`
       INSERT INTO deployments (
         id, bot_id, strategy_id, strategy_version, mode, venue, network, masked_account,
@@ -71,10 +67,10 @@ export class ExecutionRepository {
       deployment.strategyId,
       deployment.strategyVersion,
       deployment.mode,
-      legacy.venue,
-      legacy.network,
+      deployment.venue,
+      deployment.network,
       deployment.mode === 'live' ? deployment.maskedAccount : null,
-      JSON.stringify(legacy.marketBindings),
+      JSON.stringify(deployment.marketBindings),
       JSON.stringify(deployment.riskLimits),
       deployment.status,
       deployment.createdAt,
@@ -421,6 +417,7 @@ function toDeployment(row: DeploymentRow): Deployment {
     botId: row.bot_id,
     strategyId: row.strategy_id,
     strategyVersion: row.strategy_version,
+    recordVersion: 1,
     mode: row.mode,
     venue: row.venue,
     network: row.network,
