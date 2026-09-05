@@ -45,6 +45,7 @@ export const StrategyV1DocumentSchema = StrategyBaseSchema.extend({
 
 export const StrategyV2DocumentSchema = StrategyBaseSchema.extend({
   schemaVersion: z.literal('2.0'),
+  packageLock: z.array(z.object({ name: z.string().max(120), version: z.string().max(40), integrity: z.string().regex(/^sha256:[a-f0-9]{64}$/) }).strict()).max(100).optional(),
   marketScope: z.object({ type: z.literal('dex_universe') }).strict(),
 }).strict().superRefine((document, context) => {
   for (const [index, node] of document.nodes.entries()) {

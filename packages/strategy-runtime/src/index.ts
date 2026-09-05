@@ -14,3 +14,4 @@ export * from './simulation-clock';
 export * from './simulated-adapter';
 export * from './strategy-schema';
 export * from './triggers';
+export * from './community-nodes';
