@@ -26,6 +26,7 @@ describe('M0 macOS release boundary', () => {
     const packager = forgeConfig.packagerConfig as Record<string, unknown>;
     const maker = forgeConfig.makers?.[0] as { platforms?: string[] } | undefined;
     const appIcon = await readFile(join(rootDirectory, 'apps/desktop/assets/icon.icns'));
+    const appIconSource = await readFile(join(rootDirectory, 'apps/desktop/assets/icon.png'));
     const trayIcon = await readFile(join(rootDirectory, 'apps/desktop/assets/trayTemplate.png'));
 
     expect(packager).toMatchObject({
@@ -37,6 +38,7 @@ describe('M0 macOS release boundary', () => {
     });
     expect(maker?.platforms).toEqual(['darwin']);
     expect(appIcon.byteLength).toBeGreaterThan(1_024);
+    expect(appIconSource.byteLength).toBeGreaterThan(1_024);
     expect(appIcon.equals(trayIcon)).toBe(false);
   });
 

@@ -42,6 +42,13 @@ app.enableSandbox();
 
 void app.whenReady()
   .then(async () => {
+    if (!app.isPackaged && process.platform === 'darwin') {
+      try {
+        app.dock?.setIcon(join(__dirname, '..', '..', 'assets', 'icon.png'));
+      } catch {
+        console.error('Catbots development dock icon unavailable');
+      }
+    }
     startupPhase = 'permission-policy';
     installM0PermissionPolicy(session.defaultSession);
     const e2eRequested = process.env.NODE_ENV === 'test' && process.env.CATBOTS_E2E_DATA_DIR !== undefined;

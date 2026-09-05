@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/desktop/assets/icon.svg" width="112" alt="Catbots logo" />
+  <img src="apps/desktop/assets/icon.png" width="128" alt="Catbots — AI trading bot flow logo" />
 </p>
 
 <h1 align="center">Catbots</h1>
