@@ -247,10 +247,12 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
 
     await restored.getByRole('button', { name: 'Bots' }).click();
     await restored.getByRole('button', { name: 'Create new bot' }).first().click();
-    await restored.getByLabel('Bot name').fill('E2E BTC Draft');
-    await restored.getByLabel('Market').fill('BTC-PERP');
+    await restored.getByLabel('Bot name').fill('E2E Dynamic Draft');
+    await expect(restored.getByRole('combobox', { name: 'DEX' })).toContainText('Hyperliquid');
+    await expect(restored.getByLabel('Market')).toHaveCount(0);
     await restored.getByRole('button', { name: 'Create draft' }).click();
-    await expect(restored.getByText('E2E BTC Draft')).toBeVisible();
+    await expect(restored.getByRole('heading', { name: 'E2E Dynamic Draft' })).toBeVisible();
+    await expect(restored.getByText('Hyperliquid · Dynamic markets')).toBeVisible();
     await expect(restored.getByText('Draft', { exact: true })).toBeVisible();
     await requestConfirmedQuit(running);
     running = undefined;
@@ -259,8 +261,9 @@ test('packaged local workflow persists tested settings and a Draft Bot across re
     logBuffers.push(running.logs);
     const persisted = await running.app.firstWindow();
     await waitForRuntimeReady(running.app);
-    await expect(persisted.getByText('E2E BTC Draft')).toBeVisible();
-    await expect(persisted.getByText('BTC-PERP')).toBeVisible();
+    await expect(persisted.getByText('E2E Dynamic Draft')).toBeVisible();
+    await expect(persisted.getByText('Hyperliquid')).toBeVisible();
+    await expect(persisted.getByText('BTC-PERP')).toHaveCount(0);
     await persisted.getByRole('button', { name: 'Settings' }).click();
     await expect(persisted.getByLabel('Profile name')).toHaveValue('E2E Renamed Profile');
     await expect(persisted.getByLabel('API key')).toHaveValue('');

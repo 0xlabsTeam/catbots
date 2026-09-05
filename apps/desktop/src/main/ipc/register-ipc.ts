@@ -2,13 +2,17 @@ import { ipcMain, webContents, type IpcMainInvokeEvent } from 'electron';
 import {
   CreateDraftBotInputSchema,
   AgentToolActivitySchema,
+  AuditEventTypeSchema,
   ApproveStrategyRevisionInputSchema,
+  BacktestSummarySchema,
+  BotSummarySchema,
   GetTraceInputSchema,
   GetActiveDeploymentInputSchema,
   GetDeploymentInputSchema,
   GetWorkbenchInputSchema,
   LocalSettingsPatchSchema,
   RunWorkbenchBacktestInputSchema,
+  LivePreflightViewSchema,
   PaperDeploymentViewSchema,
   PauseDeploymentInputSchema,
   PrepareLiveInputSchema,
@@ -18,7 +22,10 @@ import {
   RuntimeStatusSchema,
   SendWorkbenchMessageInputSchema,
   StartPaperInputSchema,
+  StrategyRevisionSchema,
   StopDeploymentInputSchema,
+  TraceDetailSchema,
+  WorkbenchStateSchema,
   type AgentToolActivity,
   type BootstrapState,
   type ConnectionTestResult,
@@ -26,6 +33,7 @@ import {
   type LocalConfig,
   type LocalSettingsPatch,
   type RuntimeStatus,
+  type TraceDetail,
 } from '@catbots/contracts';
 import { BotRepository } from '../bots/bot-repository';
 import {
@@ -223,7 +231,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
     listBots: async (event: IpcMainInvokeEvent) => {
       assertSender(event);
       try {
-        return dependencies.botRepository.list();
+        return BotSummarySchema.array().parse(dependencies.botRepository.list());
       } catch {
         throw new IpcRequestError('BOT_LIST_FAILED');
       }
@@ -233,7 +241,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const draft = parseRequest(CreateDraftBotInputSchema, input);
       try {
-        return dependencies.botRepository.createDraft(draft);
+        return BotSummarySchema.parse(dependencies.botRepository.createDraft(draft));
       } catch {
         throw new IpcRequestError('BOT_CREATE_FAILED');
       }
@@ -243,7 +251,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(GetWorkbenchInputSchema, input);
       try {
-        return await dependencies.workbenchService.get(request);
+        return WorkbenchStateSchema.parse(await dependencies.workbenchService.get(request));
       } catch {
         throw new IpcRequestError('WORKBENCH_GET_FAILED');
       }
@@ -253,7 +261,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(SendWorkbenchMessageInputSchema, input);
       try {
-        return await dependencies.workbenchService.sendMessage(request);
+        return WorkbenchStateSchema.parse(await dependencies.workbenchService.sendMessage(request));
       } catch {
         throw new IpcRequestError('WORKBENCH_MESSAGE_FAILED');
       }
@@ -263,7 +271,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(RunWorkbenchBacktestInputSchema, input);
       try {
-        return await dependencies.workbenchService.runBacktest(request);
+        return BacktestSummarySchema.parse(await dependencies.workbenchService.runBacktest(request));
       } catch {
         throw new IpcRequestError('WORKBENCH_BACKTEST_FAILED');
       }
@@ -273,7 +281,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(ApproveStrategyRevisionInputSchema, input);
       try {
-        return await dependencies.workbenchService.approveRevision(request);
+        return StrategyRevisionSchema.parse(await dependencies.workbenchService.approveRevision(request));
       } catch {
         throw new IpcRequestError('WORKBENCH_APPROVAL_FAILED');
       }
@@ -283,7 +291,7 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(GetTraceInputSchema, input);
       try {
-        return await dependencies.workbenchService.getTrace(request);
+        return toRendererSafeTrace(await dependencies.workbenchService.getTrace(request));
       } catch {
         throw new IpcRequestError('WORKBENCH_TRACE_FAILED');
       }
@@ -348,7 +356,9 @@ export function createIpcHandlers(dependencies: IpcHandlerDependencies) {
       assertSender(event);
       const request = parseRequest(PrepareLiveInputSchema, input);
       try {
-        return await dependencies.deploymentService.prepareLive(request, new AbortController().signal);
+        return LivePreflightViewSchema.parse(
+          await dependencies.deploymentService.prepareLive(request, new AbortController().signal),
+        );
       } catch {
         throw new IpcRequestError('LIVE_PREFLIGHT_FAILED');
       }
@@ -585,6 +595,117 @@ function parseRequest<T>(schema: { safeParse(input: unknown): { success: boolean
   const result = schema.safeParse(input);
   if (!result.success) throw new IpcRequestError('INVALID_REQUEST');
   return result.data as T;
+}
+
+function toRendererSafeTrace(candidate: unknown): TraceDetail {
+  const trace = TraceDetailSchema.parse(candidate);
+  return TraceDetailSchema.parse({
+    ...trace,
+    events: trace.events.map((event) => {
+      const type = AuditEventTypeSchema.parse(event.type);
+      return {
+        sequence: event.sequence,
+        type,
+        occurredAt: event.occurredAt,
+        ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+        summary: type.replaceAll('.', ' '),
+        details: toRendererSafeTraceDetails(type, event.details),
+      };
+    }),
+  });
+}
+
+function toRendererSafeTraceDetails(
+  type: string,
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  if (type === 'condition.evaluated') {
+    const result = details.result === true || details.result === false || details.result === 'unknown'
+      ? details.result
+      : undefined;
+    const reason = safeTraceToken(details.reason);
+    const inputs = Array.isArray(details.inputs)
+      ? details.inputs.slice(0, 3).flatMap((candidate) => {
+        const input = record(candidate);
+        const ref = safeTraceToken(input?.ref);
+        const field = safeTraceToken(input?.field);
+        return ref === undefined ? [] : [{ ref, ...(field === undefined ? {} : { field }) }];
+      })
+      : [];
+    return {
+      ...(result === undefined ? {} : { result }),
+      ...(reason === undefined ? {} : { reason }),
+      ...(inputs.length === 0 ? {} : { inputs }),
+    };
+  }
+  if (type === 'action.proposed') {
+    const effect = safeTraceEffect(details.effect);
+    return effect === undefined ? {} : { effect };
+  }
+  if (type === 'risk.approved' || type === 'risk.rejected') {
+    const violatedRuleIds = safeTraceTokenList(details.violatedRuleIds ?? details.riskRuleIds);
+    return violatedRuleIds.length === 0 ? {} : { violatedRuleIds };
+  }
+  return {};
+}
+
+function safeTraceEffect(value: unknown): Record<string, unknown> | undefined {
+  const effect = record(value);
+  const config = record(effect?.config);
+  if (effect === undefined || config === undefined) return undefined;
+  const market = safeTraceToken(effect.market);
+  if (effect.type === 'execution.open_position') {
+    const side = config.side === 'long' || config.side === 'short' ? config.side : undefined;
+    if (side === undefined) return undefined;
+    const size = record(config.size);
+    const sizeValue = finitePositiveNumber(size?.value);
+    const safeSize = (size?.type === 'quote' || size?.type === 'equity_percent') && sizeValue !== undefined
+      ? { type: size.type, value: sizeValue }
+      : undefined;
+    const leverage = finitePositiveNumber(config.leverage);
+    return {
+      type: effect.type,
+      ...(market === undefined ? {} : { market }),
+      config: {
+        side,
+        ...(safeSize === undefined ? {} : { size: safeSize }),
+        ...(leverage === undefined ? {} : { leverage }),
+      },
+    };
+  }
+  if (effect.type === 'execution.close_position') {
+    const side = config.side === 'long' || config.side === 'short' ? config.side : undefined;
+    const percent = finitePositiveNumber(config.percent);
+    if (percent === undefined || percent > 100) return undefined;
+    return {
+      type: effect.type,
+      ...(market === undefined ? {} : { market }),
+      config: { ...(side === undefined ? {} : { side }), percent },
+    };
+  }
+  return undefined;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function safeTraceToken(value: unknown): string | undefined {
+  return typeof value === 'string'
+    && /^[a-z0-9_.:-]{1,80}$/i.test(value)
+    && !/authorization|api[-_]?key|private[-_]?key|secret|password|credential/i.test(value)
+    ? value
+    : undefined;
+}
+
+function safeTraceTokenList(value: unknown): string[] {
+  return Array.isArray(value) ? value.slice(0, 3).flatMap((item) => safeTraceToken(item) ?? []) : [];
+}
+
+function finitePositiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function toSafeConfigIssue(issue: { path: string; message: string }): { path: string; message: string } {

@@ -283,7 +283,8 @@ describe('App', () => {
     render(<App api={makeDesktopApi({ state: 'ready', config: redactedConfig })} preview />);
 
     expect(await screen.findByRole('heading', { name: 'Bots' })).toBeTruthy();
-    expect(screen.getByText('Web preview · simulated API · temporary data')).toBeTruthy();
+    expect(screen.getByText('Web preview · simulated API · simulated data')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('temporary');
   });
 
   it('renders a ready profile in the shell and keeps one main landmark when Settings is selected', async () => {

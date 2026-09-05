@@ -3,8 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BacktestSummarySchema,
+  BotSummarySchema,
   LocalConfigSchema,
   REDACTED_SECRET,
+  TraceDetailSchema,
+  WorkbenchStateSchema,
   type AgentToolActivity,
   type Deployment,
   type LivePreflightView,
@@ -144,6 +148,75 @@ const liveDeployment: Deployment = {
   recordVersion: 2, dex: 'hyperliquid', mode: 'live', executionVenue: 'hyperliquid', network: 'testnet', maskedAccount: '0x0123…4567', marketAccess: { mode: 'all_active_perpetuals' },
   riskLimits, status: 'running', createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z',
 };
+const botSummary = BotSummarySchema.parse({
+  id: botId,
+  name: 'DEX bot',
+  dex: 'hyperliquid',
+  status: 'draft',
+  createdAt: '2026-09-05T00:00:00.000Z',
+  updatedAt: '2026-09-05T00:00:00.000Z',
+});
+const strategyRevision = {
+  botId,
+  strategyId: 'eth-rsi',
+  version: 1,
+  name: 'ETH RSI',
+  schemaVersion: '2.0' as const,
+  marketScope: { type: 'dex_universe' as const },
+  status: 'draft' as const,
+  createdAt: '2026-09-05T00:00:00.000Z',
+  approvedAt: null,
+  nodes: [],
+  edges: [],
+};
+const backtestSummary = BacktestSummarySchema.parse({
+  id: '048f3f75-89ab-7def-8123-456789abcdef',
+  botId,
+  revisionVersion: 1,
+  status: 'completed',
+  dataSource: 'Bundled sample data',
+  startedAt: '2026-09-05T00:00:00.000Z',
+  completedAt: '2026-09-05T00:01:00.000Z',
+  assumptions: {
+    from: '2026-08-01T00:00:00.000Z',
+    to: '2026-09-01T00:00:00.000Z',
+    startingCapital: '10000',
+    feeRateBps: 3.5,
+    slippageBps: 1,
+  },
+  metrics: {
+    returnPercent: 2.5,
+    maximumDrawdownPercent: 1,
+    sharpeLike: 1.2,
+    winRatePercent: 50,
+    tradeCount: 2,
+    fees: '5',
+    funding: '0',
+    endingEquity: '10250',
+    realizedPnl: '250',
+  },
+  datasetCoverage: {
+    markets: ['BTC-PERP', 'ETH-PERP'],
+    from: '2026-08-01T00:00:00.000Z',
+    to: '2026-09-01T00:00:00.000Z',
+  },
+  perMarket: [
+    { market: 'BTC-PERP', realizedPnl: '100', tradeCount: 1, winRatePercent: 100, drawdownContributionPercent: 0.4 },
+    { market: 'ETH-PERP', realizedPnl: '150', tradeCount: 1, winRatePercent: 100, drawdownContributionPercent: 0.6 },
+  ],
+  equityCurve: [],
+  trades: [],
+  warnings: ['Bundled sample data is synthetic and is not live market data.'],
+  traces: [],
+  artifactHash: `sha256:${'a'.repeat(64)}`,
+});
+const workbenchState = WorkbenchStateSchema.parse({
+  bot: botSummary,
+  currentRevision: strategyRevision,
+  revisions: [{ version: 1, status: 'draft', createdAt: strategyRevision.createdAt, approvedAt: null }],
+  messages: [],
+  backtests: [],
+});
 
 function createDependencies() {
   return {
@@ -160,14 +233,20 @@ function createDependencies() {
     },
     botRepository: {
       list: vi.fn(() => []),
-      createDraft: vi.fn(),
+      createDraft: vi.fn(() => botSummary),
     },
     workbenchService: {
-      get: vi.fn(),
-      sendMessage: vi.fn(),
-      runBacktest: vi.fn(),
-      approveRevision: vi.fn(),
-      getTrace: vi.fn(),
+      get: vi.fn(async () => workbenchState),
+      sendMessage: vi.fn(async () => workbenchState),
+      runBacktest: vi.fn(async () => backtestSummary),
+      approveRevision: vi.fn(async () => strategyRevision),
+      getTrace: vi.fn(async () => TraceDetailSchema.parse({
+        traceId: 'child:eth',
+        parentTraceId: 'parent:interval:universe:bundled%3Aeth-listed',
+        market: 'ETH-PERP',
+        outcome: 'executed',
+        events: [],
+      })),
       subscribeActivity: vi.fn((_listener: (activity: AgentToolActivity) => void) => () => undefined),
     },
     deploymentService: {
@@ -228,13 +307,33 @@ describe('validated IPC handlers', () => {
     expect(dependencies.botRepository.list).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed draft-bot input before repository access', async () => {
+  it('accepts the exact DEX draft contract and rejects legacy market-bound input before repository access', async () => {
     const dependencies = createDependencies();
     const handlers = createIpcHandlers(dependencies);
 
-    await expect(handlers.createDraftBot(localEvent, { name: '', market: '' }))
+    await expect(handlers.createDraftBot(localEvent, { name: ' DEX bot ', dex: 'hyperliquid' }))
+      .resolves.toEqual(botSummary);
+    expect(dependencies.botRepository.createDraft).toHaveBeenCalledExactlyOnceWith({ name: 'DEX bot', dex: 'hyperliquid' });
+
+    await expect(handlers.createDraftBot(localEvent, { name: 'Old bot', market: 'ETH-PERP' }))
       .rejects.toThrow('INVALID_REQUEST');
-    expect(dependencies.botRepository.createDraft).not.toHaveBeenCalled();
+    expect(dependencies.botRepository.createDraft).toHaveBeenCalledOnce();
+  });
+
+  it('returns only validated renderer-safe Bot DTOs', async () => {
+    const dependencies = createDependencies();
+    const secret = 'provider-secret-must-not-cross-ipc';
+    dependencies.botRepository.list.mockReturnValueOnce([{
+      ...botSummary,
+      market: 'ETH-PERP',
+      rawProvider: { authorization: secret },
+    }] as never);
+    const handlers = createIpcHandlers(dependencies);
+
+    const error = await handlers.listBots(localEvent).catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ code: 'BOT_LIST_FAILED' });
+    expect(String(error)).not.toContain(secret);
   });
 
   it('validates every workbench request before service access', async () => {
@@ -262,6 +361,89 @@ describe('validated IPC handlers', () => {
     expect(dependencies.workbenchService.get).toHaveBeenCalledWith({ botId });
     expect(dependencies.workbenchService.sendMessage).toHaveBeenCalledWith({ botId, message: 'Build a momentum bot' });
     expect(dependencies.workbenchService.approveRevision).toHaveBeenCalledWith({ botId, version: 1 });
+  });
+
+  it('validates the dynamic Backtest request and renderer response at the Main boundary', async () => {
+    const dependencies = createDependencies();
+    const handlers = createIpcHandlers(dependencies);
+    const request = {
+      botId,
+      revisionVersion: 1,
+      marketUniverse: { mode: 'all_available' as const },
+      assumptions: backtestSummary.assumptions,
+    };
+
+    await expect(handlers.runWorkbenchBacktest(localEvent, request)).resolves.toEqual(backtestSummary);
+    expect(dependencies.workbenchService.runBacktest).toHaveBeenCalledExactlyOnceWith(request);
+    await expect(handlers.runWorkbenchBacktest(localEvent, {
+      ...request,
+      market: 'ETH-PERP',
+    })).rejects.toThrow('INVALID_REQUEST');
+
+    const secret = 'raw-universe-secret';
+    dependencies.workbenchService.runBacktest.mockResolvedValueOnce({
+      ...backtestSummary,
+      rawUniverse: { markets: ['ETH-PERP'], providerError: secret },
+    } as never);
+    const error = await handlers.runWorkbenchBacktest(localEvent, request).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ code: 'WORKBENCH_BACKTEST_FAILED' });
+    expect(String(error)).not.toContain(secret);
+  });
+
+  it('projects trace evidence to a semantic allowlist before it reaches the renderer', async () => {
+    const dependencies = createDependencies();
+    dependencies.workbenchService.getTrace.mockResolvedValueOnce(TraceDetailSchema.parse({
+      traceId: 'child:eth',
+      parentTraceId: 'parent:interval:universe:bundled%3Aeth-listed',
+      market: 'ETH-PERP',
+      outcome: 'rejected',
+      events: [
+        {
+          sequence: 1,
+          type: 'condition.evaluated',
+          occurredAt: '2026-09-05T00:00:00.000Z',
+          nodeId: 'eth-entry',
+          summary: 'provider-secret-error',
+          details: {
+            result: 'unknown',
+            reason: 'data.stale',
+            inputs: [{ ref: 'market.price', field: 'mark', rawPayload: 'provider-secret-payload' }],
+            universe: { authorization: 'provider-secret-token' },
+          },
+        },
+        {
+          sequence: 2,
+          type: 'risk.rejected',
+          occurredAt: '2026-09-05T00:00:01.000Z',
+          nodeId: 'open-long',
+          summary: 'raw provider error',
+          details: { violatedRuleIds: ['max-total-exposure-usd'], error: 'provider-secret-error' },
+        },
+      ],
+    }));
+    const handlers = createIpcHandlers(dependencies);
+
+    const trace = await handlers.getWorkbenchTrace(localEvent, { botId, traceId: 'child:eth' });
+
+    expect(trace.events).toEqual([
+      {
+        sequence: 1,
+        type: 'condition.evaluated',
+        occurredAt: '2026-09-05T00:00:00.000Z',
+        nodeId: 'eth-entry',
+        summary: 'condition evaluated',
+        details: { result: 'unknown', reason: 'data.stale', inputs: [{ ref: 'market.price', field: 'mark' }] },
+      },
+      {
+        sequence: 2,
+        type: 'risk.rejected',
+        occurredAt: '2026-09-05T00:00:01.000Z',
+        nodeId: 'open-long',
+        summary: 'risk rejected',
+        details: { violatedRuleIds: ['max-total-exposure-usd'] },
+      },
+    ]);
+    expect(JSON.stringify(trace)).not.toContain('provider-secret');
   });
 
   it('validates Paper deployment requests before service access', async () => {

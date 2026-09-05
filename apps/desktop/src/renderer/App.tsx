@@ -57,7 +57,7 @@ export default function App({ api, preview = false }: AppProps) {
     </AppShell>
   );
 
-  return <>{preview ? <aside className="web-preview-notice" role="status"><Badge variant="info">Web preview · simulated API · temporary data</Badge></aside> : null}{screen}</>;
+  return <>{preview ? <aside className="web-preview-notice" role="status"><Badge variant="info">Web preview · simulated API · simulated data</Badge></aside> : null}{screen}</>;
 }
 
 function PlaceholderScreen({ title, description }: { title: string; description: string }) {

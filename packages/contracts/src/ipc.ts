@@ -1,4 +1,4 @@
-import type { BotSummary } from './bots';
+import type { BotSummary, CreateDraftBotInput } from './bots';
 import type { LocalSettingsPatch, RedactedLocalConfig } from './config';
 import type {
   Deployment,
@@ -62,7 +62,7 @@ export interface CatbotsDesktopApi {
   };
   bots: {
     list(): Promise<BotSummary[]>;
-    createDraft(input: unknown): Promise<BotSummary>;
+    createDraft(input: CreateDraftBotInput): Promise<BotSummary>;
   };
   workbench: {
     get(input: GetWorkbenchInput): Promise<WorkbenchState>;

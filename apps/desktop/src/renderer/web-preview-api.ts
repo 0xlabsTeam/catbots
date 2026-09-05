@@ -15,6 +15,7 @@ import {
   StartPaperInputSchema,
   StopDeploymentInputSchema,
   type AgentToolActivity,
+  type BacktestMarketUniverse,
   type BacktestSummary,
   type BotSummary,
   type CatbotsDesktopApi,
@@ -153,9 +154,14 @@ export function createWebPreviewApi(): CatbotsDesktopApi {
         if (workbench === undefined || !workbench.revisions.some(({ version }) => version === request.revisionVersion)) throw new Error('Preview revision not found');
         const requestId = crypto.randomUUID();
         emit({ botId: request.botId, requestId, phase: 'backtest_progress', tool: 'backtest_strategy', message: 'Backtest is running.', progress: 0.5 });
-        const result = previewBacktest(request.botId, request.revisionVersion, request.assumptions);
+        const result = previewBacktest(
+          request.botId,
+          request.revisionVersion,
+          request.marketUniverse,
+          request.assumptions,
+        );
         workbench.backtests.unshift(result.summary);
-        workbench.traces.set(result.trace.traceId, result.trace);
+        for (const trace of result.traces) workbench.traces.set(trace.traceId, trace);
         emit({ botId: request.botId, requestId, phase: 'completed', tool: 'backtest_strategy', message: 'Backtest completed.', progress: 1 });
         return structuredClone(result.summary);
       },
@@ -306,47 +312,90 @@ function updatePreviewDeployment(
 function previewRevision(botId: string, version: number, createdAt: string): StrategyRevision {
   return {
     botId,
-    strategyId: 'preview-etf-rsi',
+    strategyId: 'preview-eth-rsi',
     version,
-    name: 'BTC ETF Flow + RSI',
+    name: 'ETH RSI',
     schemaVersion: '2.0',
     marketScope: { type: 'dex_universe' },
     status: 'draft',
     createdAt,
     approvedAt: null,
     nodes: [
-      { id: 'hourly', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' },
-      { id: 'etf-positive', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'BTC ETF daily flow > 0' },
-      { id: 'rsi-low', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'RSI 14 < 30' },
+      { id: 'entry-hourly', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' },
+      { id: 'entry-eth', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'Market symbol = ETH-PERP' },
+      { id: 'rsi-low', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'RSI 14 < 20' },
       { id: 'entry-rules', kind: 'condition', type: 'combine.all', version: 1, title: 'ALL', summary: 'All conditions must pass' },
-      { id: 'open-long', kind: 'action', type: 'execution.open_position', version: 1, title: 'Open position', summary: 'Open BTC-PERP long at 10% equity' },
+      { id: 'open-long', kind: 'action', type: 'execution.open_position', version: 1, title: 'Open position', summary: 'Open current-market long at 10% equity' },
+      { id: 'exit-hourly', kind: 'trigger', type: 'trigger.interval', version: 1, title: 'Interval', summary: 'Every 1h' },
+      { id: 'exit-eth', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'Market symbol = ETH-PERP' },
+      { id: 'rsi-high', kind: 'condition', type: 'predicate.compare', version: 1, title: 'Compare', summary: 'RSI 14 > 80' },
+      { id: 'exit-rules', kind: 'condition', type: 'combine.all', version: 1, title: 'ALL', summary: 'All conditions must pass' },
+      { id: 'close-long', kind: 'action', type: 'execution.close_position', version: 1, title: 'Close position', summary: 'Close current-market long' },
     ],
     edges: [
-      { id: 'e1', source: 'hourly', sourcePort: 'activation', target: 'etf-positive', targetPort: 'activation' },
-      { id: 'e2', source: 'hourly', sourcePort: 'activation', target: 'rsi-low', targetPort: 'activation' },
-      { id: 'e3', source: 'etf-positive', sourcePort: 'result', target: 'entry-rules', targetPort: 'conditions' },
+      { id: 'e1', source: 'entry-hourly', sourcePort: 'activation', target: 'entry-eth', targetPort: 'activation' },
+      { id: 'e2', source: 'entry-hourly', sourcePort: 'activation', target: 'rsi-low', targetPort: 'activation' },
+      { id: 'e3', source: 'entry-eth', sourcePort: 'result', target: 'entry-rules', targetPort: 'conditions' },
       { id: 'e4', source: 'rsi-low', sourcePort: 'result', target: 'entry-rules', targetPort: 'conditions' },
       { id: 'e5', source: 'entry-rules', sourcePort: 'result', target: 'open-long', targetPort: 'condition' },
+      { id: 'e6', source: 'exit-hourly', sourcePort: 'activation', target: 'exit-eth', targetPort: 'activation' },
+      { id: 'e7', source: 'exit-hourly', sourcePort: 'activation', target: 'rsi-high', targetPort: 'activation' },
+      { id: 'e8', source: 'exit-eth', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e9', source: 'rsi-high', sourcePort: 'result', target: 'exit-rules', targetPort: 'conditions' },
+      { id: 'e10', source: 'exit-rules', sourcePort: 'result', target: 'close-long', targetPort: 'condition' },
     ],
   };
 }
 
-function previewBacktest(botId: string, revisionVersion: number, assumptions: BacktestSummary['assumptions']): { summary: BacktestSummary; trace: TraceDetail } {
+function previewBacktest(
+  botId: string,
+  revisionVersion: number,
+  marketUniverse: BacktestMarketUniverse,
+  assumptions: BacktestSummary['assumptions'],
+): { summary: BacktestSummary; traces: TraceDetail[] } {
   const startedAt = new Date().toISOString();
-  const traceId = `preview-flow-v${revisionVersion}`;
-  const trace: TraceDetail = {
-    traceId,
-    parentTraceId: `preview-run-v${revisionVersion}`,
-    market: 'BTC-PERP',
-    outcome: 'executed',
-    events: [
-      { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'hourly', summary: 'hourly trigger received', details: {} },
-      { sequence: 2, type: 'condition.evaluated', occurredAt: assumptions.from, nodeId: 'entry-rules', summary: 'all entry conditions passed', details: { result: true } },
-      { sequence: 3, type: 'flow.completed', occurredAt: assumptions.from, nodeId: 'open-long', summary: 'sample order flow completed', details: { mode: 'backtest' } },
-    ],
-  };
+  const datasetMarkets = ['BTC-PERP', 'ETH-PERP'] as const;
+  const selectedMarkets = marketUniverse.mode === 'all_available'
+    ? [...datasetMarkets]
+    : marketUniverse.markets;
+  if (selectedMarkets.some((market) => !datasetMarkets.includes(market as typeof datasetMarkets[number]))) {
+    throw new Error('Preview Backtest dataset does not cover the requested market');
+  }
+  const parentTraceId = `preview:strategy:eth-rsi:v${revisionVersion}:trigger:interval:${encodeURIComponent(assumptions.from)}:dex:hyperliquid:universe:${encodeURIComponent('bundled:eth-listed')}`;
+  const traces: TraceDetail[] = ([
+    {
+      traceId: `preview-flow-v${revisionVersion}-btc`,
+      parentTraceId,
+      market: 'BTC-PERP',
+      outcome: 'skipped',
+      events: [
+        { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'entry-hourly', summary: 'trigger received', details: {} },
+        { sequence: 2, type: 'condition.evaluated', occurredAt: assumptions.from, nodeId: 'entry-eth', summary: 'market symbol condition did not pass', details: { result: false } },
+        { sequence: 3, type: 'flow.completed', occurredAt: assumptions.from, summary: 'flow skipped', details: {} },
+      ],
+    },
+    {
+      traceId: `preview-flow-v${revisionVersion}-eth`,
+      parentTraceId,
+      market: 'ETH-PERP',
+      outcome: 'executed',
+      events: [
+        { sequence: 1, type: 'trigger.received', occurredAt: assumptions.from, nodeId: 'entry-hourly', summary: 'trigger received', details: {} },
+        { sequence: 2, type: 'condition.evaluated', occurredAt: assumptions.from, nodeId: 'entry-rules', summary: 'ETH entry conditions passed', details: { result: true, inputs: [{ ref: 'market.symbol' }, { ref: 'indicator.rsi', field: '14' }] } },
+        { sequence: 3, type: 'flow.completed', occurredAt: assumptions.from, nodeId: 'open-long', summary: 'sample ETH order flow completed', details: {} },
+      ],
+    },
+  ] satisfies TraceDetail[]).filter(({ market }) => selectedMarkets.includes(market));
+  const hasEth = selectedMarkets.includes('ETH-PERP');
+  const performance = hasEth
+    ? { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' }
+    : { returnPercent: 0, maximumDrawdownPercent: 0, sharpeLike: 0, winRatePercent: 0, tradeCount: 0, fees: '0', funding: '0', endingEquity: assumptions.startingCapital, realizedPnl: '0' };
+  const marketPerformance = [
+    { market: 'BTC-PERP', realizedPnl: '0', tradeCount: 0, winRatePercent: 0, drawdownContributionPercent: 0 },
+    { market: 'ETH-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 },
+  ].filter(({ market }) => selectedMarkets.includes(market));
   return {
-    trace,
+    traces,
     summary: {
       id: crypto.randomUUID(),
       botId,
@@ -356,16 +405,23 @@ function previewBacktest(botId: string, revisionVersion: number, assumptions: Ba
       startedAt,
       completedAt: new Date().toISOString(),
       assumptions,
-      metrics: { returnPercent: 4.2, maximumDrawdownPercent: 1.1, sharpeLike: 1.4, winRatePercent: 60, tradeCount: 5, fees: '12.34', funding: '-1.25', endingEquity: '10420', realizedPnl: '420' },
-      datasetCoverage: { markets: ['BTC-PERP'], from: assumptions.from, to: assumptions.to },
-      perMarket: [{ market: 'BTC-PERP', realizedPnl: '420', tradeCount: 5, winRatePercent: 60, drawdownContributionPercent: 1.1 }],
+      metrics: performance,
+      datasetCoverage: { markets: [...datasetMarkets], from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+      perMarket: marketPerformance,
       equityCurve: [
         { timestamp: assumptions.from, equity: assumptions.startingCapital },
-        { timestamp: assumptions.to, equity: String(Number(assumptions.startingCapital) * 1.042) },
+        { timestamp: assumptions.to, equity: hasEth ? String(Number(assumptions.startingCapital) * 1.042) : assumptions.startingCapital },
       ],
       trades: [],
       warnings: ['Bundled sample data is synthetic and is not live market data.'],
-      traces: [{ traceId, parentTraceId: `preview-run-v${revisionVersion}`, market: 'BTC-PERP', outcome: 'executed', occurredAt: assumptions.from, summary: 'sample order flow completed' }],
+      traces: traces.map(({ traceId, parentTraceId: parentId, market, outcome, events }) => ({
+        traceId,
+        parentTraceId: parentId,
+        market,
+        outcome,
+        occurredAt: assumptions.from,
+        summary: events.at(-1)?.summary ?? 'flow completed',
+      })),
       artifactHash: `sha256:${'b'.repeat(64)}`,
     },
   };

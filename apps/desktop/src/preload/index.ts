@@ -21,11 +21,11 @@ const catbots: CatbotsDesktopApi = deepFreeze({
   config: {
     getBootstrapState: () => ipcRenderer.invoke('config:get-bootstrap-state'),
     patchSettings: (input) => ipcRenderer.invoke('config:patch-settings', input),
-    testLlmConnection: (input: unknown) => ipcRenderer.invoke('config:test-llm', input),
+    testLlmConnection: (input) => ipcRenderer.invoke('config:test-llm', input),
   },
   bots: {
     list: () => ipcRenderer.invoke('bots:list'),
-    createDraft: (input: unknown) => ipcRenderer.invoke('bots:create-draft', input),
+    createDraft: (input) => ipcRenderer.invoke('bots:create-draft', input),
   },
   workbench: {
     get: (input) => ipcRenderer.invoke('workbench:get', input),
