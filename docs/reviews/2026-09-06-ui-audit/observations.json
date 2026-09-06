@@ -1,0 +1,1035 @@
+{
+  "pages": [
+    {
+      "name": "01-bots",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nBots\nBrowser · Local backend\nBots\n\nTurn a trading idea into a strategy you can inspect and test.\n\nCreate new bot\nAll statuses\n3 of 3 bots\nName\tDEX\tStatus\tUpdated\tPnL\tDrawdown\n\nManual ETH RSI\n\tHyperliquid\t\nDraft\tUpdated Sep 5, 2026, 12:51 PM UTC\tPnL unavailable\tDrawdown unavailable\n\nETH RSI + Funding Demo\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 3:35 AM UTC\tPnL unavailable\tDrawdown unavailable\n\ntest\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 4:05 AM UTC\tPnL unavailable\tDrawdown unavailable",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Create new bot",
+            "width": 145,
+            "height": 36
+          },
+          {
+            "label": "Filter by status",
+            "width": 121,
+            "height": 36
+          },
+          {
+            "label": "Manual ETH RSI",
+            "width": 107,
+            "height": 36
+          },
+          {
+            "label": "ETH RSI + Funding Demo",
+            "width": 168,
+            "height": 36
+          },
+          {
+            "label": "test",
+            "width": 26,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "02-bot-search-empty",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nBots\nBrowser · Local backend\nBots\n\nTurn a trading idea into a strategy you can inspect and test.\n\nCreate new bot\nAll statuses\n0 of 3 bots\nNo matching bots\n\nTry another name or status.\n\nClear filters",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Create new bot",
+            "width": 145,
+            "height": 36
+          },
+          {
+            "label": "Filter by status",
+            "width": 121,
+            "height": 36
+          },
+          {
+            "label": "Clear filters",
+            "width": 100,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "03-create-bot",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nBots\nBrowser · Local backend\nBots\n\nTurn a trading idea into a strategy you can inspect and test.\n\nCreate new bot\nAll statuses\n3 of 3 bots\nName\tDEX\tStatus\tUpdated\tPnL\tDrawdown\n\nManual ETH RSI\n\tHyperliquid\t\nDraft\tUpdated Sep 5, 2026, 12:51 PM UTC\tPnL unavailable\tDrawdown unavailable\n\nETH RSI + Funding Demo\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 3:35 AM UTC\tPnL unavailable\tDrawdown unavailable\n\ntest\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 4:05 AM UTC\tPnL unavailable\tDrawdown unavailable\nCreate a local draft\n\nCreate a strategy workspace for Hyperliquid perpetual markets.\n\nBot name\nDEX\nHyperliquid\nCancel\nCreate draft",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Create new bot",
+            "width": 145,
+            "height": 36
+          },
+          {
+            "label": "Filter by status",
+            "width": 121,
+            "height": 36
+          },
+          {
+            "label": "Manual ETH RSI",
+            "width": 107,
+            "height": 36
+          },
+          {
+            "label": "ETH RSI + Funding Demo",
+            "width": 168,
+            "height": 36
+          },
+          {
+            "label": "test",
+            "width": 26,
+            "height": 36
+          },
+          {
+            "label": "DEX",
+            "width": 120,
+            "height": 36
+          },
+          {
+            "label": "Cancel",
+            "width": 69,
+            "height": 36
+          },
+          {
+            "label": "Create draft",
+            "width": 104,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "04-settings",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nSettings\nBrowser · Local backend\nSettings\n\nUpdate the local profile and AI provider used by this Catbots installation.\n\nAI providers\n\nConnect a subscription or API key, then choose the model for chat.\n\nActive openai-codex · gpt-5.6-sol\n\nSubscription provider\nOpenAI Codex\n\nConnect your ChatGPT Plus/Pro account through Codex sign-in.\n\nSign in again\nSign out\nChat model\nChoose a model\nUse for chat\nRefresh models\nUse compatible API settings instead\n\nCredentials are encrypted in this Catbots profile and shared by its web and desktop interfaces.\n\nAI PROVIDER\n\nProvider connection\n\nA successful connection test is required before these provider values can be saved.\n\nProfile name\nAnonymous telemetry\n(optional)\nProvider\nopenai-compatible\nBase URL\n\nOpenAI-compatible root URLs use /v1 automatically. HTTP is allowed only for localhost, 127.0.0.1, or ::1.\n\nAPI key\n\nLeave blank to use the stored key. A replacement stays only in this form’s memory until save.\n\nStored key: ••••••••\n\nModel\nReasoning effort\nauto\n\nLIVE EXECUTION\n\nHyperliquid testnet\n\nOptional. Use a dedicated Agent/API Wallet. Mainnet is disabled.\n\nEnable Hyperliquid testnet\n(optional)\nTest connection\nSave settings\n\nYour API key is stored locally and sent only to your AI provider.\n\nHow is my key handled?",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Subscription provider",
+            "width": 1088,
+            "height": 36
+          },
+          {
+            "label": "Sign in again",
+            "width": 108,
+            "height": 36
+          },
+          {
+            "label": "Sign out",
+            "width": 79,
+            "height": 36
+          },
+          {
+            "label": "Chat model",
+            "width": 1088,
+            "height": 36
+          },
+          {
+            "label": "Use for chat",
+            "width": 105,
+            "height": 36
+          },
+          {
+            "label": "Refresh models",
+            "width": 127,
+            "height": 36
+          },
+          {
+            "label": "Use compatible API settings instead",
+            "width": 262,
+            "height": 36
+          },
+          {
+            "label": "Anonymous telemetry",
+            "width": 36,
+            "height": 18
+          },
+          {
+            "label": "Provider",
+            "width": 167,
+            "height": 36
+          },
+          {
+            "label": "Reasoning effort",
+            "width": 75,
+            "height": 36
+          },
+          {
+            "label": "Enable Hyperliquid testnet",
+            "width": 36,
+            "height": 18
+          },
+          {
+            "label": "Test connection",
+            "width": 129,
+            "height": 36
+          },
+          {
+            "label": "Save settings",
+            "width": 113,
+            "height": 36
+          },
+          {
+            "label": "How is my key handled?",
+            "width": 154,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "05-data",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nData\nBrowser · Local backend\n\nLOCAL WORKSPACE\n\nData\n\nInstalled indicators and local data products will appear here in a later milestone.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          }
+        ]
+      }
+    },
+    {
+      "name": "06-activity",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nActivity\nBrowser · Local backend\n\nLOCAL WORKSPACE\n\nActivity\n\nLocal alerts and execution traces will appear here in a later milestone.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          }
+        ]
+      }
+    },
+    {
+      "name": "07-nodes",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nNodes\nBrowser · Local backend\nNodes\n\nInstall reusable community subflows. Installed nodes become available to the strategy assistant.\n\nOpen flow editor\nRuntime node packages\n\nTyped dataflow engine · Simulation only. These nodes are not available for Paper or Live deployment yet.\n\nSimulate DCA\nSimulate GRID\nSimulate Smart Order\n@catbots/nodes-trigger v0.1.0\n\nEvaluation tick · trigger · No input → event, flow\n\n@catbots/nodes-data v0.1.0\n\nClosed candles · data · event → candles\n\nMarket price · data · No input → number\n\nAccount equity · data · No input → number\n\n@catbots/nodes-indicator v0.1.0\n\nRSI · indicator · candles → number\n\nEMA · indicator · candles → number\n\nSMA · indicator · candles → number\n\nATR · indicator · candles → number\n\n@catbots/nodes-process v0.1.0\n\nNumber · process · No input → number\n\nCalculate · process · number, number → number\n\n@catbots/nodes-condition v0.1.0\n\nCompare values · condition · number, number → condition\n\nCombine conditions · condition · condition, condition → condition\n\nBranch · condition · flow, condition → flow, flow\n\n@catbots/nodes-strategy v0.1.0\n\nDCA deal · strategy · condition → orders, json\n\nGrid strategy · strategy · condition → orders, json\n\nSmart order · strategy · condition → orders, json\n\n@catbots/nodes-risk v0.1.0\n\nSize from stop loss · risk · number, number, number → number\n\nTrailing exit · risk · number, number → condition, number\n\n@catbots/nodes-action v0.1.0\n\nPropose order · action · condition, number → orders\n\nPropose order on flow · action · flow, number → orders\n\n@catbots/nodes-output v0.1.0\n\nInspect value · output · number → number\n\nInspect condition · output · condition → condition\n\nDiscover\n\nStarter package · Catbots Funding Filter\n\nBuilds on the built-in funding predicate. Runs on the same market snapshots as your other nodes.\n\nInstall Funding Filter\nInspect manifest\n\nCommunity publishing starts with portable JSON packages. Public registry discovery is not connected yet.\n\nInstall a package\nPackage manifest JSON\nValidate and install\n\nDeclarative subflows only. No JavaScript, installation scripts or custom UI is executed.\n\nInstalled & archived\n@catbots/funding-filter\n1.0.0 · Enabled\n\nLicense: MIT\n\nsha256:3ecf4d7e51381d0481edb055b35fb1f7e24afde1b33cb3227f88618d54cc2332\n\nDisable for new drafts\n\nSaved revisions keep their expanded graph. Enabling another version affects new drafts only.\n\nFunding filter\n\nMatch markets whose funding rate is below the configured threshold. Uses the host market funding snapshot.\n\ncondition · catbots.funding_filter · definition v1\n\nFunding threshold\nCopy instruction for chat",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Open flow editor",
+            "width": 133,
+            "height": 36
+          },
+          {
+            "label": "Simulate DCA",
+            "width": 114,
+            "height": 36
+          },
+          {
+            "label": "Simulate GRID",
+            "width": 119,
+            "height": 36
+          },
+          {
+            "label": "Simulate Smart Order",
+            "width": 167,
+            "height": 36
+          },
+          {
+            "label": "Install Funding Filter",
+            "width": 158,
+            "height": 36
+          },
+          {
+            "label": "Inspect manifest",
+            "width": 134,
+            "height": 36
+          },
+          {
+            "label": "Validate and install",
+            "width": 148,
+            "height": 36
+          },
+          {
+            "label": "Disable for new drafts",
+            "width": 169,
+            "height": 36
+          },
+          {
+            "label": "Copy instruction for chat",
+            "width": 188,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "08-flow-editor",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nNodes\nBrowser · Local backend\nClose flow editor\nFlow programming\nFit flow\n+\n−\n100%\nAuto layout\nSave draft\nRun with market data\n\nFlow wires activate nodes. Dashed Data wires carry values. Drag between matching ports, or connect them in the inspector. Drafts are stored in this browser.\n\nMarket\n\nHyperliquid mainnet · closed candles and mark price · account equity unavailable. Fresh manual state; no orders sent.\n\nFind a node\nTrigger\nAdd Evaluation tick\nData\nAdd Closed candles\nAdd Market price\nAdd Account equity\nIndicator\nAdd RSI\nAdd EMA\nAdd SMA\nAdd ATR\nProcess\nAdd Number\nAdd Calculate\nCondition\nAdd Compare values\nAdd Combine conditions\nAdd Branch\nStrategy\nAdd DCA deal\nAdd Grid strategy\nAdd Smart order\nRisk\nAdd Size from stop loss\nAdd Trailing exit\nAction\nAdd Propose order\nAdd Propose order on flow\nOutput\nAdd Inspect value\nAdd Inspect condition\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 5m\n\ntick\nevent\ncandles\ncandles\nIndicator\nRSI\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nProcess\nNumber\n\nvalue: 30\n\nvalue\nnumber\nCondition\nCompare values\n\noperator: lt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nOutput\nInspect value\n\nInspect connected value\n\nvalue\nnumber\nvalue\nnumber\nData\nMarket price\n\nReads snapshot data\n\nvalue\nnumber\nData\nAccount equity\n\nReads snapshot data\n\nvalue\nnumber\nProcess\nNumber\n\nvalue: 98\n\nvalue\nnumber\nRisk\nSize from stop loss\n\nrisk Percent: 1 · max Notional: 100\n\nequity\nnumber\nentry\nnumber\nstop\nnumber\nquantity\nnumber\nAction\nPropose order on flow\n\nside: buy · reduce Only: false\n\nflow\nflow\nquantity\nnumber\norders\norders\nCondition\nBranch\n\nRoutes to true or false\n\nflow\nflow\ncondition\ncondition\ntrue\nflow\nfalse\nflow\nReact Flow\n\nSelect a node to configure it and inspect its ports.\n\nDebug timeline\nReset simulation\n\nRun a snapshot to inspect node inputs, outputs and skipped branches.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Close flow editor",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Auto layout",
+            "width": 81,
+            "height": 26
+          },
+          {
+            "label": "Save draft",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Run with market data",
+            "width": 139,
+            "height": 26
+          },
+          {
+            "label": "Add Evaluation tick",
+            "width": 127,
+            "height": 26
+          },
+          {
+            "label": "Add Closed candles",
+            "width": 131,
+            "height": 26
+          },
+          {
+            "label": "Add Market price",
+            "width": 115,
+            "height": 26
+          },
+          {
+            "label": "Add Account equity",
+            "width": 129,
+            "height": 26
+          },
+          {
+            "label": "Add RSI",
+            "width": 62,
+            "height": 26
+          },
+          {
+            "label": "Add EMA",
+            "width": 69,
+            "height": 26
+          },
+          {
+            "label": "Add SMA",
+            "width": 69,
+            "height": 26
+          },
+          {
+            "label": "Add ATR",
+            "width": 65,
+            "height": 26
+          },
+          {
+            "label": "Add Number",
+            "width": 88,
+            "height": 26
+          },
+          {
+            "label": "Add Calculate",
+            "width": 96,
+            "height": 26
+          },
+          {
+            "label": "Add Compare values",
+            "width": 135,
+            "height": 26
+          },
+          {
+            "label": "Add Combine conditions",
+            "width": 157,
+            "height": 26
+          },
+          {
+            "label": "Add Branch",
+            "width": 83,
+            "height": 26
+          },
+          {
+            "label": "Add DCA deal",
+            "width": 96,
+            "height": 26
+          },
+          {
+            "label": "Add Grid strategy",
+            "width": 118,
+            "height": 26
+          },
+          {
+            "label": "Add Smart order",
+            "width": 111,
+            "height": 26
+          },
+          {
+            "label": "Add Size from stop loss",
+            "width": 152,
+            "height": 26
+          },
+          {
+            "label": "Add Trailing exit",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Add Propose order",
+            "width": 124,
+            "height": 26
+          },
+          {
+            "label": "Add Propose order on flow",
+            "width": 170,
+            "height": 26
+          },
+          {
+            "label": "Add Inspect value",
+            "width": 119,
+            "height": 26
+          },
+          {
+            "label": "Add Inspect condition",
+            "width": 142,
+            "height": 26
+          },
+          {
+            "label": "Reset simulation",
+            "width": 112,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "09-editor-tablet",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nWorkspace\nNodes\nBrowser · Local backend\nClose flow editor\nFlow programming\nFit flow\n+\n−\n100%\nAuto layout\nSave draft\nRun with market data\n\nFlow wires activate nodes. Dashed Data wires carry values. Drag between matching ports, or connect them in the inspector. Drafts are stored in this browser.\n\nMarket\n\nHyperliquid mainnet · closed candles and mark price · account equity unavailable. Fresh manual state; no orders sent.\n\nFind a node\nTrigger\nAdd Evaluation tick\nData\nAdd Closed candles\nAdd Market price\nAdd Account equity\nIndicator\nAdd RSI\nAdd EMA\nAdd SMA\nAdd ATR\nProcess\nAdd Number\nAdd Calculate\nCondition\nAdd Compare values\nAdd Combine conditions\nAdd Branch\nStrategy\nAdd DCA deal\nAdd Grid strategy\nAdd Smart order\nRisk\nAdd Size from stop loss\nAdd Trailing exit\nAction\nAdd Propose order\nAdd Propose order on flow\nOutput\nAdd Inspect value\nAdd Inspect condition\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 5m\n\ntick\nevent\ncandles\ncandles\nIndicator\nRSI\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nProcess\nNumber\n\nvalue: 30\n\nvalue\nnumber\nCondition\nCompare values\n\noperator: lt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nOutput\nInspect value\n\nInspect connected value\n\nvalue\nnumber\nvalue\nnumber\nData\nMarket price\n\nReads snapshot data\n\nvalue\nnumber\nData\nAccount equity\n\nReads snapshot data\n\nvalue\nnumber\nProcess\nNumber\n\nvalue: 98\n\nvalue\nnumber\nRisk\nSize from stop loss\n\nrisk Percent: 1 · max Notional: 100\n\nequity\nnumber\nentry\nnumber\nstop\nnumber\nquantity\nnumber\nAction\nPropose order on flow\n\nside: buy · reduce Only: false\n\nflow\nflow\nquantity\nnumber\norders\norders\nCondition\nBranch\n\nRoutes to true or false\n\nflow\nflow\ncondition\ncondition\ntrue\nflow\nfalse\nflow\nReact Flow\n\nSelect a node to configure it and inspect its ports.\n\nDebug timeline\nReset simulation\n\nRun a snapshot to inspect node inputs, outputs and skipped branches.",
+      "layout": {
+        "width": 768,
+        "scrollWidth": 768,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Close flow editor",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Auto layout",
+            "width": 81,
+            "height": 26
+          },
+          {
+            "label": "Save draft",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Run with market data",
+            "width": 139,
+            "height": 26
+          },
+          {
+            "label": "Add Evaluation tick",
+            "width": 127,
+            "height": 26
+          },
+          {
+            "label": "Add Closed candles",
+            "width": 131,
+            "height": 26
+          },
+          {
+            "label": "Add Market price",
+            "width": 115,
+            "height": 26
+          },
+          {
+            "label": "Add Account equity",
+            "width": 129,
+            "height": 26
+          },
+          {
+            "label": "Add RSI",
+            "width": 62,
+            "height": 26
+          },
+          {
+            "label": "Add EMA",
+            "width": 69,
+            "height": 26
+          },
+          {
+            "label": "Add SMA",
+            "width": 69,
+            "height": 26
+          },
+          {
+            "label": "Add ATR",
+            "width": 65,
+            "height": 26
+          },
+          {
+            "label": "Add Number",
+            "width": 88,
+            "height": 26
+          },
+          {
+            "label": "Add Calculate",
+            "width": 96,
+            "height": 26
+          },
+          {
+            "label": "Add Compare values",
+            "width": 135,
+            "height": 26
+          },
+          {
+            "label": "Add Combine conditions",
+            "width": 157,
+            "height": 26
+          },
+          {
+            "label": "Add Branch",
+            "width": 83,
+            "height": 26
+          },
+          {
+            "label": "Add DCA deal",
+            "width": 96,
+            "height": 26
+          },
+          {
+            "label": "Add Grid strategy",
+            "width": 118,
+            "height": 26
+          },
+          {
+            "label": "Add Smart order",
+            "width": 111,
+            "height": 26
+          },
+          {
+            "label": "Add Size from stop loss",
+            "width": 152,
+            "height": 26
+          },
+          {
+            "label": "Add Trailing exit",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Add Propose order",
+            "width": 124,
+            "height": 26
+          },
+          {
+            "label": "Add Propose order on flow",
+            "width": 170,
+            "height": 26
+          },
+          {
+            "label": "Add Inspect value",
+            "width": 119,
+            "height": 26
+          },
+          {
+            "label": "Add Inspect condition",
+            "width": 142,
+            "height": 26
+          },
+          {
+            "label": "Reset simulation",
+            "width": 112,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "13-bots-mobile",
+      "text": "Bots\nNodes\nData\nActivity\nSettings\nWorkspace\nBots\nBrowser · Local backend\nBots\n\nTurn a trading idea into a strategy you can inspect and test.\n\nCreate new bot\nAll statuses\n3 of 3 bots\nName\tDEX\tStatus\tUpdated\tPnL\tDrawdown\n\nManual ETH RSI\n\tHyperliquid\t\nDraft\tUpdated Sep 5, 2026, 12:51 PM UTC\tPnL unavailable\tDrawdown unavailable\n\nETH RSI + Funding Demo\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 3:35 AM UTC\tPnL unavailable\tDrawdown unavailable\n\ntest\n\tHyperliquid\t\nDraft\tUpdated Sep 6, 2026, 4:05 AM UTC\tPnL unavailable\tDrawdown unavailable",
+      "layout": {
+        "width": 390,
+        "scrollWidth": 390,
+        "buttons": [
+          {
+            "label": "Bots",
+            "width": 64,
+            "height": 44
+          },
+          {
+            "label": "Nodes",
+            "width": 74,
+            "height": 44
+          },
+          {
+            "label": "Data",
+            "width": 63,
+            "height": 44
+          },
+          {
+            "label": "Activity",
+            "width": 80,
+            "height": 44
+          },
+          {
+            "label": "Settings",
+            "width": 85,
+            "height": 44
+          },
+          {
+            "label": "Create new bot",
+            "width": 145,
+            "height": 36
+          },
+          {
+            "label": "Filter by status",
+            "width": 121,
+            "height": 36
+          },
+          {
+            "label": "Manual ETH RSI",
+            "width": 107,
+            "height": 36
+          },
+          {
+            "label": "ETH RSI + Funding Demo",
+            "width": 168,
+            "height": 36
+          },
+          {
+            "label": "test",
+            "width": 26,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "14-settings-mobile",
+      "text": "Bots\nNodes\nData\nActivity\nSettings\nWorkspace\nSettings\nBrowser · Local backend\nSettings\n\nUpdate the local profile and AI provider used by this Catbots installation.\n\nAI providers\n\nConnect a subscription or API key, then choose the model for chat.\n\nActive openai-codex · gpt-5.6-sol\n\nSubscription provider\nOpenAI Codex\n\nConnect your ChatGPT Plus/Pro account through Codex sign-in.\n\nSign in again\nSign out\nChat model\nChoose a model\nUse for chat\nRefresh models\nUse compatible API settings instead\n\nCredentials are encrypted in this Catbots profile and shared by its web and desktop interfaces.\n\nAI PROVIDER\n\nProvider connection\n\nA successful connection test is required before these provider values can be saved.\n\nProfile name\nAnonymous telemetry\n(optional)\nProvider\nopenai-compatible\nBase URL\n\nOpenAI-compatible root URLs use /v1 automatically. HTTP is allowed only for localhost, 127.0.0.1, or ::1.\n\nAPI key\n\nLeave blank to use the stored key. A replacement stays only in this form’s memory until save.\n\nStored key: ••••••••\n\nModel\nReasoning effort\nauto\n\nLIVE EXECUTION\n\nHyperliquid testnet\n\nOptional. Use a dedicated Agent/API Wallet. Mainnet is disabled.\n\nEnable Hyperliquid testnet\n(optional)\nTest connection\nSave settings\n\nYour API key is stored locally and sent only to your AI provider.\n\nHow is my key handled?",
+      "layout": {
+        "width": 390,
+        "scrollWidth": 390,
+        "buttons": [
+          {
+            "label": "Bots",
+            "width": 62,
+            "height": 44
+          },
+          {
+            "label": "Nodes",
+            "width": 74,
+            "height": 44
+          },
+          {
+            "label": "Data",
+            "width": 63,
+            "height": 44
+          },
+          {
+            "label": "Activity",
+            "width": 80,
+            "height": 44
+          },
+          {
+            "label": "Settings",
+            "width": 88,
+            "height": 44
+          },
+          {
+            "label": "Subscription provider",
+            "width": 310,
+            "height": 36
+          },
+          {
+            "label": "Sign in again",
+            "width": 108,
+            "height": 36
+          },
+          {
+            "label": "Sign out",
+            "width": 79,
+            "height": 36
+          },
+          {
+            "label": "Chat model",
+            "width": 310,
+            "height": 36
+          },
+          {
+            "label": "Use for chat",
+            "width": 105,
+            "height": 36
+          },
+          {
+            "label": "Refresh models",
+            "width": 127,
+            "height": 36
+          },
+          {
+            "label": "Use compatible API settings instead",
+            "width": 262,
+            "height": 36
+          },
+          {
+            "label": "Anonymous telemetry",
+            "width": 36,
+            "height": 18
+          },
+          {
+            "label": "Provider",
+            "width": 167,
+            "height": 36
+          },
+          {
+            "label": "Reasoning effort",
+            "width": 75,
+            "height": 36
+          },
+          {
+            "label": "Enable Hyperliquid testnet",
+            "width": 36,
+            "height": 18
+          },
+          {
+            "label": "Test connection",
+            "width": 129,
+            "height": 36
+          },
+          {
+            "label": "Save settings",
+            "width": 113,
+            "height": 36
+          },
+          {
+            "label": "How is my key handled?",
+            "width": 154,
+            "height": 26
+          }
+        ]
+      }
+    }
+  ],
+  "errors": []
+}

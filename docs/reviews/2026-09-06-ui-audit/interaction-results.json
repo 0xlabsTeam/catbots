@@ -1,0 +1,21 @@
+[
+  {
+    "originalPeriod": "14"
+  },
+  {
+    "periodAfterSwitch": "14",
+    "unsavedWarning": 0
+  },
+  {
+    "run": "EMA\nindicator\nClose\n\nema_fast_12 · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nUses Hyperliquid mainnet prices and closed candles. Account equity is unavailable. Fresh manual state; order proposals are never sent.\n\nHyperliquid mainnet · SOL-PERP · fetched 2026-09-06T05:02:22.042Z · mark price 105.73\n\nexecuted · 3 nodes evaluated\nInput data\nCandles candles\n\nFrom candles_4h · candles\n\nready\n[\n  {\n    \"closedAt\": 1785801599999,\n    \"open\": 73.999,\n    \"high\": 74.112,\n    \"low\": 73.363,\n    \"close\": 73.535,\n    \"volume\": 153479.41\n  },\n  {\n    \"closedAt\": 1785815999999,\n    \"open\": 73.536,\n    \"high\": 74.076,\n    \"low\": 73.018,\n    \"close\": 73.674,\n    \"volume\": 315088.76\n  },\n  {\n    \"closedAt\": 1785830399999,\n    \"open\": 73.675,\n    \"high\": 74.073,\n    \"low\": 73.189,\n    \"close\": 73.658,\n    \"volume\": 117775.67\n  },\n  {\n    \"closedAt\": 1785844799999,\n    \"open\": 73.659,\n    \"high\": 73.945,\n    \"low\": 73.076,\n    \"close\": 73.915,\n    \"volume\": 232875.36\n  },\n  {\n    \"closedAt\": 1785859199999,\n    \"open\": 73.916,\n    \"high\": 74.167,\n    \"low\": 73.303,\n    \"close\": 73.96,\n    \"volume\": 391963.64\n  },\n  {\n    \"closedAt\": 1785873599999,\n    \"open\": 73.961,\n    \"high\": 74.362,\n    \"low\": 73.574,\n    \"close\": 74.151,\n    \"volume\": 431405.42\n  },\n  {\n    \"closedAt\": 1785887999999,\n    \"open\": 74.162,\n    \"high\": 74.439,\n    \"low\": 73.715,\n    \"close\": 73.723,\n    \"volume\": 255929.47\n  },\n  {\n    \"closedAt\": 1785902399999,\n    \"open\": 73.726,\n    \"high\": 74.453,\n    \"low\": 73.372,\n    \"close\": 73.751,\n    \"volume\": 293824.84\n  },\n  {\n    \"closedAt\": 1785916799999,\n    \"open\": 73.751,\n    \"high\": 74.258,\n    \"low\": 73.595,\n    \"close\": 73.935,\n    \"volume\": 98041.94\n  },\n  {\n    \"closedAt\": 1785931199999,\n    \"open\": 73.936,\n    \"high\": 74.172,\n    \"low\": 73.712,\n    \"close\": 7"
+  },
+  {
+    "marketAfterSwitch": "ETH-PERP"
+  },
+  {
+    "resultAfterSwitch": "EMA\nindicator\nClose\n\nema_fast_12 · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nUses Hyperliquid mainnet prices and closed candles. Account equity is unavailable. Fresh manual state; order proposals are never sent.\n\nInput data\nCandles candles\n\nFrom candles_4h · candles\n\nNot evaluated. Run Debug to inspect this value.\n\nOutput data\nValue number\n\nTo green_zone · left\n\nNot evaluated. Run Debug to inspect this value."
+  },
+  {
+    "emptyNameError": 1
+  }
+]

@@ -1,0 +1,3040 @@
+{
+  "pages": [
+    {
+      "name": "20-workbench-0",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 20\nCompare\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote\nOpen position\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 80\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-0-backtest",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\n\nDETERMINISTIC REPLAY\n\nBacktest v1\nBacktest run\n9/5/2026, 11:11:30 PM\nRun backtest\nFrom\nTo\nStarting capital\nFee (bps)\nSlippage (bps)\nBundled sample data\nRevision v1\n8/6/2026 – 9/5/2026\n\nThese are observed simulation results under the pinned assumptions below, not a forecast or investment promise.\n\nPortfolio performance\nReturn\n+0.10%\nMax drawdown\n0.00%\nSharpe-like\n1.10\nWin rate\n100.00%\nTrades\n1\nFees / funding\n0.0734923 / 0.0109989\nDataset coverage\n\n8/1/2026 – 9/1/2026\n\nMarkets in this dataset\nBTC-PERP, ETH-PERP\nBy market\nMarket\tRealized PnL\tTrades\tWin rate\tDrawdown contribution\nBTC-PERP\t$0.00\t0\t0.00%\t0.00%\nETH-PERP\t$9.98\t1\t100.00%\t0.00%\nEquity curve\nView accessible equity data\nTrades\nTrace\tMarket\tSide\tRealized PnL\ntrace:v2:deployment:backtest%3Aeth-rsi%3Av1:trigger:v2:exit-clock:interval:2026-08-28T00%3A00%3A00.000Z:dex:hyperliquid:strategy:eth-rsi:v1:market:ETH-PERP\tETH-PERP\tlong\t9.9780022\n\nBacktest assumption\n\nBundled synthetic coverage includes only BTC-PERP and ETH-PERP; it does not represent every Hyperliquid market.\n\nBacktest assumption\n\nBundled sample data is synthetic and is not live market data.\n\nBacktest assumption\n\nmissing_market_coverage\n\nExecution traces\n6 runs · 10 market evaluations\nInterval run\n8/10/2026, 7:00:00 AM · 1 market\nskipped\nInterval run\n8/10/2026, 7:00:00 AM · 1 market\nskipped\nInterval run\n8/20/2026, 7:00:00 AM · 2 markets\nexecuted\nInterval run\n8/20/2026, 7:00:00 AM · 2 markets\nskipped\nInterval run\n8/28/2026, 7:00:00 AM · 2 markets\nskipped\nInterval run\n8/28/2026, 7:00:00 AM · 2 markets\nexecuted\n\nSelect a run, then choose a market evaluation to inspect every logged decision.\n\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Backtest run",
+            "width": 188,
+            "height": 36
+          },
+          {
+            "label": "Run backtest",
+            "width": 131,
+            "height": 36
+          },
+          {
+            "label": "View accessible equity data",
+            "width": 176,
+            "height": 26
+          },
+          {
+            "label": "Interval run8/10/2026, 7:00:00 AM · 1 marketskipped",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/10/2026, 7:00:00 AM · 1 marketskipped",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/20/2026, 7:00:00 AM · 2 marketsexecuted",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/20/2026, 7:00:00 AM · 2 marketsskipped",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/28/2026, 7:00:00 AM · 2 marketsskipped",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/28/2026, 7:00:00 AM · 2 marketsexecuted",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-0-performance",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nPaper runtime unavailable\n\nPositions and orders were not restored. Durable deployment records and logs remain available.\n\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-0-logs",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nNo recorded execution logs\n\nThe Paper runtime is unavailable after restart.\n\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "22-inspector-0",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 20\nCompare\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote\nOpen position\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 80\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\n\nSELECTION\n\nInterval\ntrigger\nRule\nEvery 1h\nTechnical details\nRun node\nConfiguration\nData & debug\n\nSave creates a new draft revision. Existing approval and running deployments keep their original settings.\n\nTime alignment\nRun every\nSave as new draft\nReset changes\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Hide inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Technical details",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Save as new draft",
+            "width": 119,
+            "height": 26
+          },
+          {
+            "label": "Reset changes",
+            "width": 101,
+            "height": 26
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "23-run-0",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nManual ETH RSI\n\nHyperliquid · Dynamic markets\n\nApproved\nv1 · approved\nChat\nStrategy assistant\n\nEvery hour, screen Hyperliquid perpetual markets and go long the current market when RSI is below 30. Exit the current market when RSI is above 65. Risk 1% per position.\n\nCatbots\n\nBacktest completed. Review the performance, trades, warnings, and execution trace before approving this draft.\n\nhi\n\nStrategy v1 · approved\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 20\nCompare\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote\nOpen position\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 80\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\n\nSELECTION\n\nInterval\ntrigger\nRule\nEvery 1h\nTechnical details\nRun node\nConfiguration\nData & debug\nConnections\n\nentry-clock · activation → entry-symbol · activation\n\nentry-clock · activation → entry-rsi · activation\n\nLegacy wires carry activation and condition results. They do not stream market values between nodes.\n\nMarket\n\nHyperliquid mainnet mark price and funding. Account data and unsupported indicators remain unavailable. Interval triggers use the fetched time; test events are manual inputs. No orders or state changes are dispatched.\n\nHyperliquid mainnet · ETH-PERP · fetched 2026-09-06T05:01:13.746Z · mark price 2503.94\n\nskipped\n\n1 nodes evaluated · ETH-PERP\n\nInput\n{\n  \"occurredAt\": \"2026-09-06T05:01:13.746Z\"\n}\nOutput\n{\n  \"activation\": false\n}\nExecution path\n\nentry-clock · skipped\n\nPaper runtime unavailable\n\nRuntime state was not restored. Logs remain available. Stop closes the saved deployment.\n\nPause\nStop\nReview Live",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 109,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Hide inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Technical details",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Pause",
+            "width": 51,
+            "height": 26
+          },
+          {
+            "label": "Stop",
+            "width": 43,
+            "height": 26
+          },
+          {
+            "label": "Review Live",
+            "width": 84,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "20-workbench-1",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 30\nCompare\nCondition\nFunding rate < 0\nCompare\nCondition\nNo open position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote · 1× · SL 2%\nOpen position\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 65\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-1-backtest",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\n\nDETERMINISTIC REPLAY\n\nBacktest v1\nBacktest run\n9/6/2026, 10:59:17 AM\nRun backtest\nFrom\nTo\nStarting capital\nFee (bps)\nSlippage (bps)\nBundled sample data\nRevision v1\n8/7/2026 – 9/6/2026\n\nThese are observed simulation results under the pinned assumptions below, not a forecast or investment promise.\n\nPortfolio performance\nReturn\n+0.10%\nMax drawdown\n0.00%\nSharpe-like\n1.14\nWin rate\n100.00%\nTrades\n1\nFees / funding\n0.0734923 / 0.0109989\nDataset coverage\n\n8/1/2026 – 9/1/2026\n\nMarkets in this dataset\nBTC-PERP, ETH-PERP\nBy market\nMarket\tRealized PnL\tTrades\tWin rate\tDrawdown contribution\nBTC-PERP\t$0.00\t0\t0.00%\t0.00%\nETH-PERP\t$9.98\t1\t100.00%\t0.00%\nEquity curve\nView accessible equity data\nTrades\nTrace\tMarket\tSide\tRealized PnL\ntrace:v2:deployment:backtest%3Aeth-rsi-funding-demo%3Av1:trigger:v2:hourly:interval:2026-08-28T00%3A00%3A00.000Z:dex:hyperliquid:strategy:eth-rsi-funding-demo:v1:market:ETH-PERP\tETH-PERP\tlong\t9.9780022\n\nBacktest assumption\n\nBundled synthetic coverage includes only BTC-PERP and ETH-PERP; it does not represent every Hyperliquid market.\n\nBacktest assumption\n\nBundled sample data is synthetic and is not live market data.\n\nBacktest assumption\n\nmissing_market_coverage\n\nExecution traces\n3 runs · 5 market evaluations\nInterval run\n8/10/2026, 7:00:00 AM · 1 market\nskipped\nInterval run\n8/20/2026, 7:00:00 AM · 2 markets\nexecuted\nInterval run\n8/28/2026, 7:00:00 AM · 2 markets\nexecuted\n\nSelect a run, then choose a market evaluation to inspect every logged decision.\n\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Backtest run",
+            "width": 193,
+            "height": 36
+          },
+          {
+            "label": "Run backtest",
+            "width": 131,
+            "height": 36
+          },
+          {
+            "label": "View accessible equity data",
+            "width": 176,
+            "height": 26
+          },
+          {
+            "label": "Interval run8/10/2026, 7:00:00 AM · 1 marketskipped",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/20/2026, 7:00:00 AM · 2 marketsexecuted",
+            "width": 302,
+            "height": 65
+          },
+          {
+            "label": "Interval run8/28/2026, 7:00:00 AM · 2 marketsexecuted",
+            "width": 302,
+            "height": 65
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-1-performance",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nNo Paper run yet\n\nApprove this strategy and run it in Paper mode to see execution performance.\n\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-1-logs",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nNo execution logs\n\nPaper flow events will appear here after a run starts.\n\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "22-inspector-1",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 30\nCompare\nCondition\nFunding rate < 0\nCompare\nCondition\nNo open position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote · 1× · SL 2%\nOpen position\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 65\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\n\nSELECTION\n\nInterval\ntrigger\nRule\nEvery 1h\nTechnical details\nRun node\nConfiguration\nData & debug\n\nSave creates a new draft revision. Existing approval and running deployments keep their original settings.\n\nTime alignment\nRun every\nSave as new draft\nReset changes\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Hide inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Technical details",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Save as new draft",
+            "width": 119,
+            "height": 26
+          },
+          {
+            "label": "Reset changes",
+            "width": 101,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "23-run-1",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\nETH RSI + Funding Demo\n\nHyperliquid · Dynamic markets\n\nDraft\nv1 · draft\nApprove v1\nChat\nStrategy assistant\n\nสร้างและบันทึก Draft กลยุทธ์ตัวอย่าง ETH RSI + Funding Demo เพื่อดูลักษณะ Node: ประเมินทุก 1 ชั่วโมงบน Hyperliquid กรองเฉพาะ ETH-PERP เปิด Long เมื่อ RSI(14) < 30 และ funding rate < 0 และไม่มี position โดยรวมทุกเงื่อนไขด้วย ALL ขนาด fixed quote 100 USDC leverage 1x stop loss 2% ปิด Long ทั้งหมดเมื่อ RSI(14) > 65 และมี Long อยู่ ใช้ Node ที่ Workbench รองรับจริง ตรวจ schema และบันทึก draft เท่านั้น ไม่ approve ไม่ deploy ไม่ส่งออเดอร์ อธิบาย flow เป็นภาษาไทย หากข้อมูลหรือ indicator ไม่พร้อมให้ระบุข้อจำกัด ไม่อ้างว่ารันทดสอบผ่าน\n\nต่อ\n\nต่อ\n\nCatbots\n\nสร้างและบันทึก Draft กลยุทธ์ ETH RSI + Funding Demo เวอร์ชัน 1 สำเร็จแล้ว โดยผ่านการตรวจสอบ schema 2.0\n\nFlow เปิด Long\n\nประเมินทุก 1 ชั่วโมง แบบ UTC\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) < 30\nFunding rate < 0\nไม่มี Position ในตลาดนั้น\nเปิด Long ขนาด fixed quote 100 USDC\nLeverage 1×\nStop loss 2%\n\nFlow ปิด Long\n\nประเมินทุก 1 ชั่วโมง\nตรวจด้วย ALL:\nตลาดเป็น ETH-PERP\nRSI(14) > 65\nมี Long อยู่\nปิด Long 100%\n\nสถานะปัจจุบัน: Draft เท่านั้น — ไม่ได้ approve, deploy, ส่งคำสั่งซื้อขาย หรือรัน Backtest\n\nข้อจำกัด: RSI(14) และ funding rate ต้องพร้อมใน runtime จึงจะประเมินเงื่อนไขได้ โดยข้อมูลตัวอย่างที่ระบบมีครอบคลุม Hyperliquid เฉพาะ BTC-PERP และ ETH-PERP ช่วง 1 ส.ค.–1 ก.ย. 2026 และไม่ใช่ข้อมูลครอบคลุมทุกตลาดบน Hyperliquid.\n\nStrategy v1 · draft\nOpen strategy\nView backtest\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nDEX\nHyperliquid\nMarket scope\nAll active perpetual markets\nFit all\n−\n+\n100%\nTrigger\nCondition\nLogic\nAction\nSelect a node to inspect · Lines show rules, not live execution.\nTrigger\nEvery 1h\nInterval\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) < 30\nCompare\nCondition\nFunding rate < 0\nCompare\nCondition\nNo open position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nOpen long · 100 quote · 1× · SL 2%\nOpen position\nCondition\nMarket = ETH-PERP\nCompare\nCondition\nRSI (14) > 65\nCompare\nCondition\nHas a long position · current market\nPosition\nLogic\nEvery condition must be true\nAll conditions (AND)\nAction\nClose 100% · long\nClose position\nReact Flow\n\nSELECTION\n\nInterval\ntrigger\nRule\nEvery 1h\nTechnical details\nRun node\nConfiguration\nData & debug\nConnections\n\nhourly · activation → entry_symbol_eth · activation\n\nhourly · activation → entry_rsi_below_30 · activation\n\nhourly · activation → entry_funding_negative · activation\n\nhourly · activation → entry_flat · activation\n\nhourly · activation → exit_symbol_eth · activation\n\nhourly · activation → exit_rsi_above_65 · activation\n\nhourly · activation → exit_long · activation\n\nLegacy wires carry activation and condition results. They do not stream market values between nodes.\n\nMarket\n\nHyperliquid mainnet mark price and funding. Account data and unsupported indicators remain unavailable. Interval triggers use the fetched time; test events are manual inputs. No orders or state changes are dispatched.\n\nHyperliquid mainnet · ETH-PERP · fetched 2026-09-06T05:01:18.099Z · mark price 2503.7\n\nskipped\n\n1 nodes evaluated · ETH-PERP\n\nInput\n{\n  \"occurredAt\": \"2026-09-06T05:01:18.099Z\"\n}\nOutput\n{\n  \"activation\": false\n}\nExecution path\n\nhourly · skipped\n\nPaper is stopped\n\nLocal simulation · risk checks and every flow event are logged.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Strategy version",
+            "width": 84,
+            "height": 26
+          },
+          {
+            "label": "Approve v1",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open strategy",
+            "width": 98,
+            "height": 26
+          },
+          {
+            "label": "View backtest",
+            "width": 97,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Hide inspector",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Fit all",
+            "width": 47,
+            "height": 26
+          },
+          {
+            "label": "Zoom out",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "Zoom in",
+            "width": 24,
+            "height": 26
+          },
+          {
+            "label": "100%",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Technical details",
+            "width": 113,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "20-workbench-2",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nFlow v14 · Building\n6 nodes · 6 connections · Saved\nFit flow\nAI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 4h · count: 200\n\ntick\nevent\ncandles\ncandles\nIndicator\nEMA\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nIndicator\nEMA\n\nperiod: 26\n\ncandles\ncandles\nvalue\nnumber\nCondition\nCompare values\n\noperator: gt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nStrategy\nDCA deal\n\nside: long · quote Per Order: 25 · take Profit Percent: 6\n\nsignal\ncondition\norders\norders\nstatus\njson\nReact Flow",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-2-backtest",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nPackaged flow draft\n\nBacktest and deployment are not connected to this flow yet.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-2-performance",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nNo Paper run yet\n\nApprove this strategy and run it in Paper mode to see execution performance.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "21-2-logs",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nNo execution logs\n\nPaper flow events will appear here after a run starts.",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "22-inspector-2",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nFlow v14 · Building\n6 nodes · 6 connections · Saved\nFit flow\nAI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.\ntick → tick\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 4h · count: 200\n\ntick\nevent\ncandles\ncandles\nIndicator\nEMA\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nIndicator\nEMA\n\nperiod: 26\n\ncandles\ncandles\nvalue\nnumber\nCondition\nCompare values\n\noperator: gt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nStrategy\nDCA deal\n\nside: long · quote Per Order: 25 · take Profit Percent: 6\n\nsignal\ncondition\norders\norders\nstatus\njson\nReact Flow\nEvaluation tick\ntrigger\nClose\n\ntick · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nSettings belong to this node. Connected ports supply its input data.\n\nNo settings required. This node uses its connected inputs or the runtime event.\n\nSave configuration\nReset",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Close",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Save configuration",
+            "width": 124,
+            "height": 26
+          },
+          {
+            "label": "Reset",
+            "width": 49,
+            "height": 26
+          }
+        ]
+      }
+    },
+    {
+      "name": "23-run-2",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nFlow v14 · Building\n6 nodes · 6 connections · Saved\nFit flow\nAI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.\ntick → tick · true\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 4h · count: 200\n\ntick\nevent\ncandles\ncandles\nIndicator\nEMA\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nIndicator\nEMA\n\nperiod: 26\n\ncandles\ncandles\nvalue\nnumber\nCondition\nCompare values\n\noperator: gt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nStrategy\nDCA deal\n\nside: long · quote Per Order: 25 · take Profit Percent: 6\n\nsignal\ncondition\norders\norders\nstatus\njson\nReact Flow\nEvaluation tick\ntrigger\nClose\n\ntick · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nUses Hyperliquid mainnet prices and closed candles. Account equity is unavailable. Fresh manual state; order proposals are never sent.\n\nHyperliquid mainnet · ETH-PERP · fetched 2026-09-06T05:01:22.462Z · mark price 2503.62\n\nexecuted · 1 nodes evaluated\nInput data\n\nNo inputs.\n\nOutput data\nTick event\n\nTo candles_4h · tick\n\nready\ntrue\nFlow flow\n\nNo downstream connection\n\nready\ntrue",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Close",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "24-workbench-mobile",
+      "text": "Bots\nNodes\nData\nActivity\nSettings\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nFlow v14 · Building\n6 nodes · 6 connections · Saved\nFit flow\nAI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.\ntick → tick · true\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 4h · count: 200\n\ntick\nevent\ncandles\ncandles\nIndicator\nEMA\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nIndicator\nEMA\n\nperiod: 26\n\ncandles\ncandles\nvalue\nnumber\nCondition\nCompare values\n\noperator: gt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nStrategy\nDCA deal\n\nside: long · quote Per Order: 25 · take Profit Percent: 6\n\nsignal\ncondition\norders\norders\nstatus\njson\nReact Flow\nEvaluation tick\ntrigger\nClose\n\ntick · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nUses Hyperliquid mainnet prices and closed candles. Account equity is unavailable. Fresh manual state; order proposals are never sent.\n\nHyperliquid mainnet · ETH-PERP · fetched 2026-09-06T05:01:22.462Z · mark price 2503.62\n\nexecuted · 1 nodes evaluated\nInput data\n\nNo inputs.\n\nOutput data\nTick event\n\nTo candles_4h · tick\n\nready\ntrue\nFlow flow\n\nNo downstream connection\n\nready\ntrue",
+      "layout": {
+        "width": 390,
+        "scrollWidth": 390,
+        "buttons": [
+          {
+            "label": "Bots",
+            "width": 64,
+            "height": 44
+          },
+          {
+            "label": "Nodes",
+            "width": 74,
+            "height": 44
+          },
+          {
+            "label": "Data",
+            "width": 63,
+            "height": 44
+          },
+          {
+            "label": "Activity",
+            "width": 80,
+            "height": 44
+          },
+          {
+            "label": "Settings",
+            "width": 85,
+            "height": 44
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Close",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "25-workbench-dark",
+      "text": "Catbots\n\nWorkspace\n\nBots\nNodes\nData\nActivity\nSettings\nLocal workspace\nStored on this device\nAll bots\ntest\n\nHyperliquid · Dynamic markets\n\nDraft\nChat\nStrategy assistant\n\nShow me the available triggers, conditions, and actions for a strategy.\n\nCatbots\nTriggers\nInterval — Runs every specified number of minutes, hours, or days, aligned to UTC.\nEvent — Runs when a specified market- or DEX-level event occurs; supports filters.\nConditions\nCompare — Compares a data reference or literal using =, ≠, >, ≥, <, or ≤.\nPosition state — Checks whether the current position is flat, open, long, or short.\nALL — Every connected condition must be true.\nANY — At least one connected condition must be true.\nNOT — True when its input condition is false.\nAT LEAST — Requires a specified number of connected conditions to be true.\nActions\nOpen position — Opens a long or short, optionally with:\nEquity-percentage or fixed-quote sizing\nLeverage\nPercentage stop-loss\nClose position — Closes up to 100% of a long, short, or current position.\nSet state — Stores a named boolean, number, string, or null value for strategy state.\n\nCDC Action Zone คืออะไร\nauthor : bluerotor\n\nCDC Action Zone คือ Indicator ที่ลุงโฉลกเป็นคนคิดค้นขึ้นมาเพื่อดูสัญญาณการซื้อหรือขายสินทรัพย์ โดย CDC Action Zone จะคำนวณจากเส้นค่าเฉลี่ย 2 เส้นได้แก่ EMA 12 วันและ EMA 26 วัน มาคำนวณหาจุดซื้อขาย เส้นค่าเฉลี่ย EMA 26 วัน จะเคลื่อนที่ช้าดังนั้นเราจะถือว่าเส้นนี้เป็นเส้นหลัก ส่วนเส้น EMA 12 วัน เป็นกราฟที่มีการเคลื่อนที่ไวเพราะใช้ราคาเพียง 12 วันย้อนหลังมาคำนวณ สิ่งสำคัญของ Indicator นี้คือ EMA ที่เคลื่อนที่เร็วกว่า (EMA 12) เคลื่อนที่ตัด EMA ตัวที่เคลื่อนที่ช้ากว่า(EMA 26) จึงทำให้เกิด Zone ต่างๆแบ่งออกเป็น 4 Zone ด้วยกันคือ \n\nZone1: เส้นสองเส้นตัดกันเข้าสู่ Zone สีเขียวแสดงถึงสัญญาณการซื้อ (EMA 12 > EMA 26)\nZone2: สัญญาณการซื้อเริ่มน้อยลงเข้าสู่ Zone สีเหลือแสดงถึงสัญญาณการเตรียมให้ขาย\nZone3: เส้นสองเส้นตัดกันเข้าสู่ Zone สีแดงแสดงถึงสัญญาณการขาย (EMA 12 < EMA 26)\nZone4: สัญญาณการขายเริ่มหมดไปเข้าสู่ Zone สีน้ำเงิน แสดงถึงสัญญาณการซื้อเริ่มอยู่ในขาขึ้น เป็นสัญญาณการเข้าซื้อ\n\nอย่างไรก็ตาม CDC Action Zone เป็นเครื่องมือช่วยในการวิเคราะห์ที่ดี แต่ยังต้องอาศัยปัจจัยอื่นๆเพิ่มเติมเช่นพื้นฐานของสินทรัพย์นั้นๆ แนวโน้มของธุรกิจหรือ Indicator อื่นๆเป็นตัวประกอบ เพราะ Indicator นี้ให้ %Win อยู่ที่ 35-40% หรือ Trade 10 ครั้งกำไรประมาณ 4 ครั้ง\n\nวิธีการใช้งาน CDC Action Zone บน tradingview\n\nCDC Action Zone เป็น Indicator ที่ปรากฏอยู่หลายโปรแกรมแต่ในตัวอย่างจะพาไปดูการใช้งานบนโปรแกรมยอดฮิตอย่าง tradingview เริ่มจากค้นหา Indicator โดยพิมพ์ CDC Action Zone ลงไปแล้วคลิ๊กเลือก Indicator\n\n\n\nจากตัวอย่างด้านล่างทดลองการปรับใช้ CDC Action Zone กับราคา Bitcoin ซึ่งจากกราฟด้านซ้ายมือช่วงที่ราคาปรับลง Zone จะแสดงเป็นสีแดงเป็นสัญญาณการลงของราคา Bitcoin(H1) แต่ผ่านไปซักพักหนึ่งแล้วราคาไม่ปรับขึ้นหรือลงแต่อย่างใดกราฟแท่งเทียนมีสีน้ำเงินและสีเขียวสลับกันไปแสดงถึงสัญญาณการเข้าซื้อ(H2) จากนั้นกราฟเส้นสีแดงและสีน้ำเงินก็ตัดกันแสดง Zone สีเขียว(H3) ราคาก็ปรับตัวขึ้นอย่างต่อเนื่องจาก 27,144 จนถึง 43,510\n\nCatbots\n\nสรุปง่าย ๆ CDC Action Zone คืออินดิเคเตอร์ตามแนวโน้ม (Trend-following) ที่ใช้ EMA 12 และ EMA 26 เพื่อแบ่งภาวะตลาดเป็น 4 โซน:\n\n🟢 เขียว: EMA 12 อยู่เหนือ EMA 26 — แนวโน้มขาขึ้น/สัญญาณซื้อ\n🟡 เหลือง: ยังเป็นขาขึ้น แต่แรงซื้อเริ่มอ่อน — ระวังหรือเตรียมขาย\n🔴 แดง: EMA 12 อยู่ต่ำกว่า EMA 26 — แนวโน้มขาลง/สัญญาณขาย\n🔵 น้ำเงิน: แรงขายเริ่มอ่อนและมีโอกาสกลับขึ้น — เฝ้ารอสัญญาณซื้อ\n\nข้อควรทราบ:\n\nค่า 12 และ 26 หมายถึง 12 และ 26 แท่งเทียน ไม่จำเป็นต้องเป็น “วัน” เช่น กราฟ H1 จะคำนวณจากแท่งรายชั่วโมง\nสีอาจไม่ได้เกิดจากการตัดกันของ EMA เพียงอย่างเดียว เพราะสคริปต์ CDC Action Zone แต่ละเวอร์ชันอาจใช้ตำแหน่งราคากับ EMA เพิ่มเติม\nเป็นอินดิเคเตอร์ที่มีความล่าช้า และอาจส่งสัญญาณหลอกในตลาด Sideway\nตัวเลข Win rate 35–40% ไม่ใช่ค่าตายตัว ขึ้นอยู่กับตลาด Timeframe กฎออก และต้นทุนการเทรด จึงควรทดสอบย้อนหลัง\nควรใช้ร่วมกับ Volume, แนวรับ–แนวต้าน หรืออินดิเคเตอร์ยืนยันแนวโน้มอื่น ๆ ไม่ควรใช้สีเพียงอย่างเดียวในการเข้าเทรด\n\nสร้าง\n\nCatbots\n\nต้องการสร้างกลยุทธ์ CDC Action Zone ใช่ไหมครับ? กรุณาระบุ:\n\nตลาด: เช่น BTC-PERP, ETH-PERP หรือทุกตลาดบน Hyperliquid\nTimeframe: เช่น 1H หรือ 4H\nกฎเข้า–ออก: เช่น ซื้อเมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เลเวอเรจ และ Stop-loss ที่ต้องการ\n\nหมายเหตุ: หากต้องการเข้า Short ต้องระบุชัดเจนด้วยครับ\n\nSOL-PERP\n\nCatbots\n\nรับทราบตลาด SOL-PERP ครับ ยังต้องระบุ:\n\nTimeframe เช่น 1h หรือ 4h\nกฎเข้า–ออก เช่น เปิด Long เมื่อ EMA 12 ตัดขึ้น EMA 26 และปิดเมื่อ EMA 12 ตัดลง\nขนาดสถานะ เช่น 10% ของ Equity\nLeverage และ Stop-loss (ถ้ามี)\nต้องการเฉพาะ Long หรือรวม Short ด้วย?\n\nคิดให้หน่อย\n\nCatbots\n\nสร้างและตรวจสอบ Flow สำหรับจำลองเรียบร้อยแล้ว:\n\nกรอบเวลา: 4 ชั่วโมง\nเปิดเฉพาะ Long\nเงื่อนไข: EMA 12 > EMA 26\nDCA ไม้ละ 25 USDC\nสูงสุด 4 ไม้ / 100 USDC\nซื้อเพิ่มเมื่อราคาลดลงทุก 2%\nTake Profit: 6%\nStop Loss: 3%\nทำรอบใหม่ได้หลังจบรอบเดิม\n\nข้อจำกัด: Flow เป็นตลาดแบบ Dynamic จึงยังล็อก SOL-PERP ในกราฟไม่ได้ ต้องเลือก SOL-PERP ตอนนำไปจำลอง และระบบนี้ตรวจโซนเขียว ไม่ได้ตรวจเฉพาะแท่งที่ EMA ตัดกัน\n\nเป็น Simulation-only ยังไม่เปิด Paper หรือ Live Trading ครับ\n\nFlow v14 · building\nOpen flow\nBuild with Catbots\nEnter to send · Shift + Enter for a new line\nFlow\nBacktest\nPerformance\nLogs\nFlow v14 · Building\n6 nodes · 6 connections · Saved\nFit flow\nAI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.\ntick → tick · true\nTrigger\nEvaluation tick\n\nStarts one evaluation\n\ntick\nevent\nflow\nflow\nData\nClosed candles\n\ntimeframe: 4h · count: 200\n\ntick\nevent\ncandles\ncandles\nIndicator\nEMA\n\nperiod: 14\n\ncandles\ncandles\nvalue\nnumber\nIndicator\nEMA\n\nperiod: 26\n\ncandles\ncandles\nvalue\nnumber\nCondition\nCompare values\n\noperator: gt\n\nleft\nnumber\nright\nnumber\nresult\ncondition\nStrategy\nDCA deal\n\nside: long · quote Per Order: 25 · take Profit Percent: 6\n\nsignal\ncondition\norders\norders\nstatus\njson\nReact Flow\nEvaluation tick\ntrigger\nClose\n\ntick · v1\n\nMarket\nRun node\nConfiguration\nData & debug\n\nUses Hyperliquid mainnet prices and closed candles. Account equity is unavailable. Fresh manual state; order proposals are never sent.\n\nHyperliquid mainnet · ETH-PERP · fetched 2026-09-06T05:01:22.462Z · mark price 2503.62\n\nexecuted · 1 nodes evaluated\nInput data\n\nNo inputs.\n\nOutput data\nTick event\n\nTo candles_4h · tick\n\nready\ntrue\nFlow flow\n\nNo downstream connection\n\nready\ntrue",
+      "layout": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "buttons": [
+          {
+            "label": "Collapse sidebar",
+            "width": 29,
+            "height": 29
+          },
+          {
+            "label": "Bots",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Nodes",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Data",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Activity",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "Settings",
+            "width": 223,
+            "height": 34
+          },
+          {
+            "label": "All bots",
+            "width": 76,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Copy message",
+            "width": 30,
+            "height": 26
+          },
+          {
+            "label": "Open flow",
+            "width": 75,
+            "height": 26
+          },
+          {
+            "label": "Send",
+            "width": 42,
+            "height": 36
+          },
+          {
+            "label": "Flow",
+            "width": 47,
+            "height": 24
+          },
+          {
+            "label": "Backtest",
+            "width": 74,
+            "height": 24
+          },
+          {
+            "label": "Performance",
+            "width": 101,
+            "height": 24
+          },
+          {
+            "label": "Logs",
+            "width": 48,
+            "height": 24
+          },
+          {
+            "label": "Hide chat",
+            "width": 32,
+            "height": 26
+          },
+          {
+            "label": "Show inspector",
+            "width": 28,
+            "height": 26
+          },
+          {
+            "label": "Fit flow",
+            "width": 58,
+            "height": 26
+          },
+          {
+            "label": "Close",
+            "width": 49,
+            "height": 26
+          },
+          {
+            "label": "Run node",
+            "width": 71,
+            "height": 26
+          },
+          {
+            "label": "Configuration",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Data & debug",
+            "width": 110,
+            "height": 32
+          },
+          {
+            "label": "Scroll tabs left",
+            "width": 40,
+            "height": 36
+          },
+          {
+            "label": "Scroll tabs right",
+            "width": 40,
+            "height": 36
+          }
+        ]
+      }
+    }
+  ],
+  "errors": []
+}
