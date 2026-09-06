@@ -1,11 +1,12 @@
 import { Collapsible, Button, Badge, LayerCard } from '@cloudflare/kumo';
-import type { StrategyRevision } from '@catbots/contracts';
+import type { CatbotsDesktopApi, StrategyRevision } from '@catbots/contracts';
 
+import { LegacyNodeConfiguration } from './LegacyNodeConfiguration';
 import { nodeLabel, readableRule } from './graph-model';
 
 type NodeView = StrategyRevision['nodes'][number];
 
-export function InspectorPanel({ node }: { node: NodeView | null }) {
+export function InspectorPanel({ node, revision, disabled, onSave, nodeApi }: { node: NodeView | null; nodeApi?: CatbotsDesktopApi['nodes']; revision?: StrategyRevision | null; disabled?: boolean; onSave?: (config: Record<string, unknown>) => Promise<void> }) {
   return (
     <LayerCard render={<aside aria-labelledby="inspector-title" />} className="inspector-panel">
       <p className="eyebrow">SELECTION</p>
@@ -22,7 +23,7 @@ export function InspectorPanel({ node }: { node: NodeView | null }) {
             <div><dt>Type</dt><dd>{node.type}</dd></div>
             <div><dt>Definition</dt><dd>v{node.version}</dd></div>
           </dl></Collapsible.Panel></Collapsible.Root>
-          <p className="inspector-note">Change this rule by describing the update in Chat. The visual flow is read-only.</p>
+          {revision && <LegacyNodeConfiguration key={`${node.id}:${revision.version}`} nodeApi={nodeApi} node={node} revision={revision} disabled={disabled} onSave={onSave} />}
         </>
       )}
     </LayerCard>

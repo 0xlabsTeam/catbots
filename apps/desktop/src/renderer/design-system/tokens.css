@@ -1,5 +1,16 @@
 /* Single source for Catbots design decisions. Kumo aliases keep primitives in sync. */
 :root {
+  /* Node identity colors: always paired with category text and an icon. */
+  --cb-node-trigger: light-dark(#b73708, #ffab7f);
+  --cb-node-data: light-dark(#036b86, #75d9ef);
+  --cb-node-indicator: light-dark(#244ec4, #9bb6ff);
+  --cb-node-process: light-dark(#655116, #e4cf8c);
+  --cb-node-condition: light-dark(#936000, #f4ca6b);
+  --cb-node-logic: light-dark(#7042b5, #c8a7ff);
+  --cb-node-strategy: light-dark(#a12c74, #f1a0d0);
+  --cb-node-risk: light-dark(#b32e3e, #ffa2ac);
+  --cb-node-action: light-dark(#08734f, #7cdbb6);
+  --cb-node-output: light-dark(#4d5e73, #b8c9df);
   --cb-page-max-width: 76rem;
   --cb-page-gutter: clamp(1rem, 3vw, 2rem);
   --cb-page-padding-block: 2rem;

@@ -304,9 +304,7 @@ h2 {
   box-shadow: 0 .25rem 1rem color-mix(in srgb, var(--color-kumo-line) 50%, transparent);
 }
 
-.strategy-node-trigger { border-left-color: var(--text-color-kumo-brand); }
-.strategy-node-condition { border-left-color: var(--text-color-kumo-warning); }
-.strategy-node-action { border-left-color: var(--text-color-kumo-success); }
+
 
 .strategy-node-kind {
   color: var(--text-color-kumo-subtle);
@@ -1370,3 +1368,86 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .destination-placeholder.page-container > h1 { font-size: var(--cb-text-page); margin-top: 0; }
 .page-container > .settings-card { box-sizing: border-box; width: 100%; margin: 0; }
 .app-topbar { padding-inline: max(var(--cb-page-gutter), calc((100% - var(--cb-page-max-width)) / 2 + var(--cb-page-gutter))); }
+
+/* Category identity is shared by Kumo cards and legend badges. */
+.node-category-trigger { --node-accent: var(--cb-node-trigger); }
+.node-category-data { --node-accent: var(--cb-node-data); }
+.node-category-indicator { --node-accent: var(--cb-node-indicator); }
+.node-category-process { --node-accent: var(--cb-node-process); }
+.node-category-condition { --node-accent: var(--cb-node-condition); }
+.node-category-logic { --node-accent: var(--cb-node-logic); }
+.node-category-strategy { --node-accent: var(--cb-node-strategy); }
+.node-category-risk { --node-accent: var(--cb-node-risk); }
+.node-category-action { --node-accent: var(--cb-node-action); }
+.node-category-output { --node-accent: var(--cb-node-output); }
+
+.strategy-graph .strategy-node {
+  border: 1px solid color-mix(in srgb, var(--node-accent) 22%, var(--color-kumo-line));
+  border-top: 3px solid var(--node-accent);
+  border-radius: var(--cb-radius-lg);
+  background: var(--color-kumo-base);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--color-kumo-line) 28%, transparent);
+  transition: box-shadow var(--cb-duration-fast), border-color var(--cb-duration-fast);
+}
+.strategy-node-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--cb-space-2); color: var(--node-accent); }
+.strategy-node-heading .strategy-node-kind { color: var(--node-accent); background: color-mix(in srgb, var(--node-accent) 12%, var(--color-kumo-base)); border: 0; }
+.strategy-graph .strategy-node .react-flow__handle { background: var(--node-accent); border-color: var(--color-kumo-base); width: 8px; height: 8px; }
+.strategy-graph .react-flow__node.selected .strategy-node { outline-color: var(--node-accent); }
+.strategy-graph .react-flow__node:focus-visible .strategy-node { outline: 2px solid var(--node-accent); outline-offset: 3px; }
+.graph-node-legend { display: flex; flex-wrap: wrap; gap: var(--cb-space-2); }
+.graph-node-legend > span { display: inline-flex; align-items: center; gap: var(--cb-space-1); color: var(--node-accent); background: color-mix(in srgb, var(--node-accent) 10%, var(--color-kumo-base)); }
+.graph-reading-guide { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cb-space-3); font-size: var(--cb-text-caption); }
+
+.package-node-example { display: grid; gap: var(--cb-space-3); min-width: 0; }
+.package-node-example > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--cb-space-3); }
+.package-example-canvas { height: 38rem; min-height: 0; width: 100%; }
+
+.flow-program-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr) 16rem; gap: var(--cb-space-3); min-width: 0; }
+.flow-program-palette, .flow-program-inspector { display: flex; flex-direction: column; gap: var(--cb-space-3); max-height: 42rem; overflow: auto; min-width: 0; }
+.flow-program-palette section, .flow-program-inspector { display: flex; flex-direction: column; align-items: stretch; gap: var(--cb-space-2); }
+.flow-program-palette button { justify-content: start; white-space: normal; text-align: left; }
+.flow-program-canvas { height: 42rem; min-height: 0; }
+.strategy-graph .strategy-node.program-node { width: 100%; height: 100%; display: block; }
+.program-node strong { margin-top: var(--cb-space-2); }
+.program-node-description { margin: var(--cb-space-1) 0 0; color: var(--text-color-kumo-subtle); font-size: var(--cb-text-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.program-port { position: absolute; max-width: 44%; display: flex; gap: var(--cb-space-1); align-items: center; white-space: nowrap; font-size: var(--cb-text-caption); color: var(--text-color-kumo-default); }
+.program-port > span { overflow: hidden; text-overflow: ellipsis; }
+.program-port small { color: var(--text-color-kumo-subtle); font-size: var(--cb-text-caption); }
+.program-port-input { left: var(--cb-space-3); }
+.program-port-output { right: var(--cb-space-3); text-align: right; }
+.program-flow-wire .react-flow__edge-path { stroke-width: 2.5; stroke: var(--text-color-kumo-strong); }
+.program-data-wire .react-flow__edge-path { stroke-width: 1.5; stroke-dasharray: 5 4; stroke: var(--text-color-kumo-subtle); }
+.flow-program-inspector pre { overflow: auto; max-height: 20rem; font-size: var(--cb-text-caption); }
+.flow-program-inspector p { overflow-wrap: anywhere; }
+.flow-trace-list { display: flex; flex-wrap: wrap; gap: var(--cb-space-2); }
+@media (max-width: 1100px) { .flow-program-layout { grid-template-columns: 10rem minmax(0, 1fr); } .flow-program-inspector { grid-column: 1 / -1; max-height: none; } }
+@media (max-width: 640px) { .flow-program-layout { grid-template-columns: minmax(0, 1fr); } .flow-program-palette { max-height: 14rem; } }
+.flow-program-page { padding: var(--cb-space-4); width: 100%; min-width: 0; box-sizing: border-box; }
+.flow-program-page > .package-node-example { width: 100%; max-width: none; margin-top: var(--cb-space-2); }
+.flow-program-palette [class*="node-category-"] { color: var(--node-accent); background: color-mix(in srgb, var(--node-accent) 10%, var(--color-kumo-base)); }
+
+/* Node chrome: restrained surface, consistent category identity, clear typed ports. */
+.strategy-node-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--cb-radius-sm); background: color-mix(in srgb, var(--node-accent) 12%, var(--color-kumo-base)); }
+.strategy-node-heading .strategy-node-kind { font-size: var(--cb-text-caption); letter-spacing: normal; text-transform: none; }
+.strategy-graph .strategy-node:hover { border-color: var(--node-accent); box-shadow: 0 3px 12px color-mix(in srgb, var(--node-accent) 12%, transparent); }
+.strategy-graph .react-flow__node.selected .strategy-node { outline: 2px solid var(--node-accent); outline-offset: 2px; box-shadow: 0 0 0 6px color-mix(in srgb, var(--node-accent) 10%, transparent); }
+.program-node::after { content: ''; position: absolute; top: 91px; left: var(--cb-space-3); right: var(--cb-space-3); height: 1px; background: var(--color-kumo-line); }
+.strategy-graph .program-node .react-flow__handle { width: 10px; height: 10px; background: var(--color-kumo-base); border: 2px solid var(--node-accent); }
+.strategy-graph .program-node .react-flow__handle.program-handle-flow { border-radius: 0; background: var(--node-accent); }
+.strategy-graph .program-node .react-flow__handle:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-accent) 15%, transparent); }
+
+.chat-flow-layout { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; }
+.chat-flow-layout.has-selection { grid-template-columns: minmax(0, 1fr) 20rem; }
+.chat-node-inspector { overflow: auto; min-height: 0; padding: var(--cb-space-4); border-left: 1px solid var(--color-kumo-line); display: flex; flex-direction: column; gap: var(--cb-space-3); }
+.chat-node-inspector header { display: flex; justify-content: space-between; align-items: start; gap: var(--cb-space-2); }
+.chat-node-inspector p { font-size: var(--cb-text-caption); overflow-wrap: anywhere; }
+.chat-node-inspector pre { overflow: auto; max-height: 14rem; font-size: var(--cb-text-caption); }
+.node-port-detail { padding-block: var(--cb-space-3); border-bottom: 1px solid var(--color-kumo-line); }
+@media (max-width: 1000px) {
+  .chat-flow-layout.has-selection { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+  .chat-flow-layout.has-selection > .strategy-graph { min-height: 24rem; }
+  .chat-node-inspector { min-height: 20rem; border-left: 0; border-top: 1px solid var(--color-kumo-line); }
+}
+.legacy-node-config { display: flex; flex-direction: column; gap: var(--cb-space-3); }
+.legacy-node-config p { font-size: var(--cb-text-caption); overflow-wrap: anywhere; }
+.legacy-node-config pre { max-height: 16rem; overflow: auto; font-size: var(--cb-text-caption); }

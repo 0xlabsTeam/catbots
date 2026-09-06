@@ -81,3 +81,28 @@ use `page-container`: the shared 76rem maximum width, responsive 16–32px horiz
 gutter and 32px vertical padding. The three `--cb-page-*` tokens own these values.
 Workbench uses a full-width canvas; onboarding and dialogs have their own dedicated layouts.
 Do not add per-page outer width or padding overrides.
+
+### Node category identity
+
+Graph cards use Kumo LayerCard and Badge with Phosphor icons. Category identity is
+centralized in `workbench/node-presentation.ts` and `--cb-node-*` tokens. Each
+category has a colored border, subtle tinted surface, icon and visible label;
+color alone never conveys the category. Logic is a visual subdivision of
+Condition, not a new execution kind. Trigger uses orange, Data cyan, Indicator
+blue, Process olive, Condition amber, Logic purple, Strategy magenta, Risk red,
+Action green and Output slate. Light/dark variants live only in tokens.css.
+Selection and keyboard focus retain the category color with an additional outline.
+Cards keep the graph's fixed 240 × 112 bounds so category styling does not alter
+edge routing. The legend includes only categories present in the graph.
+
+
+### Flow editor node cards
+
+Editable cards use a neutral Kumo surface, a category-colored top edge, a tinted
+icon tile and a category badge. The title and configuration summary sit above a
+separated port area. Port labels include their data types; solid square handles
+identify Flow and outlined round handles identify Data. Hover and selection add a
+category-colored outline without changing card geometry. `programNodeSize` in
+`node-presentation.ts` defines the 264 × 196 editor bounds and port positions;
+the compact read-only Workbench cards retain 240 × 112 bounds. All typography,
+color, rounding and interaction timing use shared design tokens.

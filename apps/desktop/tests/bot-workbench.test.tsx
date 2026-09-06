@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuditEventView, CatbotsDesktopApi, PaperDeploymentView, RiskLimits, WorkbenchState } from '@catbots/contracts';
@@ -10,6 +10,9 @@ vi.mock('../src/renderer/workbench/StrategyGraph', () => ({
   ),
 }));
 
+vi.mock('../src/renderer/workbench/ChatFlowGraph', () => ({
+  ChatFlowGraph: ({ draft }: { draft: import('@catbots/contracts').ChatFlowDraft }) => <div>Live nodes: {draft.document.nodes.length}</div>,
+}));
 import { BotWorkbenchScreen } from '../src/renderer/screens/BotWorkbenchScreen';
 
 const state: WorkbenchState = {
@@ -326,4 +329,28 @@ describe('BotWorkbenchScreen', () => {
     expect(deployApi.startPaper).not.toHaveBeenCalled();
     expect(deployApi.prepareLive).not.toHaveBeenCalled();
   });
+});
+
+it('shows persisted node updates while the chat request is still pending', async () => {
+  const workbenchApi = api();
+  let listener!: Parameters<typeof workbenchApi.subscribeActivity>[0];
+  let finish!: (value: WorkbenchState) => void;
+  vi.mocked(workbenchApi.subscribeActivity).mockImplementation(callback => { listener = callback; return () => undefined; });
+  vi.mocked(workbenchApi.sendMessage).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<BotWorkbenchScreen bot={state.bot} api={workbenchApi} deploymentApi={deploymentApi()} onBack={() => undefined} />);
+  const input = await screen.findByRole('textbox');
+  fireEvent.change(input, { target: { value: 'Create an RSI flow' } });
+  fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+  const requestId = vi.mocked(workbenchApi.sendMessage).mock.calls[0]![0].requestId!;
+  const flowDraft: import('@catbots/contracts').ChatFlowDraft = {
+    botId: state.bot.id, version: 1, status: 'building', updatedAt: state.bot.updatedAt,
+    document: { schemaVersion: '3.0', nodes: [{ id: 'tick', type: 'trigger.tick', version: 1, config: {} }], edges: [] },
+  };
+  act(() => listener({ botId: state.bot.id, requestId: 'wrong-request', phase: 'flow_updated', message: 'Saved', flowDraft }));
+  expect(screen.queryByText('Live nodes: 1')).toBeNull();
+  act(() => listener({ botId: state.bot.id, requestId, phase: 'flow_updated', message: 'Saved', flowDraft }));
+  expect(screen.getByText('Live nodes: 1')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Approve v1' })).toBeNull();
+  await act(async () => finish({ ...state, flowDraft }));
+  expect(screen.getByText('Live nodes: 1')).toBeTruthy();
 });

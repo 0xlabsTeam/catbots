@@ -9,6 +9,7 @@ import { ChatPanel } from '../workbench/ChatPanel';
 import { BacktestPanel } from '../workbench/BacktestPanel';
 import { TraceTimeline } from '../workbench/TraceTimeline';
 import { InspectorPanel } from '../workbench/InspectorPanel';
+import { ChatFlowGraph } from '../workbench/ChatFlowGraph';
 import { StrategyGraph } from '../workbench/StrategyGraph';
 import { WorkbenchHeader } from '../workbench/WorkbenchHeader';
 import { isDynamicDeploymentEligible } from '../workbench/DeploymentScopeSummary';
@@ -19,11 +20,12 @@ export type BotWorkbenchScreenProps = Readonly<{
   bot: BotSummary;
   api: CatbotsDesktopApi['workbench'];
   deploymentApi: CatbotsDesktopApi['deployments'];
+  nodeApi?: CatbotsDesktopApi['nodes'];
   onBack(): void;
   onOpenSettings?(): void;
 }>;
 
-export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSettings }: BotWorkbenchScreenProps) {
+export function BotWorkbenchScreen({ bot, api, nodeApi, deploymentApi, onBack, onOpenSettings }: BotWorkbenchScreenProps) {
   const [state, setState] = useState<WorkbenchState | null>(null);
   const [selectedNode, setSelectedNode] = useState<StrategyRevision['nodes'][number] | null>(null);
   const requestRef = useRef<string | null>(null);
@@ -34,7 +36,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
   const [tab, setTab] = useState('flow');
   const [showChat, setShowChat] = useState(true);
   const [showInspector, setShowInspector] = useState(false);
-  const inspectorVisible = showInspector && tab === 'flow';
+  const inspectorVisible = showInspector && tab === 'flow' && !state?.flowDraft;
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
   const [deployment, setDeployment] = useState<PaperDeploymentView | null>(null);
@@ -50,6 +52,12 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
     const unsubscribe = api.subscribeActivity((next) => {
       if (next.botId !== bot.id) return;
       if (requestRef.current && next.requestId !== requestRef.current) return;
+      if (next.phase === 'flow_updated' && next.flowDraft?.botId === bot.id) {
+        const draft = next.flowDraft;
+        setState(previous => previous && draft.version > (previous.flowDraft?.version ?? 0) ? { ...previous, flowDraft: draft } : previous);
+        setTab('flow');
+        return;
+      }
       if (next.phase === 'text_delta') { setStreamingText((text) => text + (next.delta ?? '')); return; }
       if (next.phase === 'thinking') setStreamingText('');
       setActivities((history) => [...(next.phase === 'backtest_progress' ? history.filter((item) => item.requestId !== next.requestId || item.phase !== 'backtest_progress') : history), next].slice(-40));
@@ -215,22 +223,25 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
       <WorkbenchHeader state={state} approving={approving} onBack={onBack} onSelectVersion={(version) => void selectVersion(version)} onApprove={approve} />
       {error === null ? null : <Banner variant="error" title="Workbench unavailable" description={error} />}
       <div className={`workbench-grid${showChat ? '' : ' chat-hidden'}${inspectorVisible ? '' : ' inspector-hidden'}`}>
-        <div id="workbench-chat" className="workbench-chat-region" hidden={!showChat}><ChatPanel streamingText={streamingText} key={bot.id} botId={bot.id} activities={activities} stopping={stopping} onStop={stopAgent} result={state.currentRevision ? <div className="chat-result"><Badge variant="secondary">Strategy v{state.currentRevision.version} · {state.currentRevision.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open strategy</Button>{state.backtests.some((run) => run.revisionVersion === state.currentRevision?.version) && <Button size="sm" variant="secondary" onClick={() => setTab('backtest')}>View backtest</Button>}</div> : null} messages={state.messages} activity={activity} sending={sending} onSend={send} /></div>
+        <div id="workbench-chat" className="workbench-chat-region" hidden={!showChat}><ChatPanel streamingText={streamingText} key={bot.id} botId={bot.id} activities={activities} stopping={stopping} onStop={stopAgent} result={state.flowDraft ? <div className="chat-result"><Badge variant="secondary">Flow v{state.flowDraft.version} · {state.flowDraft.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open flow</Button></div> : state.currentRevision ? <div className="chat-result"><Badge variant="secondary">Strategy v{state.currentRevision.version} · {state.currentRevision.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open strategy</Button>{state.backtests.some((run) => run.revisionVersion === state.currentRevision?.version) && <Button size="sm" variant="secondary" onClick={() => setTab('backtest')}>View backtest</Button>}</div> : null} messages={state.messages} activity={activity} sending={sending} onSend={send} /></div>
         <section className="workbench-canvas" aria-label="Strategy workspace">
       <div className="workbench-view-tools" aria-label="Workspace panels">
         <Tabs tabs={[{ value: 'flow', label: 'Flow' }, { value: 'backtest', label: 'Backtest' }, { value: 'performance', label: 'Performance' }, { value: 'logs', label: 'Logs' }]} value={tab} onValueChange={setTab} variant="underline" />
         <Button size="sm" variant="ghost" icon={ChatCircleIcon} title={showChat ? 'Hide chat' : 'Show chat'} aria-label={showChat ? 'Hide chat' : 'Show chat'} aria-pressed={showChat} aria-controls="workbench-chat" onClick={() => setShowChat(!showChat)}></Button>
-        <Button size="sm" variant="ghost" icon={SidebarSimpleIcon} disabled={tab !== 'flow'} title={showInspector ? 'Hide inspector' : 'Show inspector'} aria-label={showInspector ? 'Hide inspector' : 'Show inspector'} aria-pressed={inspectorVisible} aria-controls="workbench-inspector" onClick={() => setShowInspector(!showInspector)}></Button>
+        <Button size="sm" variant="ghost" icon={SidebarSimpleIcon} disabled={tab !== 'flow' || !!state.flowDraft} title={showInspector ? 'Hide inspector' : 'Show inspector'} aria-label={showInspector ? 'Hide inspector' : 'Show inspector'} aria-pressed={inspectorVisible} aria-controls="workbench-inspector" onClick={() => setShowInspector(!showInspector)}></Button>
       </div>
 
 
           {tab === 'performance' ? <PaperPerformance deployment={deployment} />
             : tab === 'logs' ? <PaperLogs deployment={deployment} />
             : tab === 'flow' ? (
-            state.currentRevision === null
+            state.flowDraft ? <ChatFlowGraph nodeApi={nodeApi} draft={state.flowDraft} disabled={sending} onSave={nodeApi ? async (node) => {
+                const result = await nodeApi.command({ action: 'edit_flow', botId: bot.id, edit: { baseVersion: state.flowDraft!.version, operation: { type: 'upsert_node', node } } });
+                if (result.flowDraft) setState(previous => previous ? { ...previous, flowDraft: result.flowDraft } : previous);
+              } : undefined} /> : state.currentRevision === null
               ? <LayerCard className="workbench-empty"><h2>Start with a requirement</h2><p>Tell Catbots AI when to evaluate, which conditions to combine, and what action to take.</p></LayerCard>
               : <StrategyGraph revision={state.currentRevision} onSelectNode={(node) => { setSelectedNode(node); setShowInspector(true); }} />
-          ) : state.currentRevision === null
+          ) : state.flowDraft ? <LayerCard className="workbench-empty"><h2>Packaged flow draft</h2><p>Backtest and deployment are not connected to this flow yet.</p></LayerCard> : state.currentRevision === null
             ? <LayerCard className="workbench-empty"><h2>Create a strategy first</h2><p>A valid revision is required before a Backtest can run.</p></LayerCard>
             : <BacktestPanel
                 key={state.currentRevision.version}
@@ -241,11 +252,14 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
                 onCompleted={(backtest) => setState((previous) => previous === null ? previous : { ...previous, backtests: [backtest, ...previous.backtests] })}
               />}
         </section>
-        <div id="workbench-inspector" className="workbench-inspector-region" hidden={!inspectorVisible}><InspectorPanel node={selectedNode} /></div>
+        <div id="workbench-inspector" className="workbench-inspector-region" hidden={!inspectorVisible}><InspectorPanel nodeApi={nodeApi} node={selectedNode} revision={state.currentRevision} disabled={sending} onSave={api.configureNode && selectedNode && state.currentRevision ? async config => {
+          const next = await api.configureNode!({ botId: bot.id, version: state.currentRevision!.version, nodeId: selectedNode.id, config });
+          setState(next); setSelectedNode(next.currentRevision?.nodes.find(node => node.id === selectedNode.id) ?? null);
+        } : undefined} /></div>
       </div>
-      <footer className="workbench-runtime">
+      {(!state.flowDraft || deployment?.deployment.status === 'running' || deployment?.deployment.status === 'paused' || liveDeployment?.status === 'running') && <footer className="workbench-runtime">
           <ExecutionControls
-            revision={state.currentRevision}
+            revision={state.flowDraft ? null : state.currentRevision}
             deployment={deployment}
             liveDeployment={liveDeployment}
             changing={changingDeployment}
@@ -255,7 +269,7 @@ export function BotWorkbenchScreen({ bot, api, deploymentApi, onBack, onOpenSett
             onReviewLive={() => setReviewingLive(true)}
             onStopLive={() => void stopLive()}
           />
-      </footer>
+      </footer>}
     </section>
   );
 }

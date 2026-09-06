@@ -55,7 +55,7 @@ export default function App({ api, preview = false, surface = 'desktop' }: AppPr
   else screen = (
     <AppShell focused={destination === 'bots' && selectedBot !== null} surface={surface} destination={destination} onNavigate={(next) => { setDestination(next); if (next === 'bots') setSelectedBot(null); }}>
       {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
-      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
+      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen bot={selectedBot} api={api.workbench} nodeApi={api.nodes} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
       {destination === 'settings' ? <SettingsScreen connections={api.providers && <ProviderConnections api={api.providers} onSelected={() => setSubscriptionReady(true)} />} api={api.config} config={'config' in bootstrap ? bootstrap.config : undefined} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'nodes' && api.nodes ? <NodesScreen api={api.nodes} /> : null}
       {destination === 'data' ? <PlaceholderScreen title="Data" description="Installed indicators and local data products will appear here in a later milestone." /> : null}

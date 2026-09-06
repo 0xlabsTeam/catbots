@@ -60,3 +60,36 @@ Before production deployment, implement and test:
 7. A capability-limited worker runtime, compatibility manifest, integrity verification and resource limits before enabling community executable packages.
 
 Reference material: [TradeSanta documentation](https://tradesanta.com/documentation-new), [strategies](https://tradesanta.com/available-strategies), [Node-RED](https://github.com/node-red/node-red), and the user's [Botfalo](https://github.com/0xlabsTeam/botfalo) design. These informed the boundary choices; no claim of API or behavioral compatibility is made.
+
+## Flow programming editor increment
+
+The Nodes screen now opens a dedicated editable canvas. The palette adds packaged
+nodes; the inspector derives configuration fields from their Zod schemas. Explicit
+connection validation rejects incompatible port types, multiple sources for one
+input and cycles. Cards expose port names; solid Flow wires carry boolean
+activation and dashed Data wires carry typed values. Nodes can be repositioned,
+configured and removed. Manual inspector connection controls provide an alternative
+to dragging ports. Save draft stores graph and layout in this browser's localStorage;
+it is not a shared web/desktop project store.
+
+`trigger.tick` also emits a `flow` output. `condition.branch` requires both a flow
+activation and a condition, and emits mutually exclusive `true`/`false` flow outputs.
+`action.flow_order` only evaluates when its declared activation port is ready and
+true. Inactive nodes preserve previous state and emit unavailable data outputs plus
+false flow outputs. Unknown activation propagates unavailable, never false. Traces
+record executed/skipped/unavailable. Existing snapshot data nodes still evaluate in
+topological order; adding this editor does not convert all nodes into event-driven
+actors. All activations in one evaluation share the same context/run/market.
+
+Run snapshot evaluates synthetic data locally and creates order proposals only.
+The debug timeline stores up to 100 ticks for the current editing session, and
+shows exact node inputs/outputs. Editing the graph resets simulation state and run
+identity; moving a node does not change evaluation state. No synthetic fills are
+injected by this editor. Full order lifecycle simulation remains in the separate
+DCA/Grid/Smart Order demonstrations.
+
+Still pending: event queues, scheduled execution, dynamic Join/For-each, editable
+Subflows, shared backend draft storage, order submission/fill events, AI authoring,
+and integration with v3 Paper/Live. The generic strategy controllers remain
+snapshot-driven; they must continue processing fills even when entry signals are
+false, so blindly gating them by entry Flow would be incorrect.

@@ -11,7 +11,7 @@ export type WorkbenchHeaderProps = Readonly<{
 }>;
 
 export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onApprove }: WorkbenchHeaderProps) {
-  const revision = state.currentRevision;
+  const revision = state.flowDraft ? null : state.currentRevision;
   return (
     <header className="workbench-header">
       <Button type="button" variant="ghost" size="sm" icon={ArrowLeftIcon} onClick={onBack}>All bots</Button>

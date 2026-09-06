@@ -5,13 +5,15 @@ import type { StrategyRevision } from '@catbots/contracts';
 type WorkbenchNode = StrategyRevision['nodes'][number];
 
 export type StrategyFlowNodeData = Record<string, unknown> & Readonly<{
-  kind: WorkbenchNode['kind'];
+  kind: string;
   nodeType: string;
   title: string;
   summary: string;
   accessibleName: string;
   inputPorts: string[];
   outputPorts: string[];
+  showPorts?: boolean;
+  portTypes?: { inputs: Record<string, string>; outputs: Record<string, string> };
 }>;
 
 export type StrategyFlowNode = Node<StrategyFlowNodeData, 'strategy'>;
