@@ -5,3 +5,4 @@ export { createAllCategoryExample } from './all-category-example';
 export { evaluatePackagedFlow } from './node-packages';
 export { exampleContext } from './package-examples';
 export type { FlowDocument, FlowRun, FlowEdge } from '@catbots/node-kit';
+export { prepareFlow } from '@catbots/node-kit';

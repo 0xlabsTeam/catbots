@@ -22,6 +22,8 @@ export class NodePackageService {
   catalog() { return new CommunityNodeCatalog(this.packages); }
   command(input: unknown): NodePackageStatus {
     const command = NodePackageCommandSchema.parse(input);
+    if (command.action === 'validate_flow') return { packages: [], flowDraft: this.flowStore().validate(command.botId, command.baseVersion) };
+    if (command.action === 'import_flow') return { packages: [], flowDraft: this.flowStore().import(command.botId, command.document) };
     if (command.action === 'edit_flow') return { packages: [], flowDraft: this.flowStore().edit(command.botId, command.edit) };
     if (command.action === 'market_snapshot') throw new Error('Use asynchronous market handler');
     if (command.action === 'list') return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages() };

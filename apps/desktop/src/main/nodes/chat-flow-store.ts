@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { ChatFlowDraftSchema, ChatFlowEditSchema, type ChatFlowDraft } from '@catbots/contracts';
+import { ChatFlowDocumentSchema, ChatFlowDraftSchema, ChatFlowEditSchema, type ChatFlowDraft } from '@catbots/contracts';
 import { prepareFlow } from '@catbots/strategy-runtime';
 import { runtimeNodePackages } from '@catbots/strategy-runtime';
 const definitions = new Map(runtimeNodePackages.flatMap(pkg => pkg.definitions.map(def => [def.type, def] as const)));
@@ -44,6 +44,14 @@ export class ChatFlowStore {
     const visit = (id: string) => { if (visiting.has(id)) throw new Error('Flow cannot contain cycles'); if (visited.has(id)) return; visiting.add(id); for (const edge of doc.edges.filter(edge => edge.source === id)) visit(edge.target); visiting.delete(id); visited.add(id); };
     doc.nodes.forEach(node => visit(node.id));
     return this.write(all, { botId, version: baseVersion + 1, status: 'building', document: doc, updatedAt: new Date().toISOString() });
+  }
+  import(botId: string, input: unknown) {
+    const all = this.read();
+    if (all[botId]) throw new Error('This bot already has a flow. Import into a new bot.');
+    const document = ChatFlowDocumentSchema.parse(input);
+    if (!document.nodes.length) throw new Error('Add nodes before importing');
+    prepareFlow(document, runtimeNodePackages);
+    return this.write(all, { botId, version: 1, status: 'valid', document, updatedAt: new Date().toISOString() });
   }
   validate(botId: string, baseVersion: number) {
     const all = this.read(); const draft = all[botId];

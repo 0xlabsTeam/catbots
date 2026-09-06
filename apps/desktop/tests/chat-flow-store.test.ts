@@ -46,3 +46,12 @@ it('publishes every accepted operation and preserves earlier changes on batch fa
   expect(catalog.execute('validate_flow', { baseVersion: 3 }).ok).toBe(true);
   expect(versions).toEqual([1, 2, 3, 4]);
 });
+it('imports a validated sandbox atomically and never replaces an existing flow', () => {
+  const { store } = fixture();
+  const document = { schemaVersion: '3.0', nodes: [number.node, output.node], edges: [edge] };
+  expect(() => store.import(botId, { ...document, edges: [] })).toThrow();
+  expect(store.get(botId)).toBeUndefined();
+  expect(store.import(botId, document).status).toBe('valid');
+  expect(() => store.import(botId, document)).toThrow('already has a flow');
+  expect(store.get(botId)?.version).toBe(1);
+});

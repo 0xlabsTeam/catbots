@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MarketSnapshotRequestSchema, type MarketSnapshot } from './market-snapshot';
-import { ChatFlowEditSchema, type ChatFlowDraft } from './chat-flow';
+import { ChatFlowDocumentSchema, ChatFlowEditSchema, type ChatFlowDraft } from './chat-flow';
 const id = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/);
 const nodeType = z.string().regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/).max(100);
 const json: z.ZodType<null | boolean | number | string | unknown[] | Record<string, unknown>> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string().max(10000), z.array(json).max(100), z.record(z.string().max(100), json)]));
@@ -29,6 +29,8 @@ export type CommunityNode = z.infer<typeof CommunityNodeSchema>;
 export type InstalledNodePackage = { manifest: NodePackage; integrity: string; enabled: boolean };
 export const NodePackageCommandSchema = z.discriminatedUnion('action', [
   MarketSnapshotRequestSchema,
+  z.object({ action: z.literal('validate_flow'), botId: z.string().uuid(), baseVersion: z.number().int().positive() }).strict(),
+  z.object({ action: z.literal('import_flow'), botId: z.string().uuid(), document: ChatFlowDocumentSchema }).strict(),
   z.object({ action: z.literal('edit_flow'), botId: z.string().uuid(), edit: ChatFlowEditSchema }).strict(),
   z.object({ action: z.literal('list') }).strict(),
   z.object({ action: z.literal('simulate'), example: z.enum(['dca','grid','smart_order']) }).strict(),
