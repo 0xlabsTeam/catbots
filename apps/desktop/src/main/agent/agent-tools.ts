@@ -1,3 +1,4 @@
+import { createFlowBacktestTools, flowBacktestNames, runFlowArguments, getFlowArguments, cancelFlowArguments, type BacktestCommand } from './flow-backtest-tools';
 import { z } from 'zod';
 import {
   ChatFlowEditSchema,
@@ -21,6 +22,7 @@ import {
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 
 const allowedToolNames = [
+  ...flowBacktestNames,
   'get_flow', 'edit_flow', 'validate_flow',
   'list_nodes',
   'list_data_products',
@@ -36,10 +38,13 @@ export type AgentToolResult = Readonly<Record<string, JsonValue>>;
 export type AgentToolCatalog = Readonly<{
   definitions: readonly AgentToolDefinition[];
   execute(name: string, argumentsValue: unknown): AgentToolResult;
+  executeAsync?(name: string, argumentsValue: unknown, signal: AbortSignal): Promise<AgentToolResult>;
 }>;
 
 export type AgentToolDependencies = Readonly<{
   botId: string;
+  backtestCommand?: BacktestCommand;
+  onFlowBacktestProgress?: (job: import('@catbots/contracts').FlowBacktestJob) => void;
   flowStore?: import('../nodes/chat-flow-store').ChatFlowStore;
   onFlowUpdated?: (draft: import('@catbots/contracts').ChatFlowDraft) => void;
   dex: DexId;
@@ -125,6 +130,11 @@ const strategyDocumentJsonSchema: JsonValue = {
 };
 
 const definitions: readonly AgentToolDefinition[] = [
+  ...[
+    ['run_flow_backtest', 'Run a saved packaged flow on real historical market data and wait for results. At most five runs per message. Returns pinned version, metrics, warnings, node coverage and first 20 fills. No real orders.', runFlowArguments],
+    ['get_flow_backtest', 'Read job status, metrics and paginated fills for this bot. Use returned job ID; inspect warnings and node coverage before tuning.', getFlowArguments],
+    ['cancel_flow_backtest', 'Cancel a historical backtest belonging to this bot.', cancelFlowArguments],
+  ].map(([name, description, schema]) => ({ name: name as string, description: description as string, inputSchema: jsonSchemaFor(schema as z.ZodType) as Readonly<Record<string, JsonValue>> })),
   definition('get_flow', 'Read this bot’s saved packaged flow and all available typed node definitions. Call before editing.', {}),
   definition('edit_flow', 'Create or edit this bot’s flow incrementally. Each operation is persisted and immediately displayed in chat’s graph. Missing connections are allowed while building. Operations are sequential; successful operations remain saved if a later one fails. Call get_flow after an error.', {
     baseVersion: { type: 'integer', minimum: 0 }, operations: { type: 'array', minItems: 1, maxItems: 32, items: jsonSchemaFor(ChatFlowEditSchema.shape.operation) },
@@ -154,7 +164,12 @@ return definitions;
 
 export function createAgentToolCatalog(dependencies: AgentToolDependencies): AgentToolCatalog {
   const registry = dependencies.catalog?.registry ?? createBuiltinRegistry();
+  const historical = createFlowBacktestTools(dependencies.botId, dependencies.backtestCommand, dependencies.onFlowBacktestProgress);
   return {
+    async executeAsync(name, args, signal) {
+      if (flowBacktestNames.includes(name as typeof flowBacktestNames[number])) return await historical(name, args, signal) as unknown as AgentToolResult;
+      return this.execute(name, args);
+    },
     definitions: createDefinitions(registry),
     execute(name, argumentsValue) {
       if (!allowedToolNames.includes(name as AgentToolName)) return failure('UNKNOWN_TOOL', 'Tool is not available.');
@@ -244,6 +259,7 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
           return { ok: true, revision: dependencies.repository.createValidatedRevision(dependencies.botId, document) } as unknown as AgentToolResult;
         }
         if (name === 'backtest_strategy') {
+          if (dependencies.flowStore?.get(dependencies.botId)) return failure('USE_HISTORICAL_FLOW_BACKTEST', 'This bot has a packaged flow. Use its Backtest tab for real historical replay; bundled legacy sample results do not apply.');
           const input = backtestArguments.parse(argumentsValue);
           const document = dependencies.repository.getStrategyDocument(dependencies.botId, input.revisionVersion);
           const result = runBundledSampleBacktest(

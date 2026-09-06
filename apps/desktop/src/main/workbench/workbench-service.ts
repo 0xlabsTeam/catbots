@@ -90,6 +90,8 @@ export class WorkbenchService {
       const tools = createAgentToolCatalog({
         botId: request.botId,
         flowStore: this.dependencies.nodePackages?.flowStore(),
+        backtestCommand: this.dependencies.nodePackages ? input => this.dependencies.nodePackages!.backtestCommand(input) : undefined,
+        onFlowBacktestProgress: job => onActivity(AgentToolActivitySchema.parse({ botId: request.botId, requestId, phase: 'backtest_progress', tool: 'run_flow_backtest', message: `Historical backtest v${job.version}: ${job.status}.`, progress: job.progress })),
         onFlowUpdated: (flowDraft) => onActivity(AgentToolActivitySchema.parse({ botId: request.botId, requestId, phase: 'flow_updated', message: `Flow updated: ${flowDraft.document.nodes.length} nodes, ${flowDraft.document.edges.length} connections.`, flowDraft })),
         dex: state.bot.dex,
         backtestDatasetCatalog: bundledSampleDatasetCatalog,

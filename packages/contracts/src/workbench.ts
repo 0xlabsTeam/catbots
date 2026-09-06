@@ -76,6 +76,7 @@ export const ChatMessageSchema = z.object({
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 export const AgentToolNameSchema = z.enum([
+  'run_flow_backtest', 'get_flow_backtest', 'cancel_flow_backtest',
   'get_flow', 'edit_flow', 'validate_flow',
   'list_nodes',
   'list_data_products',
