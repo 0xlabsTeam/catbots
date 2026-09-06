@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrandLogo } from './BrandLogo';
-import { Badge, Button } from '@cloudflare/kumo';
-import { PlugsConnectedIcon, ActivityIcon, DesktopIcon, SidebarSimpleIcon, CaretRightIcon, DatabaseIcon, GearSixIcon, RobotIcon } from '@phosphor-icons/react';
+import { Sidebar, Breadcrumbs } from '@cloudflare/kumo';
+import { PlugsConnectedIcon, ActivityIcon, DesktopIcon, DatabaseIcon, GearSixIcon, RobotIcon } from '@phosphor-icons/react';
 
 export const appDestinations = ['bots', 'connections', 'nodes', 'data', 'activity', 'settings'] as const;
 export type AppDestination = (typeof appDestinations)[number];
@@ -28,34 +28,15 @@ export function AppShell({ destination, onNavigate, children, surface = 'desktop
   useEffect(() => setCollapsed(focused), [focused]);
   const currentLabel = navigationItems.find((item) => item.destination === destination)?.label;
   return (
-    <div className={`app-shell${collapsed ? ' sidebar-collapsed' : ''}${focused ? ' workspace-focused' : ''}`}>
-      <aside className="app-sidebar">
-        <div className="app-brand" aria-label="Catbots local workspace">
-          <span className="app-brand-mark" aria-hidden="true"><BrandLogo decorative /></span>
-          <span className="app-brand-name">Catbots</span>
-        <Button variant="ghost" size="sm" className="sidebar-toggle" type="button" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}><SidebarSimpleIcon size={18} /></Button>
-        </div>
-        <p className="sidebar-section-label">Workspace</p>
-        <nav className="app-navigation" aria-label="Global navigation">
-          {navigationItems.map(({ destination: itemDestination, label, icon }) => (
-            <Button size="base"
-              key={itemDestination}
-              type="button"
-              variant={destination === itemDestination ? 'secondary' : 'ghost'}
-              className="app-navigation-item"
-              aria-current={destination === itemDestination ? 'page' : undefined}
-              onClick={() => onNavigate(itemDestination)}
-              icon={icon}
-              title={label}
-              aria-label={label}
-            >
-              <span className="navigation-label">{label}{(itemDestination === 'data' || itemDestination === 'activity') && <Badge variant="secondary">Soon</Badge>}</span>
-            </Button>
-          ))}
-        </nav>
-        <div className="app-sidebar-note"><DesktopIcon aria-hidden="true" size={18} /><div><strong>Local workspace</strong><span>Stored on this device</span></div></div>
-      </aside>
-      <div className="app-main"><header className="app-topbar" hidden={focused}><span>Workspace</span><CaretRightIcon size={12} aria-hidden="true" /><strong>{currentLabel}</strong><span className="workspace-mode"><DesktopIcon size={14} aria-hidden="true" /> {surface === 'web' ? 'Browser · Local backend' : 'On device'}</span></header><main className="app-content">{children}</main></div>
-    </div>
+    <Sidebar.Provider open={!collapsed} onOpenChange={open=>setCollapsed(!open)} collapsible="icon" className={`kumo-app-shell${focused ? ' workspace-focused' : ''}`}>
+      <Sidebar>
+        <Sidebar.Header><div className="kumo-brand-row">{!collapsed&&<><BrandLogo decorative/><strong>Catbots</strong></>}<Sidebar.Trigger aria-label={collapsed?'Expand sidebar':'Collapse sidebar'}/></div></Sidebar.Header>
+        <Sidebar.Content><Sidebar.Group><Sidebar.GroupLabel>Workspace</Sidebar.GroupLabel><Sidebar.Menu aria-label="Global navigation">
+          {navigationItems.map(({destination:itemDestination,label,icon:Icon})=><Sidebar.MenuButton key={itemDestination} size="base" icon={Icon} active={destination===itemDestination} aria-label={label} onClick={()=>onNavigate(itemDestination)}>{label}{(itemDestination==='data'||itemDestination==='activity')&&<Sidebar.MenuBadge>Soon</Sidebar.MenuBadge>}</Sidebar.MenuButton>)}
+        </Sidebar.Menu></Sidebar.Group></Sidebar.Content>
+        <Sidebar.Footer><Sidebar.Menu><Sidebar.MenuButton size="base" icon={DesktopIcon} disabled>Local workspace</Sidebar.MenuButton></Sidebar.Menu></Sidebar.Footer>
+      </Sidebar>
+      <div className="app-main kumo-app-main"><header className="kumo-app-topbar" hidden={focused}><Sidebar.Trigger aria-label="Toggle navigation"/><Breadcrumbs size="sm"><Breadcrumbs.Current>Workspace</Breadcrumbs.Current><Breadcrumbs.Separator/><Breadcrumbs.Current>{currentLabel}</Breadcrumbs.Current></Breadcrumbs><span className="workspace-mode"><DesktopIcon size={14} aria-hidden="true"/>{surface==='web'?'Browser · Local backend':'On device'}</span></header>{focused&&<div className="kumo-mobile-navigation"><Sidebar.Trigger aria-label="Toggle navigation"/></div>}<main className="app-content">{children}</main></div>
+    </Sidebar.Provider>
   );
 }

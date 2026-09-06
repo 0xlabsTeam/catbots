@@ -1,13 +1,15 @@
+import { Children, isValidElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Link, Table } from '@cloudflare/kumo';
+import { Link, Table, CodeBlock, Checkbox } from '@cloudflare/kumo';
 
 /** One renderer for partial and saved replies. Raw HTML and remote images stay disabled. */
 export function ChatMarkdown({ children }: { children: string }) {
   return <Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
     a: ({ children, href }) => <Link href={href} target="_blank" rel="noopener noreferrer">{children}</Link>,
     img: ({ alt }) => <span>{alt}</span>,
-    input: ({ checked }) => <span>{checked ? '✓' : '○'}</span>,
+    input: ({ checked }) => <Checkbox checked={!!checked} disabled aria-label={checked ? 'Completed task' : 'Incomplete task'} /> ,
+    pre: ({ children }) => <CodeBlock code={Children.toArray(children).map(child => isValidElement<{ children?: ReactNode }>(child) ? String(child.props.children ?? '') : String(child)).join('')} />,
     table: ({ children }) => <div className="chat-markdown-table"><Table>{children}</Table></div>,
     thead: ({ children }) => <Table.Header>{children}</Table.Header>,
     tbody: ({ children }) => <Table.Body>{children}</Table.Body>,

@@ -13,7 +13,7 @@ export function BotExecutionActivity({name,view,onClose}:{name:string;view:BotEx
   const activity=view.activity;
   const positions=activity?.positions.filter(item=>item.market===view.target?.market)??[];
   const orders=activity?.orders.filter(item=>item.market===view.target?.market)??[];
-  return <Dialog.Root open onOpenChange={open=>{if(!open)onClose();}}><Dialog className="node-editor-dialog" aria-label="Trading activity">
+  return <Dialog.Root open onOpenChange={open=>{if(!open)onClose();}}><Dialog size="lg" className="trading-activity-dialog" aria-label="Trading activity">
     <Dialog.Title>{name} · Trading activity</Dialog.Title>
     <p>{view.accountName??'Account'} · {view.target?.market} · {view.environment==='testnet'?'Testnet':'Mainnet'}</p>
     <p>Positions and open orders are shared by this account and market. They may include manual trades or other bots.</p>

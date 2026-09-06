@@ -88,7 +88,7 @@ export function StrategyNodeCard({ data }: NodeProps<StrategyFlowNode>) {
   return (
     <LayerCard className={`strategy-node node-category-${category} ${data.showPorts ? 'program-node' : ''}`} style={data.showPorts ? { '--node-core-size': `${programNodeSize.core}px` } as CSSProperties : undefined} aria-label={data.accessibleName} data-testid="strategy-node" data-kind={data.kind} data-category={category}>
       {data.inputPorts.map((port, index) => <Handle key={port} className={data.portTypes?.inputs[port] === 'flow' ? 'program-handle-flow' : ''} type="target" position={Position.Left} id={port} title={`Input: ${port}`} style={{ left: data.showPorts ? (programNodeSize.width - programNodeSize.core) / 2 : undefined, top: data.showPorts ? programPortPosition(index, data.inputPorts.length) : `${((index + 1) / (data.inputPorts.length + 1)) * 100}%` }} />)}
-      <div className="strategy-node-heading"><span className="strategy-node-icon"><Icon size={data.showPorts ? 36 : 18} weight="duotone" aria-hidden="true" /></span><Badge variant="secondary" className="strategy-node-kind">{label}</Badge></div>
+      <LayerCard className="strategy-node-heading"><span className="strategy-node-icon"><Icon size={data.showPorts ? 36 : 18} weight="duotone" aria-hidden="true" /></span><Badge variant="secondary" className="strategy-node-kind">{label}</Badge></LayerCard>
       <strong title={data.showPorts ? data.title : data.summary}>{data.showPorts ? data.title : data.summary}</strong>
       {data.showPorts && <><p className="program-node-description" title={data.summary}>{data.summary}</p><span className="program-node-category">{label}</span></>}
       {!data.showPorts && <span>{data.title}</span>}

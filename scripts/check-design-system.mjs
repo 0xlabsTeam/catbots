@@ -34,7 +34,7 @@ async function inspect(directory) {
         ts.forEachChild(node, checkControls);
       }
       checkControls(ast);
-      if (/<(?:button|input|textarea|select|option|dialog|details|summary|a)\b/.test(source)) report(file, 'Use Kumo components for interactive controls; native custom controls are not allowed.');
+      if (/<(?:button|input|textarea|select|option|dialog|details|summary|a|pre|table|progress|svg)\b/.test(source)) report(file, 'Use Kumo components for controls, tables, code and charts; native custom primitives are not allowed.');
       if (/\b(?:fontSize|fontFamily|fontWeight|lineHeight|letterSpacing)\s*:/.test(source)) report(file, 'Use CSS typography tokens instead of inline typography.');
       if (/\btext-\[/.test(source)) report(file, 'Use the shared type scale instead of arbitrary text utilities.');
       if (!file.endsWith('/BrandLogo.tsx') && /assets\/(?:icon|logo)[\w.-]*\.(?:png|svg)|\bCatIcon\b/.test(source)) report(file, 'Use BrandLogo for the Catbots identity.');

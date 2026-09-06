@@ -37,6 +37,7 @@ export function BotsHomeScreen({ api, connections, onOpenBot }: BotsHomeScreenPr
   const [deleting,setDeleting]=useState<BotSummary|null>(null);
   const [deleteBusy,setDeleteBusy]=useState(false);
   const [deleteError,setDeleteError]=useState('');
+  const [deleteBlocked,setDeleteBlocked]=useState(false);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [bots, setBots] = useState<BotSummary[] | null>(null);
@@ -121,16 +122,22 @@ export function BotsHomeScreen({ api, connections, onOpenBot }: BotsHomeScreenPr
           </Select>
           <span className="bots-result-count" role="status">{filteredBots.length} of {bots.length} bots</span>
         </div>
-        {filteredBots.length ? <BotsTable bots={filteredBots} execution={execution} executionError={executionError} onActivity={setSelectedActivity} onDelete={api.remove ? bot=>{setDeleting(bot);setDeleteError('');} : undefined} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button size="base" variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
+        {filteredBots.length ? <BotsTable bots={filteredBots} execution={execution} executionError={executionError} onActivity={setSelectedActivity} onDelete={api.remove ? bot=>{setDeleting(bot);setDeleteError('');setDeleteBlocked(false);} : undefined} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button size="base" variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
       </> : null}
 
       {executionError && <Banner variant="error" title="Runtime status unavailable" description="Displayed data may be out of date. Retrying automatically."/>}
       {selectedActivity && execution[selectedActivity] && <BotExecutionActivity name={bots?.find(bot=>bot.id===selectedActivity)?.name??'Bot'} view={execution[selectedActivity]} onClose={()=>setSelectedActivity(null)}/>}
-      <Dialog.Root open={!!deleting} onOpenChange={open=>{if(!open&&!deleteBusy)setDeleting(null);}}><Dialog aria-label="Delete bot"><Dialog.Title>Delete {deleting?.name}?</Dialog.Title><p>Remove this bot from your list. Trading history is retained.</p><p>This does not close positions or cancel exchange orders.</p>{deleteError&&<Banner variant="error" title="Could not delete bot" description={deleteError}/>}<div className="provider-actions"><Button size="base" variant="secondary" disabled={deleteBusy} onClick={()=>setDeleting(null)}>Cancel</Button><Button size="base" variant="primary" loading={deleteBusy} disabled={deleteBusy} onClick={async()=>{
+      <Dialog.Root open={!!deleting} onOpenChange={open=>{if(!open&&!deleteBusy)setDeleting(null);}}><Dialog className="delete-bot-dialog" size="base" aria-label="Delete bot"><Dialog.Title>Delete {deleting?.name}?</Dialog.Title><Dialog.Description>Remove this bot from your list. Trading history is kept.</Dialog.Description><p className="delete-bot-note">Positions and exchange orders stay open.</p>{deleteError&&<Banner variant="error" title="Could not delete bot" description={deleteError}/>} {deleteBlocked && onOpenBot && <Button size="base" variant="secondary" onClick={()=>{if(deleting){onOpenBot(deleting);setDeleting(null);}}}>Open bot to resolve</Button>}<div className="delete-bot-actions"><Button size="base" variant="secondary" disabled={deleteBusy} onClick={()=>setDeleting(null)}>Cancel</Button><Button size="base" variant="primary" loading={deleteBusy} disabled={deleteBusy} onClick={async()=>{
         if(!deleting||!api.remove)return;
         setDeleteBusy(true);setDeleteError('');
         try{await api.remove({botId:deleting.id});locallyCreatedBotsRef.current.delete(deleting.id);setBots(previous=>previous?.filter(bot=>bot.id!==deleting.id)??[]);setDeleting(null);}
-        catch{setDeleteError('Stop any active or paused run and resolve uncertain orders first. If already stopped, retry after updating the local backend.');}
+        catch(error){
+          const message=error instanceof Error?error.message:'';
+          const active=message.includes('BOT_ACTIVE');
+          const unresolved=message.includes('BOT_UNRESOLVED');
+          setDeleteBlocked(active||unresolved);
+          setDeleteError(active ? 'This bot still has an active or saved deployment. Open the bot and press Stop, including when Paper runtime is unavailable, then delete it again.' : unresolved ? 'An order outcome is still uncertain. Open Deploy and reconcile with the exchange before deleting.' : 'Could not remove this bot. Please retry. If the problem continues, check that the local backend is up to date.');
+        }
         finally{setDeleteBusy(false);}
       }}>Delete bot</Button></div></Dialog></Dialog.Root>
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
