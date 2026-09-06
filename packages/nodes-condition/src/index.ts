@@ -1,3 +1,4 @@
+import { ifItemsDefinition } from './items';
 import { z } from 'zod';
 
 import type { NodeDefinition, PortDefinition } from '@catbots/node-kit';
@@ -141,4 +142,4 @@ export const conditionPackage = definePackage('@catbots/nodes-condition', [...co
     if (input.condition.quality !== 'ready') return { outputs: { true: unavailable('flow', 'Condition unavailable'), false: unavailable('flow', 'Condition unavailable') } };
     return { outputs: { true: ready('flow', input.condition.value === true), false: ready('flow', input.condition.value === false) } };
   },
-}]);
+}, ifItemsDefinition]);

@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { assertItems, type ExecutionItem } from './items';
 export const categories = ['trigger', 'data', 'indicator', 'process', 'condition', 'strategy', 'risk', 'action', 'output'] as const;
 export type NodeCategory = typeof categories[number];
-export type ValueType = 'flow' | 'event' | 'candles' | 'number' | 'condition' | 'order-plan' | 'orders' | 'json';
+export type ValueType = 'flow' | 'event' | 'candles' | 'number' | 'condition' | 'order-plan' | 'orders' | 'json' | 'items';
 export type Candle = { closedAt: number; open: number; high: number; low: number; close: number; volume: number };
 export type Value = { type: ValueType; value: unknown; quality: 'ready' | 'unavailable'; reason?: string };
 export type Fill = { id: string; clientOrderId: string; side: 'buy' | 'sell'; quantity: number; price: number; fee: number };
@@ -11,9 +12,14 @@ export type FlowNode = { id: string; type: string; version: number; config: Reco
 export type FlowEdge = { source: string; sourcePort: string; target: string; targetPort: string };
 export type FlowDocument = { schemaVersion: '3.0'; nodes: FlowNode[]; edges: FlowEdge[] };
 export type NodeResult = { outputs: Record<string, Value>; state?: unknown; orders?: OrderPlan[]; cancelOrderIds?: string[] };
+export type NodeRole = 'trigger' | 'action';
 export type FlowDefinition = {
+  /** Execution role is separate from the category used in the node picker. */
+  role?: NodeRole;
   type: string; version: number; category: NodeCategory; title: string;
   activation?: string;
+  /** Merge nodes may execute with an empty branch; other item nodes skip it. */
+  acceptsEmptyItems?: boolean;
   config: z.ZodType; inputs: Record<string, ValueType>; outputs: Record<string, ValueType>;
   evaluate(input: Record<string, Value>, config: any, context: FlowContext, state: unknown, nodeId: string): NodeResult;
 };
@@ -25,11 +31,12 @@ export const positive = numberConfig.positive();
 export const percentage = positive.max(100);
 const orderSchema = z.object({ clientOrderId: z.string().min(1), side: z.enum(['buy', 'sell']), quantity: positive, limitPrice: positive.optional(), reduceOnly: z.boolean(), purpose: z.enum(['entry', 'exit']) }).strict();
 const candleSchema = z.object({ closedAt: numberConfig, open: positive, high: positive, low: positive, close: positive, volume: numberConfig.nonnegative() }).strict();
-function validateValue(value: Value, type: ValueType): boolean {
+export function validateValue(value: Value, type: ValueType): boolean {
   if (!value || value.type !== type) return false;
   if (value.quality === 'unavailable') return value.value === null && typeof value.reason === 'string' && value.reason.length > 0;
   if (value.quality !== 'ready') return false;
   switch (type) {
+    case 'items': try { assertItems(value.value); return true; } catch { return false; }
     case 'number': return numberConfig.safeParse(value.value).success;
     case 'flow':
     case 'condition': return typeof value.value === 'boolean';
@@ -39,7 +46,7 @@ function validateValue(value: Value, type: ValueType): boolean {
     default: return value.value !== undefined;
   }
 }
-export function definePackage(name: string, definitions: readonly FlowDefinition[]): RuntimePackage { return { name, version: '0.1.0', definitions }; }
+export function definePackage(name: string, definitions: readonly FlowDefinition[]): RuntimePackage { return { name, version: '0.1.0', definitions: definitions.map(definition => ({ ...definition, role: definition.role ?? (definition.category === 'trigger' ? 'trigger' : 'action') })) }; }
 export function requireInputs(inputs: Record<string, Value>): string | undefined { return Object.values(inputs).find((value) => value.quality !== 'ready')?.reason; }
 
 export type FlowRun = { runId: string; market: string; at: number; state: Record<string, unknown>; orders: OrderPlan[]; cancelOrderIds: string[]; trace: { nodeId: string; status?: 'executed' | 'skipped' | 'unavailable'; inputs: Record<string, Value>; outputs: Record<string, Value> }[] };
@@ -53,14 +60,20 @@ export function evaluateFlow(document: FlowDocument, packages: readonly RuntimeP
   const outputs = new Map<string, Record<string, Value>>();
   for (const id of queue) {
     const {definition, config} = parsed.get(id)!;
-    const input = Object.fromEntries(document.edges.filter(edge => edge.target === id).map(edge => [edge.targetPort, structuredClone(outputs.get(edge.source)![edge.sourcePort])]));
+    const input = Object.fromEntries(document.edges.filter(edge => edge.target === id).map(edge => [edge.targetPort, linkedInput(outputs.get(edge.source)![edge.sourcePort], edge)]));
     const activation = definition.activation ? input[definition.activation] : undefined;
-    const status = activation?.quality === 'unavailable' ? 'unavailable' : activation?.value === false ? 'skipped' : 'executed';
+    const itemInputs = Object.values(input).filter(value => value.type === 'items');
+    const status = itemInputs.some(value => value.quality === 'unavailable') ? 'unavailable' : !definition.acceptsEmptyItems && itemInputs.some(value => (value.value as ExecutionItem[]).length === 0) ? 'skipped' : activation?.quality === 'unavailable' ? 'unavailable' : activation?.value === false ? 'skipped' : 'executed';
     const result: NodeResult = status === 'executed'
       ? definition.evaluate(input, structuredClone(config), structuredClone(snapshot), structuredClone(run.state[id]), id)
-      : { outputs: Object.fromEntries(Object.entries(definition.outputs).map(([port, type]) => [port, type === 'flow' && status === 'skipped' ? ready('flow', false) : unavailable(type, activation?.reason ?? 'Flow not activated')])) };
+      : { outputs: Object.fromEntries(Object.entries(definition.outputs).map(([port, type]) => [port, type === 'items' && status === 'skipped' ? ready('items', []) : type === 'flow' && status === 'skipped' ? ready('flow', false) : unavailable(type, itemInputs.find(value => value.quality === 'unavailable')?.reason ?? activation?.reason ?? 'Flow not activated')])) };
     for (const port of Object.keys(result.outputs)) if (!Object.hasOwn(definition.outputs, port)) throw new Error(`Unknown output ${id}.${port}`);
     for (const [port, type] of Object.entries(definition.outputs)) if (!validateValue(result.outputs[port], type)) throw new Error(`Invalid output ${id}.${port}`);
+    for (const value of Object.values(result.outputs)) if (value.type === 'items' && value.quality === 'ready') {
+      const links = itemInputs.filter(value => value.quality === 'ready').flatMap(value => (value.value as ExecutionItem[]).flatMap(item => item.pairedItem ?? []));
+      const allowed = new Set(links.map(link => JSON.stringify([link.nodeId, link.port, link.item])));
+      for (const item of value.value as ExecutionItem[]) for (const link of item.pairedItem ?? []) if (!allowed.has(JSON.stringify([link.nodeId, link.port, link.item]))) throw new Error(`Invalid item source at ${id}`);
+    }
     if ((result.orders?.length || result.cancelOrderIds?.length) && definition.category !== 'strategy' && definition.category !== 'action') throw new Error('Node has no execution capability');
     z.array(orderSchema).parse(result.orders ?? []);
     z.array(z.string().min(1)).parse(result.cancelOrderIds ?? []);
@@ -110,4 +123,10 @@ export function prepareFlow(document: FlowDocument, packages: readonly RuntimePa
   }
   if (queue.length !== nodes.size) throw new Error('Cycles are not allowed; state belongs to a strategy node');
   return { parsed, queue };
+}
+
+function linkedInput(value: Value, edge: FlowEdge): Value {
+  const copy = structuredClone(value);
+  if (copy.type === 'items' && copy.quality === 'ready') copy.value = (copy.value as ExecutionItem[]).map((item, index) => ({ json: item.json, pairedItem: [{ nodeId: edge.source, port: edge.sourcePort, item: index }] }));
+  return copy;
 }

@@ -97,4 +97,8 @@ export const triggerPackage = definePackage('@catbots/nodes-trigger', [{
   type: 'trigger.tick', version: 1, category: 'trigger', title: 'Evaluation tick',
   config: z.object({}).strict(), inputs: {}, outputs: { tick: 'event', flow: 'flow' },
   evaluate: () => ({ outputs: { tick: ready('event', true), flow: ready('flow', true) } }),
+}, {
+  type: 'trigger.items', version: 1, category: 'trigger', title: 'Market evaluation',
+  config: z.object({}).strict(), inputs: {}, outputs: { main: 'items' },
+  evaluate: (_input, _config, context) => ({ outputs: { main: ready('items', [{ json: { market: context.market, at: context.at, runId: context.runId } }]) } }),
 }]);

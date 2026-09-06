@@ -89,7 +89,7 @@ export const actionDefinitions: readonly NodeDefinition[] = [
   }),
 ];
 
-import { definePackage, ready, type OrderPlan } from '@catbots/node-kit';
+import { definePackage, ready, readItemField, type ExecutionItem, type OrderPlan } from '@catbots/node-kit';
 const actionNodes = definePackage('@catbots/nodes-action', [{
   type:'action.order',version:1,category:'action',title:'Propose order',
   config:z.object({side:z.enum(['buy','sell']),reduceOnly:z.boolean().default(false)}).strict(),inputs:{signal:'condition',quantity:'number'},outputs:{orders:'orders'},
@@ -106,5 +106,21 @@ export const actionPackage = definePackage('@catbots/nodes-action', [...actionNo
   inputs: { flow: 'flow', quantity: 'number' }, outputs: { orders: 'orders' },
   evaluate(input, config, context, state, nodeId) {
     return actionNodes.definitions[0].evaluate({ signal: ready('condition', true), quantity: input.quantity }, config, context, state, nodeId);
+  },
+}, {
+  type: 'action.item_order', version: 1, category: 'action', title: 'Propose orders · Items',
+  config: z.object({ quantityField: z.string().min(1).default('quantity'), side: z.enum(['buy', 'sell']), reduceOnly: z.boolean().default(false) }).strict(),
+  inputs: { main: 'items' }, outputs: { main: 'items' },
+  evaluate(input, config, context, _state, nodeId) {
+    const orders: OrderPlan[] = [];
+    const records = (input.main.value as ExecutionItem[]).map((item, index) => {
+      if (item.json.market !== context.market) throw new Error('Order market must match the execution market');
+      const quantity = readItemField(item.json, config.quantityField);
+      if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) throw new Error('Order quantity must be positive');
+      const order: OrderPlan = { clientOrderId: JSON.stringify([context.deploymentId, context.market, nodeId, context.runId, index]), quantity, side: config.side, reduceOnly: config.reduceOnly, purpose: config.reduceOnly ? 'exit' : 'entry' };
+      orders.push(order);
+      return { json: { ...item.json, order }, pairedItem: item.pairedItem };
+    });
+    return { orders, outputs: { main: ready('items', records) } };
   },
 }]);

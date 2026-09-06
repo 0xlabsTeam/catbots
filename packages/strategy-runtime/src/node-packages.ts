@@ -9,6 +9,6 @@ import { actionPackage } from '@catbots/nodes-action';
 import { outputPackage } from '@catbots/nodes-output';
 import { evaluateFlow, type FlowContext, type FlowDocument, type FlowRun } from '@catbots/node-kit';
 export const runtimeNodePackages = [triggerPackage,dataPackage,indicatorPackage,processPackage,conditionPackage,strategyPackage,riskPackage,actionPackage,outputPackage];
-export function listRuntimePackages() { return runtimeNodePackages.map(pkg=>({name:pkg.name,version:pkg.version,mode:'simulation' as const,nodes:pkg.definitions.map(def=>({type:def.type,version:def.version,category:def.category,title:def.title,inputs:def.inputs,outputs:def.outputs}))})); }
+export function listRuntimePackages() { return runtimeNodePackages.map(pkg=>({name:pkg.name,version:pkg.version,mode:'simulation' as const,nodes:pkg.definitions.map(def=>({type:def.type,version:def.version,category:def.category,role:def.role ?? (def.category==='trigger'?'trigger' as const:'action' as const),title:def.title,inputs:def.inputs,outputs:def.outputs}))})); }
 export function evaluatePackagedFlow(document:FlowDocument,context:FlowContext,previous:Record<string,unknown>={}):FlowRun {return evaluateFlow(document,runtimeNodePackages,context,previous);}
 export type { FlowDocument, FlowContext, FlowRun } from '@catbots/node-kit';
