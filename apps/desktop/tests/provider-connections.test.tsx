@@ -17,3 +17,8 @@ it('shows readable provider and default login labels, and submits the selected m
   await userEvent.setup().click(screen.getByRole('button', { name: 'Continue' }));
   expect(command).toHaveBeenCalledWith({ action: 'reply', sessionId: 'session', promptId: 'prompt', value: 'browser' });
 });
+it('shows the active provider model when settings opens', async () => {
+  const status: ProviderStatus = { selected: { provider: 'openai-codex', model: 'test-model' }, login: null, providers: [{ id: 'openai-codex', name: 'OpenAI Codex', connected: true, oauth: true, apiKey: false, models: [{ id: 'test-model', name: 'Connected model' }] }] };
+  render(<ProviderConnections api={{ command: vi.fn().mockResolvedValue(status) }} />);
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Chat model' }).textContent).toContain('Connected model'));
+});

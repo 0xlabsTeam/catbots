@@ -113,6 +113,7 @@ function toSettingsPatch(state: FormState, config?: RedactedLocalConfig): LocalS
 function getSafeRepairPaths(issues: SettingsScreenProps['repairIssues']): string[] { return [...new Set((issues ?? []).flatMap((issue) => SAFE_REPAIR_PATHS.has(issue.path) ? [issue.path] : []))]; }
 
 export function SettingsScreen({ connections, api, config, repairIssues, onboarding = false, embedded = false, onSaved }: SettingsScreenProps) {
+  const [showCompatible, setShowCompatible] = useState(!connections);
   const [form, setForm] = useState<FormState>(() => formFromConfig(config));
   const [errors, setErrors] = useState<FormErrors>({});
   const [connection, setConnection] = useState<ConnectionTestState>({ state: 'idle' });
@@ -287,11 +288,14 @@ export function SettingsScreen({ connections, api, config, repairIssues, onboard
       {connections}
       <LayerCard render={<section aria-label={onboarding ? 'Local profile setup' : 'Local settings'} />} className="settings-card">
         {repairIssues === undefined ? null : <Banner variant="alert" title="Configuration repair" description={safeRepairPaths.length === 0 ? 'Re-enter the local profile and provider values to repair this configuration.' : <>Review these safe settings fields: {safeRepairPaths.map((path) => <code key={path}>{path}</code>)}</>} />}
-        <header className="form-heading"><p className="eyebrow">AI PROVIDER</p><h2>{onboarding ? 'Set up Catbots' : 'Provider connection'}</h2><p>{onboarding ? 'Connect once to verify these details, save them locally, and open your bot workspace.' : 'A successful connection test is required before these provider values can be saved.'}</p></header>
+        <header className="form-heading"><p className="eyebrow">LOCAL CONFIGURATION</p><h2>{onboarding ? 'Set up Catbots' : 'Profile & execution settings'}</h2><p>{onboarding ? 'Connect once to verify these details, save them locally, and open your bot workspace.' : 'A successful connection test is required before these provider values can be saved.'}</p></header>
         <form className="settings-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate>
           <Input size="base" id="profile-name" label="Profile name" value={form.profileName} onChange={(event) => updateForm('profileName', event.currentTarget.value)} variant={errors.profileName === undefined ? 'default' : 'error'} aria-invalid={errors.profileName === undefined ? undefined : true} aria-describedby={errors.profileName === undefined ? undefined : 'profile-name-error'} autoComplete="off" disabled={isSaving} />
           {errors.profileName === undefined ? null : <p id="profile-name-error" role="alert">{errors.profileName}</p>}
           <Switch label="Anonymous telemetry" checked={form.telemetry} onCheckedChange={(value) => updateForm('telemetry', value)} required={false} disabled={isSaving} />
+          <h3>Compatible API settings</h3>
+          {connections && <><p>Used only when you choose compatible API mode in AI providers above.</p><Button size="sm" type="button" variant="secondary" aria-expanded={showCompatible} onClick={() => setShowCompatible(!showCompatible)}>{showCompatible ? 'Hide compatible API' : 'Show compatible API'}</Button></>}
+          <div className="compatible-fields" hidden={!showCompatible}>
           <Select<Provider> size="base" label="Provider" value={form.provider} onValueChange={(value) => updateForm('provider', value as Provider)} error={errors.provider} disabled={isSaving}><Select.Option value="openai-compatible">OpenAI-compatible</Select.Option><Select.Option value="anthropic-compatible">Anthropic-compatible</Select.Option></Select>
           <Input size="base" id="base-url" label="Base URL" value={form.baseUrl} onChange={(event) => updateForm('baseUrl', event.currentTarget.value)} variant={errors.baseUrl === undefined ? 'default' : 'error'} aria-invalid={errors.baseUrl === undefined ? undefined : true} aria-describedby={errors.baseUrl === undefined ? undefined : 'base-url-error'} placeholder="https://api.example.com/v1" autoComplete="url" spellCheck={false} description="OpenAI-compatible root URLs use /v1 automatically. HTTP is allowed only for localhost, 127.0.0.1, or ::1." disabled={isSaving} />
           {errors.baseUrl === undefined ? null : <p id="base-url-error" role="alert">{errors.baseUrl}</p>}
@@ -299,6 +303,7 @@ export function SettingsScreen({ connections, api, config, repairIssues, onboard
           <Input size="base" id="model" label="Model" value={form.model} onChange={(event) => updateForm('model', event.currentTarget.value)} variant={errors.model === undefined ? 'default' : 'error'} aria-invalid={errors.model === undefined ? undefined : true} aria-describedby={errors.model === undefined ? undefined : 'model-error'} placeholder="provider/model" autoComplete="off" spellCheck={false} disabled={isSaving} />
           {errors.model === undefined ? null : <p id="model-error" role="alert">{errors.model}</p>}
           {form.provider === 'openai-compatible' ? <Select<ReasoningEffortSetting> size="base" label="Reasoning effort" value={form.reasoningEffort} onValueChange={(value) => updateForm('reasoningEffort', value as ReasoningEffortSetting)} disabled={isSaving}><Select.Option value="auto">Auto</Select.Option><Select.Option value="none">Off</Select.Option><Select.Option value="low">Low</Select.Option><Select.Option value="medium">Medium</Select.Option><Select.Option value="high">High</Select.Option></Select> : null}
+          </div>
           {onboarding ? null : <section className="exchange-settings" aria-labelledby="hyperliquid-settings-title">
             <div><p className="eyebrow">LIVE EXECUTION</p><h3 id="hyperliquid-settings-title">Hyperliquid testnet</h3><p>Optional. Use a dedicated Agent/API Wallet. Mainnet is disabled.</p></div>
             <Switch label="Enable Hyperliquid testnet" checked={form.hyperliquidEnabled} onCheckedChange={(value) => updateForm('hyperliquidEnabled', value)} required={false} disabled={isSaving} />

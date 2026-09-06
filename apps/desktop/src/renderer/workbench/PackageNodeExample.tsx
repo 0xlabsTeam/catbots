@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Badge, Banner, Button, Input, LayerCard, Select, Switch } from '@cloudflare/kumo';
 import { Background, BackgroundVariant, MarkerType, ReactFlow, type Edge, type ReactFlowInstance } from '@xyflow/react';
 import { graphlib, layout } from '@dagrejs/dagre';
-import { evaluatePackagedFlow, exampleContext, type FlowDocument, type FlowEdge, type FlowRun } from '@catbots/strategy-runtime/node-examples';
+import { evaluatePackagedFlow, prepareFlow, runtimeNodePackages, exampleContext, type FlowDocument, type FlowEdge, type FlowRun } from '@catbots/strategy-runtime/node-examples';
 import { runLiveNode, loadMarket, marketCaption } from './live-node-run';
 import type { CatbotsDesktopApi } from '@catbots/contracts';
 import { StrategyNodeCard } from './StrategyGraph';
@@ -25,12 +25,16 @@ function initialDraft() {
   }
   catch { return { document: starterFlow(), positions: {}, error: 'Saved draft could not be loaded. The starter is shown; your saved draft has not been overwritten.' }; }
 }
-export function PackageNodeExample({ nodeApi }: { nodeApi?: CatbotsDesktopApi['nodes'] }) {
+export function PackageNodeExample({ nodeApi, bots, onOpenBot }: { bots?: CatbotsDesktopApi['bots']; onOpenBot?(bot: import('@catbots/contracts').BotSummary): void; nodeApi?: CatbotsDesktopApi['nodes'] }) {
+  const [importBot, setImportBot] = useState<import('@catbots/contracts').BotSummary | null>(null);
+  const [botName, setBotName] = useState('Flow from sandbox');
+  const [importing, setImporting] = useState(false);
   const [market, setMarket] = useState('ETH-PERP');
   const [running, setRunning] = useState(false);
   const [initial] = useState(initialDraft);
   const [document, setDocument] = useState(initial.document);
   const [selected, setSelected] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState(initial.error);
   const [runs, setRuns] = useState<FlowRun[]>([]);
@@ -40,7 +44,7 @@ export function PackageNodeExample({ nodeApi }: { nodeApi?: CatbotsDesktopApi['n
   const [wireTarget, setWireTarget] = useState('');
   const [simulationId, setSimulationId] = useState(() => crypto.randomUUID());
   const flow = useRef<ReactFlowInstance<StrategyFlowNode> | null>(null);
-  const edit = (next: FlowDocument) => { setDocument(next); setRuns([]); setRunIndex(0); setSimulationId(crypto.randomUUID()); setNotice('Unsaved changes · simulation reset'); };
+  const edit = (next: FlowDocument) => { setDocument(next); setRuns([]); setRunIndex(0); setSimulationId(crypto.randomUUID()); setNotice('Unsaved changes · run history cleared'); };
   const graph = useMemo(() => {
     const diagram = new graphlib.Graph();
     diagram.setGraph({ rankdir: 'LR', ranksep: 96, nodesep: 48, marginx: 20, marginy: 20 });
@@ -69,14 +73,14 @@ export function PackageNodeExample({ nodeApi }: { nodeApi?: CatbotsDesktopApi['n
   const simulate = async () => {
     setRunning(true);
     try {
-      if (runs.length >= 100) throw new Error('100-tick limit reached. Reset simulation to continue.');
+      if (runs.length >= 100) throw new Error('100-tick limit reached. Clear run history to continue.');
       const snapshot = await loadMarket(nodeApi, market, [...new Set(document.nodes.filter(node => node.type === 'data.candles').map(node => String(node.config.timeframe)))]);
       const result = evaluatePackagedFlow(document, { deploymentId: simulationId, runId: crypto.randomUUID(), market, at: Date.parse(snapshot.fetchedAt), price: snapshot.price, equity: NaN, candles: snapshot.candles, fills: [], cancelledOrderIds: [] });
       setRuns([...runs, result]); setRunIndex(runs.length); setNotice(`Tick ${runs.length + 1}: ${result.orders.length} order proposals. No orders sent.`);
     } catch { setNotice('Market run failed. No sample data was used.'); } finally { setRunning(false); }
   };
   return <LayerCard className="settings-card package-node-example">
-    <header><h2>Flow programming</h2><div className="provider-actions">
+    <header><Button className="palette-toggle" size="sm" variant="secondary" aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}>Node palette</Button><h2>Flow sandbox</h2><div className="provider-actions">
       <Button size="sm" variant="secondary" onClick={() => void flow.current?.fitView({ padding: 0.12 })}>Fit flow</Button>
       <Button size="sm" variant="ghost" aria-label="Zoom in" onClick={() => void flow.current?.zoomIn()}>+</Button>
       <Button size="sm" variant="ghost" aria-label="Zoom out" onClick={() => void flow.current?.zoomOut()}>−</Button>
@@ -85,10 +89,11 @@ export function PackageNodeExample({ nodeApi }: { nodeApi?: CatbotsDesktopApi['n
       <Button size="sm" variant="secondary" onClick={() => { try { localStorage.setItem(storageKey, JSON.stringify({ document, positions })); setNotice('Draft saved in this browser.'); } catch { setNotice('Could not save draft. Browser storage may be full or disabled.'); } }}>Save draft</Button>
       <Button size="sm" loading={running} onClick={simulate}>Run with market data</Button>
     </div></header>
-    <p>Flow wires activate nodes. Dashed Data wires carry values. Drag between matching ports, or connect them in the inspector. Drafts are stored in this browser.</p>
+    {bots && nodeApi && <div className="provider-actions"><Input size="sm" label="New bot name" value={botName} disabled={!!importBot || importing} onChange={event => setBotName(event.target.value)} /><Button size="sm" loading={importing} disabled={importing || !botName.trim()} onClick={async () => { setImporting(true); try { if (!document.nodes.length) throw new Error('Add nodes first'); prepareFlow(document, runtimeNodePackages); const created = importBot ?? await bots.createDraft({ name: botName.trim(), dex: 'hyperliquid' }); setImportBot(created); await nodeApi.command({ action: 'import_flow', botId: created.id, document }); onOpenBot?.(created); } catch { setNotice('Import failed. Connect every required input and check node settings, then retry. The sandbox is kept; retry uses the same bot.'); } finally { setImporting(false); } }}>Import into new bot</Button></div>}
+    <p>Flow wires activate nodes. Dashed Data wires carry values. Drag between matching ports, or connect them in the inspector. Sandbox drafts are stored only in this browser. Import into a new bot to save to the shared backend and continue in AI chat.</p>
     <Input size="base" label="Market" value={market} onChange={event => { setMarket(event.target.value); setRuns([]); }} /><p>Hyperliquid mainnet · closed candles and mark price · account equity unavailable. Fresh manual state; no orders sent.</p>
     {notice && <Banner variant="default" title="Flow editor" description={notice} />}
-    <div className="flow-program-layout">
+    <div className={`flow-program-layout${paletteOpen ? ' palette-open' : ''}`}>
       <section className="flow-program-palette" aria-label="Node palette"><Input size="base" label="Find a node" value={search} onChange={event => setSearch(event.target.value)} />
         {Object.entries(nodePresentation).filter(([category]) => category !== 'logic').map(([category, { label, icon: Icon }]) => {
           const definitions = [...editorDefinitions.values()].filter(def => def.category === category && `${def.title} ${def.type}`.toLowerCase().includes(search.toLowerCase()));
@@ -129,8 +134,8 @@ export function PackageNodeExample({ nodeApi }: { nodeApi?: CatbotsDesktopApi['n
         {currentTrace && <><h4>Tick {runIndex + 1} · {currentTrace.status ?? 'executed'}</h4><pre>{JSON.stringify({ inputs: currentTrace.inputs, outputs: currentTrace.outputs }, null, 2)}</pre></>}
       </> : <p>Select a node to configure it and inspect its ports.</p>}</section>
     </div>
-    <section aria-label="Flow debugger"><h3>Debug timeline</h3><div className="provider-actions"><Button size="sm" variant="secondary" onClick={() => { setRuns([]); setSimulationId(crypto.randomUUID()); setRunIndex(0); setNotice('Simulation reset.'); }}>Reset simulation</Button>{runs.map((run, index) => <Button size="sm" variant={index === runIndex ? 'secondary' : 'ghost'} key={run.runId} onClick={() => setRunIndex(index)}>Tick {index + 1}</Button>)}</div>
-      {currentRun ? <><p>{currentRun.orders.length} proposals · {currentRun.market} · {new Date(currentRun.at).toISOString()}</p><div className="flow-trace-list">{currentRun.trace.map(trace => <Button size="sm" variant="ghost" key={trace.nodeId} onClick={() => setSelected(trace.nodeId)}>{editorDefinitions.get(document.nodes.find(node => node.id === trace.nodeId)!.type)!.title} · {trace.status ?? 'executed'}</Button>)}</div></> : <p>Run a snapshot to inspect node inputs, outputs and skipped branches.</p>}
+    <section aria-label="Flow debugger"><h3>Debug timeline</h3><div className="provider-actions"><Button size="sm" variant="secondary" onClick={() => { setRuns([]); setSimulationId(crypto.randomUUID()); setRunIndex(0); setNotice('Run history cleared.'); }}>Clear run history</Button>{runs.map((run, index) => <Button size="sm" variant={index === runIndex ? 'secondary' : 'ghost'} key={run.runId} onClick={() => setRunIndex(index)}>Tick {index + 1}</Button>)}</div>
+      {currentRun ? <><p>{currentRun.orders.length} proposals · {currentRun.market} · {new Date(currentRun.at).toISOString()}</p><div className="flow-trace-list">{currentRun.trace.map(trace => <Button size="sm" variant="ghost" key={trace.nodeId} onClick={() => setSelected(trace.nodeId)}>{editorDefinitions.get(document.nodes.find(node => node.id === trace.nodeId)!.type)!.title} · {trace.status ?? 'executed'}</Button>)}</div></> : <p>Run with market data to inspect node inputs, outputs and skipped branches.</p>}
     </section>
   </LayerCard>;
 }

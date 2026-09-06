@@ -50,7 +50,7 @@ describe('SettingsScreen', () => {
     render(<SettingsScreen api={api} config={redactedConfig} />);
 
     await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
-    await user.click(screen.getByRole('option', { name: 'Off' }));
+    await user.click(await screen.findByRole('option', { name: 'Off' }));
     await user.type(screen.getByLabelText('API key'), 'replacement-secret');
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
     await user.click(screen.getByRole('button', { name: 'Save settings' }));

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Banner, Button, Input, Select, Badge, LayerCard } from '@cloudflare/kumo';
 import type { CatbotsDesktopApi, ProviderCommand, ProviderStatus } from '@catbots/contracts';
 
@@ -10,6 +10,8 @@ export function ProviderConnections({ api, onSelected }: Props) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const initialized = useRef(false);
+  useEffect(() => { if (status && !initialized.current) { initialized.current = true; if (status.selected) { setProvider(status.selected.provider); setModel(status.selected.model); } } }, [status]);
   const current = status?.providers.find((item) => item.id === provider);
   const login = status?.login;
   const waiting = login?.state === 'waiting';
@@ -31,7 +33,7 @@ export function ProviderConnections({ api, onSelected }: Props) {
     <header><h2 id="provider-connections-title">AI providers</h2><p>Connect a subscription or API key, then choose the model for chat.</p></header>
     {status?.selected ? <p><Badge variant="secondary">Active</Badge> {status.selected.provider} · {status.selected.model}</p> : <p>Chat uses your compatible API settings until you select a connected model.</p>}
     {error && <Banner variant="error" title="Provider connection" description={error} />}
-    <Select size="base" className="provider-select" label="Subscription provider" renderValue={(id) => status?.providers.find((item) => item.id === id)?.name ?? String(id)} value={provider} onValueChange={(next) => { setProvider(String(next)); setModel(''); }} disabled={busy || waiting}>
+    <Select size="base" className="provider-select" label="Subscription provider" renderValue={(id) => status?.providers.find((item) => item.id === id)?.name ?? String(id)} value={provider} onValueChange={(next) => { setProvider(String(next)); setModel(status?.selected?.provider === String(next) ? status.selected.model : ''); }} disabled={busy || waiting}>
       {(status?.providers ?? []).map((item) => <Select.Option key={item.id} value={item.id}>{item.name}{item.connected ? ' · Connected' : ''}</Select.Option>)}
     </Select>
     {provider === 'anthropic' && <p>Claude Pro/Max access uses extra usage billed per token, separately from plan limits.</p>}

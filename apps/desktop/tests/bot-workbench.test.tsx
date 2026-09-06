@@ -134,7 +134,7 @@ describe('BotWorkbenchScreen', () => {
     expect(screen.queryByText('Paper running')).toBeNull();
     expect((screen.getByRole('button', { name: 'Pause' }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByRole('tab', { name: 'Performance' }));
-    expect(screen.getByText('Positions and orders were not restored. Durable deployment records and logs remain available.')).toBeTruthy();
+    expect(screen.getByText('Positions and orders were not restored after restart. Open Logs to check for saved events; this page cannot reconstruct current positions.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(paperApi.stopPaper).toHaveBeenCalledWith({ deploymentId: paperView.deployment.id });
     expect(await screen.findByText('Paper deployment is stopped')).toBeTruthy();

@@ -26,3 +26,14 @@ it('does not manufacture an event to satisfy an event trigger', () => {
   expect(runLegacyNode(eventRevision, 'buy', 'ETH-PERP').selected.status).toBe('unavailable');
   expect(runLegacyNode(eventRevision, 'buy', 'ETH-PERP', 'signal', { side: 'long' }).selected.status).toBe('executed');
 });
+it('manual activation runs between schedule boundaries and labels provenance without changing schedule mode', () => {
+  const snapshot = { source: 'Hyperliquid mainnet' as const, market: 'ETH-PERP', fetchedAt: '2026-09-06T05:01:13.746Z', price: 2500, funding: 0, candles: {} };
+  const manual = runLegacyNode(revision, 'buy', 'ETH-PERP', '', {}, snapshot);
+  expect(manual.trace[0]?.inputs).toMatchObject({ activationSource: 'manual-run', scheduleMatched: false, occurredAt: snapshot.fetchedAt });
+  expect(manual.selected.status).toBe('executed');
+  expect(manual.selected.outputs).toMatchObject({ dispatched: false });
+  const scheduled = runLegacyNode(revision, 'buy', 'ETH-PERP', '', {}, snapshot, 'schedule');
+  expect(scheduled.trace[0]?.inputs).toMatchObject({ activationSource: 'schedule' });
+  expect(scheduled.trace[0]?.outputs).toEqual({ activation: false });
+  expect(scheduled.selected.status).not.toBe('executed');
+});

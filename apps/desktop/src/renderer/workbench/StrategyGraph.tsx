@@ -49,7 +49,7 @@ export function StrategyGraph({ revision, onSelectNode }: StrategyGraphProps) {
           nodesConnectable={false}
           elementsSelectable
           fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          fitViewOptions={{ padding: 0.2, minZoom: 0.7, maxZoom: 1 }}
           onPaneClick={() => setSelectedId(null)}
           defaultViewport={{ x: 24, y: 24, zoom: 1 }}
           colorMode="system"

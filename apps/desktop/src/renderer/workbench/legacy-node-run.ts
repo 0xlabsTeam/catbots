@@ -1,7 +1,7 @@
 import type { MarketSnapshot, StrategyRevision } from '@catbots/contracts';
 import { createEvaluationContext, evaluateConditionNode, matchesIntervalTrigger, matchesEventTrigger, type IntervalTriggerConfig, type EventTriggerConfig, type StrategyNode } from '@catbots/strategy-runtime/node-inspection';
 export type LegacyStep = { nodeId: string; status: 'executed' | 'skipped' | 'unavailable'; inputs: unknown; outputs: unknown; condition?: ReturnType<typeof evaluateConditionNode>; active: boolean };
-export function runLegacyNode(revision: StrategyRevision, nodeId: string, market: string, eventType = '', payload: Record<string, unknown> = {}, snapshot?: MarketSnapshot) {
+export function runLegacyNode(revision: StrategyRevision, nodeId: string, market: string, eventType = '', payload: Record<string, unknown> = {}, snapshot?: MarketSnapshot, mode: 'manual' | 'schedule' = 'manual') {
   const at = snapshot?.fetchedAt ?? '2026-01-01T00:00:00.000Z';
   const context = createEvaluationContext({ currentMarket: market, evaluatedAt: at, values: snapshot ? Object.fromEntries(Object.entries({ 'market.price': { mark: snapshot.price }, 'market.funding': { rate: snapshot.funding } }).map(([key, value]) => [key, { value, provider: snapshot.source, observedAt: at, freshnessSeconds: 60, quality: { status: 'verified' as const }, integrityHash: 'manual-market-snapshot' }])) : {} });
   const results = new Map<string, LegacyStep>();
@@ -16,8 +16,9 @@ export function runLegacyNode(revision: StrategyRevision, nodeId: string, market
     let step: LegacyStep;
     if (node.kind === 'trigger') {
       if (node.type === 'trigger.interval') {
-        const active = matchesIntervalTrigger(node.config as IntervalTriggerConfig, at);
-        step = { nodeId: id, status: active ? 'executed' : 'skipped', inputs: { occurredAt: at }, outputs: { activation: active }, active };
+        const scheduled = matchesIntervalTrigger(node.config as IntervalTriggerConfig, at);
+        const active = mode === 'manual' || scheduled;
+        step = { nodeId: id, status: active ? 'executed' : 'skipped', inputs: { occurredAt: at, activationSource: mode === 'manual' ? 'manual-run' : 'schedule', scheduleMatched: scheduled }, outputs: { activation: active }, active };
       } else if (node.type === 'trigger.event' && eventType) {
         const event = { id: 'manual-test-event', type: eventType, market, occurredAt: at, receivedAt: at, source: 'manual-test', payload: payload as Record<string, never>, quality: { status: 'verified' as const, freshnessSeconds: 0 } };
         const active = matchesEventTrigger(node.config as EventTriggerConfig, event);

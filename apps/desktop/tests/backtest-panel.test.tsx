@@ -97,7 +97,7 @@ describe('BacktestPanel', () => {
     expect(screen.getByText('+4.20%')).toBeTruthy();
     expect(screen.getByText('1.10%')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Portfolio performance' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Dataset coverage' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Dataset coverage (UTC)' })).toBeTruthy();
     expect(screen.getByText('BTC-PERP, ETH-PERP')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'By market' })).toBeTruthy();
     const ethRow = screen.getByRole('row', { name: /ETH-PERP/ });

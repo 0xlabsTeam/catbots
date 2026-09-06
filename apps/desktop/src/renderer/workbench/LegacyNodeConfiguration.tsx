@@ -65,7 +65,7 @@ export function LegacyNodeConfiguration({ node, revision, disabled, onSave, node
       {revision.edges.filter(edge => edge.source === node.id || edge.target === node.id).map(edge => <p key={edge.id}>{edge.source} · {edge.sourcePort} → {edge.target} · {edge.targetPort}</p>)}
       <p>Legacy wires carry activation and condition results. They do not stream market values between nodes.</p>
       <Input size="base" label="Market" value={market} onChange={event => { setMarket(event.target.value); setResult(null); }} />
-      <p>Hyperliquid mainnet mark price and funding. Account data and unsupported indicators remain unavailable. Interval triggers use the fetched time; test events are manual inputs. No orders or state changes are dispatched.</p>
+      <p>Hyperliquid mainnet mark price and funding. Account data and unsupported indicators remain unavailable. Interval triggers are activated manually (the fetched time is recorded); test events are manual inputs. No orders or state changes are dispatched.</p>
       {revision.nodes.some(item => item.type === 'trigger.event') && <>
         <Input size="base" label="Test event type" value={eventType} onChange={event => { setEventType(event.target.value); setResult(null); }} />
         <Input size="base" label="Test event payload (JSON)" value={payload} onChange={event => { setPayload(event.target.value); setResult(null); }} />

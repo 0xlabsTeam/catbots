@@ -41,6 +41,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
         ) : null}
         <Button size="base" type="button" variant="primary" icon={PlayIcon} loading={running} disabled={running} onClick={() => void run()}>Run backtest</Button>
       </header>
+      <h3>New run settings</h3><p>Bundled sample data · dates use UTC. Changing these settings does not change saved results.</p>
       <div className="backtest-assumption-form" aria-label="Backtest assumptions">
         <Input size="base" label="From" type="date" value={assumptions.from.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, from: `${event.currentTarget.value}T00:00:00.000Z` }))} />
         <Input size="base" label="To" type="date" value={assumptions.to.slice(0, 10)} onChange={(event) => setAssumptions((value) => ({ ...value, to: `${event.currentTarget.value}T00:00:00.000Z` }))} />
@@ -52,7 +53,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
       {selected === null ? (
         <LayerCard className="backtest-empty"><ChartLineUpIcon aria-hidden="true" size={32} /><h3>No results yet</h3><p>Run this revision against the bundled sample dataset before approval.</p></LayerCard>
       ) : (
-        <div className="backtest-results">
+        <div className="backtest-results"><h3>Selected run results</h3><p>Run recorded {new Date(selected.startedAt).toLocaleString()}</p><Button size="sm" variant="secondary" onClick={() => setAssumptions({ ...selected.assumptions })}>Use this run’s settings</Button>
           <div className="backtest-provenance"><Badge variant="info">{selected.dataSource}</Badge><span>Revision v{selected.revisionVersion}</span><span>{formatRange(selected.assumptions.from, selected.assumptions.to)}</span></div>
           <p className="backtest-observation">These are observed simulation results under the pinned assumptions below, not a forecast or investment promise.</p>
           <section className="backtest-result-section" aria-labelledby="portfolio-performance-heading">
@@ -68,7 +69,7 @@ export function BacktestPanel({ botId, revision, backtests, api, onCompleted }: 
           </section>
           <LayerCard className="backtest-coverage">
             <div>
-              <h3>Dataset coverage</h3>
+              <h3>Dataset coverage (UTC)</h3>{selected.datasetCoverage && <Button size="sm" variant="secondary" onClick={() => setAssumptions(value => ({ ...value, from: selected.datasetCoverage!.from, to: selected.datasetCoverage!.to }))}>Use dataset date range</Button>}
               <p>{selected.datasetCoverage === null ? 'Not recorded in this legacy Backtest.' : formatRange(selected.datasetCoverage.from, selected.datasetCoverage.to)}</p>
             </div>
             <div>
@@ -120,7 +121,7 @@ function formatPercent(value: number, signed = false): string {
 }
 
 function formatRange(from: string, to: string): string {
-  return `${new Date(from).toLocaleDateString()} – ${new Date(to).toLocaleDateString()}`;
+  return `${from.slice(0, 10)} – ${to.slice(0, 10)} UTC`;
 }
 
 function formatUsd(value: string): string {

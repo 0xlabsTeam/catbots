@@ -18,4 +18,4 @@ export async function runLiveNode(document: FlowDocument, nodeId: string, api: C
   });
   return { run, snapshot };
 }
-export function marketCaption(snapshot: MarketSnapshot) { return `${snapshot.source} · ${snapshot.market} · fetched ${snapshot.fetchedAt} · mark price ${snapshot.price}`; }
+export function marketCaption(snapshot: MarketSnapshot) { return `${snapshot.source} · ${snapshot.market} · fetched ${new Date(snapshot.fetchedAt).toLocaleString()} · mark price ${snapshot.price}`; }

@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BrandLogo } from './BrandLogo';
-import { Button } from '@cloudflare/kumo';
+import { Badge, Button } from '@cloudflare/kumo';
 import { ActivityIcon, DesktopIcon, SidebarSimpleIcon, CaretRightIcon, DatabaseIcon, GearSixIcon, RobotIcon } from '@phosphor-icons/react';
 
 export const appDestinations = ['bots', 'nodes', 'data', 'activity', 'settings'] as const;
@@ -24,6 +24,7 @@ const navigationItems: ReadonlyArray<{ destination: AppDestination; label: strin
 
 export function AppShell({ destination, onNavigate, children, surface = 'desktop', focused = false }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => setCollapsed(focused), [focused]);
   const currentLabel = navigationItems.find((item) => item.destination === destination)?.label;
   return (
     <div className={`app-shell${collapsed ? ' sidebar-collapsed' : ''}${focused ? ' workspace-focused' : ''}`}>
@@ -47,7 +48,7 @@ export function AppShell({ destination, onNavigate, children, surface = 'desktop
               title={label}
               aria-label={label}
             >
-              <span className="navigation-label">{label}</span>
+              <span className="navigation-label">{label}{(itemDestination === 'data' || itemDestination === 'activity') && <Badge variant="secondary">Soon</Badge>}</span>
             </Button>
           ))}
         </nav>
