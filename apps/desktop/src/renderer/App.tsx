@@ -59,8 +59,8 @@ export default function App({ api, preview = false, surface = 'desktop' }: AppPr
   else if (bootstrap.state === 'repair') screen = <SettingsScreen api={api.config} repairIssues={bootstrap.issues} onSaved={(config) => setBootstrap({ state: 'ready', config })} />;
   else screen = (
     <AppShell focused={destination === 'bots' && selectedBot !== null} surface={surface} destination={destination} onNavigate={(next) => { setDestination(next); if (next === 'bots') setSelectedBot(null); }}>
-      {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
-      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen key={selectedBot.id} bot={selectedBot} api={api.workbench} nodeApi={api.nodes} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
+      {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} connections={api.connections} onOpenBot={setSelectedBot} /> : null}
+      {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen key={selectedBot.id} bot={selectedBot} api={api.workbench} nodeApi={api.nodes} connectionsApi={api.connections} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
       {destination === 'connections' ? api.connections ? <ConnectionsScreen api={api.connections} /> : <PlaceholderScreen title="Connections" description="Exchange connections require the local backend." onOpenBots={() => setDestination('bots')} /> : null}
       {destination === 'settings' ? <SettingsScreen connections={api.providers && <ProviderConnections api={api.providers} onSelected={() => setSubscriptionReady(true)} />} api={api.config} config={'config' in bootstrap ? bootstrap.config : undefined} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'nodes' && api.nodes ? <NodesScreen api={api.nodes} bots={api.bots} onOpenBot={bot => { setSelectedBot(bot); setDestination('bots'); }} /> : null}

@@ -50,10 +50,19 @@ export class BotRepository {
     return toBotSummary(row);
   }
 
+  remove(botId: string): void {
+    this.database.transaction(() => {
+      const active = this.database.prepare("SELECT 1 FROM deployments WHERE bot_id = ? AND status IN ('preflight','running','paused','stopping','recovering','suspended')").get(botId);
+      if (active) throw new Error('BOT_ACTIVE');
+      this.database.prepare('UPDATE bots SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(this.clock().toISOString(), botId);
+    })();
+  }
+
   list(): BotSummary[] {
     const rows = this.database.prepare(`
       SELECT id, name, dex, status, created_at, updated_at
       FROM bots
+      WHERE deleted_at IS NULL
       ORDER BY created_at ASC, rowid ASC
     `).all();
 

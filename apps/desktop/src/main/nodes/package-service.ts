@@ -26,6 +26,18 @@ export class NodePackageService {
   catalog() { return new CommunityNodeCatalog(this.packages); }
   command(input: unknown): NodePackageStatus {
     const command = NodePackageCommandSchema.parse(input);
+    if (command.action === 'get_workspace_market' || command.action === 'save_workspace_market') {
+      const path = `${this.path}.workspace-markets.json`;
+      const markets: Record<string, string> = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+      if (command.action === 'save_workspace_market') {
+        markets[command.botId] = command.market;
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(`${path}.tmp`, JSON.stringify(markets), { mode: 0o600 });
+        renameSync(`${path}.tmp`, path);
+      }
+      return { packages: [], workspaceMarket: markets[command.botId] };
+    }
+    if (command.action === 'market_catalog') throw new Error('Use asynchronous market handler');
     if (command.action === 'validate_flow') return { packages: [], flowDraft: this.flowStore().validate(command.botId, command.baseVersion) };
     if (command.action === 'import_flow') return { packages: [], flowDraft: this.flowStore().import(command.botId, command.document) };
     if (command.action === 'edit_flow') return { packages: [], flowDraft: this.flowStore().edit(command.botId, command.edit) };

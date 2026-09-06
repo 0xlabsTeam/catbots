@@ -30,6 +30,9 @@ export type CommunityNode = z.infer<typeof CommunityNodeSchema>;
 export type InstalledNodePackage = { manifest: NodePackage; integrity: string; enabled: boolean };
 export const NodePackageCommandSchema = z.discriminatedUnion('action', [
   MarketSnapshotRequestSchema,
+  z.object({ action: z.literal('market_catalog') }).strict(),
+  z.object({ action: z.literal('get_workspace_market'), botId: z.string().uuid() }).strict(),
+  z.object({ action: z.literal('save_workspace_market'), botId: z.string().uuid(), market: z.string().regex(/^[A-Z0-9]{1,20}-PERP$/) }).strict(),
   ...FlowBacktestCommandSchema.options,
   z.object({ action: z.literal('validate_flow'), botId: z.string().uuid(), baseVersion: z.number().int().positive() }).strict(),
   z.object({ action: z.literal('import_flow'), botId: z.string().uuid(), document: ChatFlowDocumentSchema }).strict(),
@@ -41,4 +44,4 @@ export const NodePackageCommandSchema = z.discriminatedUnion('action', [
 ]);
 export type NodePackageCommand = z.infer<typeof NodePackageCommandSchema>;
 export type RuntimeNodePackageView = { name: string; version: string; mode: 'simulation'; nodes: { type: string; version: number; category: string; role?: 'trigger' | 'action'; title: string; inputs: Record<string,string>; outputs: Record<string,string> }[] };
-export type NodePackageStatus = { backtest?: FlowBacktestJob; marketSnapshot?: MarketSnapshot; flowDraft?: ChatFlowDraft; packages: InstalledNodePackage[]; runtimePackages?: RuntimeNodePackageView[]; simulation?: { example: string; runId: string; steps: { price: number; proposed: number; cancellations: number; state: unknown; outputs: Record<string, unknown> }[] } };
+export type NodePackageStatus = { workspaceMarket?: string; markets?: string[]; backtest?: FlowBacktestJob; marketSnapshot?: MarketSnapshot; flowDraft?: ChatFlowDraft; packages: InstalledNodePackage[]; runtimePackages?: RuntimeNodePackageView[]; simulation?: { example: string; runId: string; steps: { price: number; proposed: number; cancellations: number; state: unknown; outputs: Record<string, unknown> }[] } };

@@ -66,6 +66,7 @@ export interface CatbotsDesktopApi {
   };
   bots: {
     list(): Promise<BotSummary[]>;
+    remove?(input: { botId: string }): Promise<void>;
     createDraft(input: CreateDraftBotInput): Promise<BotSummary>;
   };
   workbench: {

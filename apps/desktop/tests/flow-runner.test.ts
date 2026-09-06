@@ -1,0 +1,614 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
+import { FlowRunner, guardOrder } from "../src/main/connections/flow-runner";
+import type { FlowDocument, OrderPlan } from "@catbots/strategy-runtime";
+import type {
+  FlowVenue,
+  VenueSnapshot,
+} from "../src/main/connections/flow-venue";
+const paths: string[] = [];
+afterEach(() => {
+  vi.useRealTimers();
+  paths
+    .splice(0)
+    .forEach((path) => rmSync(path, { recursive: true, force: true }));
+});
+const target = {
+  botId: "00000000-0000-4000-8000-000000000001",
+  connectionId: "00000000-0000-4000-8000-000000000002",
+  accountId: "0x" + "1".repeat(40),
+  market: "SOL-PERP",
+  maxOrderUsd: 50,
+  maxPositionUsd: 100,
+};
+const snapshot: VenueSnapshot = {
+  context: {
+    market: "SOL-PERP",
+    at: Date.now(),
+    price: 100,
+    equity: 1000,
+    candles: {},
+    fills: [],
+    cancelledOrderIds: [],
+  },
+  position: 0,
+  available: 1000,
+  openOrders: 0,
+  sizeDecimals: 2,
+  asset: 1,
+};
+const order: OrderPlan = {
+  clientOrderId: "test",
+  side: "buy",
+  quantity: 0.2,
+  reduceOnly: false,
+  purpose: "entry",
+};
+const doc: FlowDocument = {
+  schemaVersion: "3.0",
+  nodes: [
+    { id: "tick", type: "trigger.tick", version: 1, config: {} },
+    { id: "size", type: "process.number", version: 1, config: { value: 0.2 } },
+    {
+      id: "buy",
+      type: "action.flow_order",
+      version: 1,
+      config: { side: "buy", reduceOnly: false },
+    },
+  ],
+  edges: [
+    { source: "tick", sourcePort: "flow", target: "buy", targetPort: "flow" },
+    {
+      source: "size",
+      sourcePort: "value",
+      target: "buy",
+      targetPort: "quantity",
+    },
+  ],
+};
+function setup(fail = false) {
+  const dir = mkdtempSync(join(tmpdir(), "runner-"));
+  paths.push(dir);
+  let position = 0;
+  const venue: FlowVenue = {
+    snapshot: vi.fn(async () => ({ ...structuredClone(snapshot), position })),
+    place: vi.fn(async (plan) => {
+      if (fail) throw new Error("uncertain");
+      position += (plan.side === "buy" ? 1 : -1) * plan.quantity;
+      return {
+        id: "1",
+        clientOrderId: plan.clientOrderId,
+        quantity: plan.quantity,
+        price: 100,
+        side: plan.side,
+        fee: 0.01,
+      };
+    }),
+  };
+  return {
+    runner: new FlowRunner(join(dir, "runs")),
+    venue,
+    path: join(dir, "runs"),
+  };
+}
+it("enforces notional, collateral, position, reduce-only and existing-order constraints", () => {
+  expect(guardOrder(order, snapshot, target).quantity).toBe(0.2);
+  expect(() => guardOrder({ ...order, quantity: 1 }, snapshot, target)).toThrow(
+    "configured",
+  );
+  expect(() =>
+    guardOrder(order, { ...snapshot, available: 1 }, target),
+  ).toThrow("collateral");
+  expect(() => guardOrder(order, { ...snapshot, position: 1 }, target)).toThrow(
+    "Position",
+  );
+  expect(() =>
+    guardOrder({ ...order, reduceOnly: true }, snapshot, target),
+  ).toThrow("Reduce-only");
+  expect(() =>
+    guardOrder(order, { ...snapshot, openOrders: 1 }, target),
+  ).toThrow("open orders");
+  expect(() =>
+    guardOrder({ ...order, limitPrice: 99 }, snapshot, target),
+  ).toThrow("IOC");
+});
+it("evaluates once per interval, records a confirmed fill, and stops scheduling", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-06T00:00:00Z"));
+  const { runner, venue } = setup();
+  await runner.start(target.botId, 3, doc, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  expect(runner.get(target.botId)).toMatchObject({
+    version: 3,
+    cycles: 1,
+    orders: [{ status: "filled", quantity: 0.2 }],
+  });
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  await runner.stop(target.botId);
+  await vi.advanceTimersByTimeAsync(120000);
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  expect(runner.get(target.botId)?.status).toBe("stopped");
+});
+it("halts on ambiguous submission and never retries or permits a blind restart", async () => {
+  vi.useFakeTimers();
+  const { runner, venue } = setup(true);
+  await runner.start(target.botId, 1, doc, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(runner.get(target.botId)?.status).toBe("failed");
+  await vi.advanceTimersByTimeAsync(120000);
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  await expect(
+    runner.start(target.botId, 1, doc, target, "testnet", venue),
+  ).rejects.toThrow("unresolved");
+});
+it("locks an account to one bot and pins its target and workflow", async () => {
+  vi.useFakeTimers();
+  const { runner, venue } = setup();
+  const mutable = structuredClone(target);
+  await runner.start(target.botId, 2, doc, mutable, "production", venue);
+  mutable.market = "ETH-PERP";
+  expect(runner.get(target.botId)?.target.market).toBe("SOL-PERP");
+  await expect(
+    runner.start("another", 2, doc, target, "production", venue),
+  ).rejects.toThrow("account");
+  await runner.dispose();
+});
+it("does not automatically resume persisted deployments after a restart", async () => {
+  vi.useFakeTimers();
+  const { runner, venue, path } = setup();
+  await runner.start(target.botId, 1, doc, target, "testnet", venue);
+  const restored = new FlowRunner(path);
+  expect(restored.get(target.botId)?.status).toBe("interrupted");
+  await runner.dispose();
+});
+it("reconciles rounded IOC fills before advancing a DCA controller", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-06T00:00:00Z"));
+  const { runner, venue } = setup();
+  const flow: FlowDocument = {
+    schemaVersion: "3.0",
+    nodes: [
+      {
+        id: "number",
+        type: "process.number",
+        version: 1,
+        config: { value: 1 },
+      },
+      {
+        id: "yes",
+        type: "condition.compare",
+        version: 1,
+        config: { operator: "eq" },
+      },
+      {
+        id: "dca",
+        type: "strategy.dca",
+        version: 1,
+        config: {
+          side: "long",
+          quotePerOrder: 20.5,
+          takeProfitPercent: 5,
+          stopLossPercent: 5,
+          maxNotional: 50,
+          extraStepPercent: 2,
+          maxExtraOrders: 1,
+          volumeMultiplier: 1,
+          repeat: false,
+        },
+      },
+    ],
+    edges: [
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "left",
+      },
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "right",
+      },
+      {
+        source: "yes",
+        sourcePort: "result",
+        target: "dca",
+        targetPort: "signal",
+      },
+    ],
+  };
+  await runner.start(target.botId, 1, flow, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(61000);
+  expect(runner.get(target.botId)?.status).toBe("running");
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  await runner.dispose();
+});
+it("rejects invalid snapshots instead of bypassing risk checks with NaN", () => {
+  expect(() =>
+    guardOrder(order, { ...snapshot, available: NaN }, target),
+  ).toThrow("Invalid");
+  expect(() =>
+    guardOrder(
+      order,
+      { ...snapshot, context: { ...snapshot.context, market: "ETH-PERP" } },
+      target,
+    ),
+  ).toThrow("Invalid");
+});
+it("allows reducing exposure above the entry ceiling and below entry minimum", () => {
+  expect(
+    guardOrder(
+      { ...order, side: "sell", quantity: 0.49, reduceOnly: true },
+      {
+        ...snapshot,
+        position: 0.49,
+        context: { ...snapshot.context, price: 110 },
+      },
+      { ...target, maxOrderUsd: 50 },
+    ).quantity,
+  ).toBe(0.49);
+  expect(
+    guardOrder(
+      { ...order, side: "sell", quantity: 0.01, reduceOnly: true },
+      { ...snapshot, position: 0.01 },
+      target,
+    ).quantity,
+  ).toBe(0.01);
+});
+it("resumes the original deployment without losing fills or reentering the same bucket", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-06T00:00:10Z"));
+  const { runner, venue } = setup();
+  const first = await runner.start(
+    target.botId,
+    1,
+    doc,
+    target,
+    "testnet",
+    venue,
+  );
+  await vi.advanceTimersByTimeAsync(2000);
+  await runner.stop(target.botId);
+  const resumed = await runner.start(
+    target.botId,
+    1,
+    doc,
+    target,
+    "testnet",
+    venue,
+  );
+  expect(resumed.id).toBe(first.id);
+  expect(resumed.orders).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  await runner.dispose();
+});
+it("rejects a new revision with an existing position and retains archived runs once flat", async () => {
+  vi.useFakeTimers();
+  const { runner, venue } = setup();
+  await runner.start(target.botId, 1, doc, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(2000);
+  await runner.stop(target.botId);
+  await expect(
+    runner.start(target.botId, 2, doc, target, "testnet", venue),
+  ).rejects.toThrow("flat");
+  vi.mocked(venue.snapshot).mockResolvedValue(structuredClone(snapshot));
+  await runner.start(target.botId, 2, doc, target, "testnet", venue);
+  expect(runner.history(target.botId)[0].orders).toHaveLength(1);
+  await runner.dispose();
+});
+it("checks a daily DCA stop loss intraday without creating new entry signals", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-06T01:00:00Z"));
+  const { runner, venue } = setup();
+  let price = 100;
+  const original = venue.snapshot;
+  venue.snapshot = async (times) => {
+    const value = await original(times);
+    return { ...value, context: { ...value.context, price } };
+  };
+  const daily: FlowDocument = {
+    schemaVersion: "3.0",
+    nodes: [
+      { id: "tick", type: "trigger.tick", version: 1, config: {} },
+      {
+        id: "candles",
+        type: "data.candles",
+        version: 1,
+        config: { timeframe: "1d", count: 30 },
+      },
+      {
+        id: "number",
+        type: "process.number",
+        version: 1,
+        config: { value: 1 },
+      },
+      {
+        id: "yes",
+        type: "condition.compare",
+        version: 1,
+        config: { operator: "eq" },
+      },
+      {
+        id: "deal",
+        type: "strategy.dca",
+        version: 1,
+        config: {
+          quotePerOrder: 20,
+          takeProfitPercent: 5,
+          stopLossPercent: 5,
+          maxNotional: 50,
+          extraStepPercent: 2,
+          maxExtraOrders: 0,
+          repeat: true,
+        },
+      },
+    ],
+    edges: [
+      {
+        source: "tick",
+        sourcePort: "tick",
+        target: "candles",
+        targetPort: "tick",
+      },
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "left",
+      },
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "right",
+      },
+      {
+        source: "yes",
+        sourcePort: "result",
+        target: "deal",
+        targetPort: "signal",
+      },
+    ],
+  };
+  await runner.start(target.botId, 1, daily, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(2000);
+  price = 90;
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(venue.place).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(venue.place).mock.calls[1][0]).toMatchObject({
+    side: "sell",
+    reduceOnly: true,
+  });
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(venue.place).toHaveBeenCalledTimes(2);
+  await runner.dispose();
+});
+it("reconciles an uncertain fill without resubmitting it", async () => {
+  vi.useFakeTimers();
+  const { runner, venue } = setup(true);
+  await runner.start(target.botId, 1, doc, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(2000);
+  venue.reconcile = vi.fn(async (plan) => ({
+    id: "exchange-1",
+    clientOrderId: plan.clientOrderId,
+    side: plan.side,
+    quantity: plan.quantity,
+    price: 100,
+    fee: 0.01,
+  }));
+  await runner.reconcile(target.botId, venue);
+  expect(runner.get(target.botId)).toMatchObject({
+    status: "stopped",
+    position: 0.2,
+    orders: [{ status: "filled", exchangeOrderId: "exchange-1" }],
+  });
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  await runner.reconcile(target.botId, venue);
+  expect(venue.reconcile).toHaveBeenCalledTimes(1);
+});
+it("blocks static DCA sizing that exceeds the saved target before any snapshot or order", async () => {
+  const { runner, venue } = setup();
+  const invalid: FlowDocument = {
+    schemaVersion: "3.0",
+    nodes: [
+      {
+        id: "number",
+        type: "process.number",
+        version: 1,
+        config: { value: 1 },
+      },
+      {
+        id: "yes",
+        type: "condition.compare",
+        version: 1,
+        config: { operator: "eq" },
+      },
+      {
+        id: "deal",
+        type: "strategy.dca",
+        version: 1,
+        config: {
+          quotePerOrder: 1000,
+          maxNotional: 1000,
+          takeProfitPercent: 10,
+          stopLossPercent: 5,
+          maxExtraOrders: 0,
+          extraStepPercent: 2,
+        },
+      },
+    ],
+    edges: [
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "left",
+      },
+      {
+        source: "number",
+        sourcePort: "value",
+        target: "yes",
+        targetPort: "right",
+      },
+      {
+        source: "yes",
+        sourcePort: "result",
+        target: "deal",
+        targetPort: "signal",
+      },
+    ],
+  };
+  await expect(
+    runner.start(target.botId, 1, invalid, target, "testnet", venue),
+  ).rejects.toThrow("exceeds target");
+  expect(venue.snapshot).not.toHaveBeenCalled();
+});
+it("installs native protection after a DCA fill and stops after an exchange exit without duplicate sells", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-06T00:00:10Z"));
+  const { runner, venue } = setup();
+  let position = 0;
+  let nativeClosed = false;
+  const statuses = new Map<
+    string,
+    {
+      state: "open" | "terminal";
+      exchangeId: string;
+      fill?: import("@catbots/strategy-runtime").Fill;
+    }
+  >();
+  venue.snapshot = vi.fn(async () => ({
+    ...structuredClone(snapshot),
+    position,
+    entryPrice: position ? 100 : 0,
+    openOrders: [...statuses.values()].filter((s) => s.state === "open").length,
+    openOrderIds: [...statuses.values()]
+      .filter((s) => s.state === "open")
+      .map((s) => s.exchangeId),
+  }));
+  venue.place = vi.fn(async (plan) => {
+    position += plan.quantity;
+    return {
+      id: "entry",
+      clientOrderId: plan.clientOrderId,
+      side: plan.side,
+      quantity: plan.quantity,
+      price: 100,
+      fee: 0.01,
+    };
+  });
+  venue.protection = {
+    submitProtection: vi.fn(async (plan) => {
+      statuses.set(plan.cloid, { state: "open", exchangeId: plan.cloid });
+      return plan.cloid;
+    }),
+    inspectProtection: vi.fn(
+      async (
+        plan: import("../src/main/connections/native-protection").ProtectiveOrder,
+      ): Promise<
+        import("../src/main/connections/native-protection").ProtectionStatus
+      > => {
+        if (nativeClosed && plan.kind === "sl")
+          return {
+            state: "terminal",
+            exchangeId: plan.cloid,
+            fill: {
+              id: "stop-fill",
+              clientOrderId: plan.order.clientOrderId,
+              side: "sell",
+              quantity: 0.2,
+              price: 95,
+              fee: 0.01,
+            },
+          };
+        return statuses.get(plan.cloid) ?? { state: "unknown" };
+      },
+    ),
+    cancelProtection: vi.fn(async (plan) => {
+      statuses.set(plan.cloid, { state: "terminal", exchangeId: plan.cloid });
+    }),
+  };
+  const flow: FlowDocument = {
+    schemaVersion: "3.0",
+    nodes: [
+      { id: "n", type: "process.number", version: 1, config: { value: 1 } },
+      {
+        id: "yes",
+        type: "condition.compare",
+        version: 1,
+        config: { operator: "eq" },
+      },
+      {
+        id: "dca",
+        type: "strategy.dca",
+        version: 1,
+        config: {
+          quotePerOrder: 20,
+          maxNotional: 50,
+          takeProfitPercent: 10,
+          stopLossPercent: 5,
+          maxExtraOrders: 0,
+          extraStepPercent: 2,
+          repeat: true,
+        },
+      },
+    ],
+    edges: [
+      { source: "n", sourcePort: "value", target: "yes", targetPort: "left" },
+      { source: "n", sourcePort: "value", target: "yes", targetPort: "right" },
+      {
+        source: "yes",
+        sourcePort: "result",
+        target: "dca",
+        targetPort: "signal",
+      },
+    ],
+  };
+  await runner.start(target.botId, 1, flow, target, "testnet", venue);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(runner.get(target.botId)?.protection?.status).toBe("protected");
+  expect(venue.protection.submitProtection).toHaveBeenCalledTimes(2);
+  nativeClosed = true;
+  position = 0;
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(runner.get(target.botId)).toMatchObject({
+    status: "stopped",
+    position: 0,
+    protection: { status: "flat" },
+  });
+  expect(venue.place).toHaveBeenCalledTimes(1);
+  expect(venue.protection.cancelProtection).toHaveBeenCalledTimes(1);
+  expect(runner.get(target.botId)?.orders.at(-1)?.exchangeOrderId).toBe(
+    "stop-fill",
+  );
+  const completedId=runner.get(target.botId)!.id;const oldProtectionIds=[...statuses.keys()];statuses.clear();nativeClosed=false;
+  await runner.start(target.botId,1,flow,target,'testnet',venue);await vi.advanceTimersByTimeAsync(2000);
+  expect(runner.get(target.botId)!.id).not.toBe(completedId);expect([...statuses.keys()].some(id=>oldProtectionIds.includes(id))).toBe(false);expect(runner.history(target.botId)).toHaveLength(1);
+
+  await runner.dispose();
+});
+
+it('allows a single directional controller on Testnet and enforces its quote budget', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-06T00:00:00Z'));
+  const { validateFlowTarget } = await import('../src/main/connections/flow-runner');
+  const flow: FlowDocument = { schemaVersion:'3.0',nodes:[
+    ...['fast','slow','rsi','atr'].map((id,index)=>({id,type:'process.number',version:1,config:{value:[101,100,65,1][index]}})),
+    {id:'controller',type:'strategy.directional',version:1,config:{quotePerOrder:15}},
+  ],edges:['fast','slow','rsi','atr'].map(id=>({source:id,sourcePort:'value',target:'controller',targetPort:id}))};
+  expect(()=>validateFlowTarget(flow,target,'testnet')).not.toThrow();
+  expect(()=>validateFlowTarget(flow,target,'production')).toThrow('Testnet only');
+  expect(()=>validateFlowTarget(flow,{...target,maxOrderUsd:10},'testnet')).toThrow('target limits');
+  const {runner,venue}=setup();
+  await runner.start(target.botId,1,flow,target,'testnet',venue);
+  await vi.advanceTimersByTimeAsync(1000);
+  await runner.stop(target.botId);
+  expect(venue.place).toHaveBeenCalledOnce();
+  expect(vi.mocked(venue.place).mock.calls[0][0]).toMatchObject({side:'buy',reduceOnly:false,quantity:.15});
+});

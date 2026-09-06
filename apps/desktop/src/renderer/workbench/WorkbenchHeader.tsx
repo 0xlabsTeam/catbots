@@ -18,9 +18,9 @@ export function WorkbenchHeader({ state, approving, onBack, onSelectVersion, onA
       <div className="workbench-title">
         <div>
           <h1 id="bot-workbench-title">{state.bot.name}</h1>
-          <p className="workbench-scope-line">{dexName(state.bot.dex)} · {scopeName(revision)}</p>
+          {!state.flowDraft && <p className="workbench-scope-line">{dexName(state.bot.dex)} · {scopeName(revision)}</p>}
         </div>
-        <Badge variant={revision?.status === 'approved' ? 'success' : 'info'}>{revision?.status === 'approved' ? 'Approved' : 'Draft'}</Badge>
+        {!state.flowDraft && <Badge variant={revision?.status === 'approved' ? 'success' : 'info'}>{revision?.status === 'approved' ? 'Approved' : 'Draft'}</Badge>}
       </div>
       <div className="workbench-header-actions">
         {revision === null ? null : (

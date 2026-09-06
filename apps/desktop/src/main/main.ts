@@ -38,6 +38,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 const appOrigin = 'catbots://app';
 const database = new ApplicationDatabase();
 const runtime = new RuntimeSupervisor(() => utilityProcess.fork(join(__dirname, 'runtime-worker.js')));
+let disposeFlowConnections: (()=>Promise<void>) | undefined;
 let webServer: Awaited<ReturnType<typeof startWebServer>> | undefined;
 let disposeIpcHandlers: (() => void) | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -148,13 +149,14 @@ void app.whenReady()
       configRepository,
       providerService,
       nodePackages,
-      connections: new ConnectionsService(join(dataDirectory, 'exchange-connections.json'), undefined, new ConnectionAuthorization(join(dataDirectory, 'exchange-credentials.enc'), { encrypt: value => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable'); return safeStorage.encryptString(value); }, decrypt: value => safeStorage.decryptString(value) }), async () => { if (!webServer) throw new Error('Start the local web workspace to connect a browser wallet'); await shell.openExternal(`${webServer.origin}/#connections`); }),
+      connections: new ConnectionsService(join(dataDirectory, 'exchange-connections.json'), undefined, new ConnectionAuthorization(join(dataDirectory, 'exchange-credentials.enc'), { encrypt: value => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable'); return safeStorage.encryptString(value); }, decrypt: value => safeStorage.decryptString(value) }), async () => { if (!webServer) throw new Error('Start the local web workspace to connect a browser wallet'); await shell.openExternal(`${webServer.origin}/#connections`); }, botId => nodePackages.flowStore().get(botId)),
       botRepository,
       workbenchService,
       deploymentService,
       runtime,
       testLlmConnection,
     };
+    disposeFlowConnections = () => serviceDependencies.connections!.dispose();
     disposeIpcHandlers = registerIpcHandlers(serviceDependencies);
     if (process.env.CATBOTS_WEB === '1' && !app.isPackaged) {
       if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) throw new Error('WEB_DEV_SERVER_REQUIRED');
@@ -180,7 +182,7 @@ void app.whenReady()
         asset: async (path) => {
           const target = new URL(path, MAIN_WINDOW_VITE_DEV_SERVER_URL);
           if (target.origin !== new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL!).origin) throw new Error('INVALID_ASSET');
-          const response = await net.fetch(target.href);
+          const response = await net.fetch(target.href, { cache: 'no-store' });
           if (!response.ok) throw new Error('ASSET_NOT_FOUND');
           return { body: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get('content-type') ?? 'application/octet-stream' };
         },
@@ -466,6 +468,7 @@ function shutdown(): Promise<void> {
   if (shutdownPromise !== undefined) return shutdownPromise;
 
   shutdownPromise = (async () => {
+    await disposeFlowConnections?.();
     await webServer?.close();
     disposeMarketUniverseRefresh();
     disposeNodeBacktests?.();

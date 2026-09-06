@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "3.0",
+  "nodes": [
+    {
+      "id": "minute",
+      "type": "trigger.tick",
+      "version": 1,
+      "config": {}
+    },
+    {
+      "id": "sol_1m",
+      "type": "data.candles",
+      "version": 1,
+      "config": {
+        "timeframe": "1m",
+        "count": 100
+      }
+    },
+    {
+      "id": "fast",
+      "type": "indicator.ema",
+      "version": 1,
+      "config": {
+        "period": 9
+      }
+    },
+    {
+      "id": "slow",
+      "type": "indicator.ema",
+      "version": 1,
+      "config": {
+        "period": 21
+      }
+    },
+    {
+      "id": "rsi",
+      "type": "indicator.rsi",
+      "version": 1,
+      "config": {
+        "period": 14
+      }
+    },
+    {
+      "id": "atr",
+      "type": "indicator.atr",
+      "version": 1,
+      "config": {
+        "period": 14
+      }
+    },
+    {
+      "id": "long_short",
+      "type": "strategy.directional",
+      "version": 1,
+      "config": {
+        "quotePerOrder": 100,
+        "rsiThreshold": 60,
+        "stopAtr": 2,
+        "rewardRisk": 3,
+        "minAtrPercent": 0.08,
+        "maxHoldMinutes": 30,
+        "cooldownMinutes": 5
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "minute",
+      "sourcePort": "tick",
+      "target": "sol_1m",
+      "targetPort": "tick"
+    },
+    {
+      "source": "sol_1m",
+      "sourcePort": "candles",
+      "target": "fast",
+      "targetPort": "candles"
+    },
+    {
+      "source": "fast",
+      "sourcePort": "value",
+      "target": "long_short",
+      "targetPort": "fast"
+    },
+    {
+      "source": "sol_1m",
+      "sourcePort": "candles",
+      "target": "slow",
+      "targetPort": "candles"
+    },
+    {
+      "source": "slow",
+      "sourcePort": "value",
+      "target": "long_short",
+      "targetPort": "slow"
+    },
+    {
+      "source": "sol_1m",
+      "sourcePort": "candles",
+      "target": "rsi",
+      "targetPort": "candles"
+    },
+    {
+      "source": "rsi",
+      "sourcePort": "value",
+      "target": "long_short",
+      "targetPort": "rsi"
+    },
+    {
+      "source": "sol_1m",
+      "sourcePort": "candles",
+      "target": "atr",
+      "targetPort": "candles"
+    },
+    {
+      "source": "atr",
+      "sourcePort": "value",
+      "target": "long_short",
+      "targetPort": "atr"
+    }
+  ]
+}

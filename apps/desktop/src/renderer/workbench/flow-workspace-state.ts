@@ -4,7 +4,8 @@ import type { FlowRun } from '@catbots/strategy-runtime/node-examples';
 type Config = Record<string, unknown>;
 export type NodeRunRecord = { run: FlowRun; snapshot: MarketSnapshot; documentKey: string };
 export const flowDocumentKey = (draft: ChatFlowDraft) => JSON.stringify(draft.document);
-export function useFlowWorkspaceState() {
+export function useFlowWorkspaceState(ready = true) {
+  const [marketReady, setMarketReady] = useState(ready);
   const [market, setMarket] = useState('ETH-PERP');
   const [edits, setEdits] = useState<Record<string, { config: Config; base: string }>>({});
   const [results, setResults] = useState<Record<string, NodeRunRecord>>({});
@@ -14,7 +15,7 @@ export function useFlowWorkspaceState() {
   const [running, setRunning] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   return {
-    market, setMarket, edits, results, history, selectedRunId, setSelectedRunId, lastRun, running, setRunning, errors,
+    market, setMarket, marketReady, setMarketReady, edits, results, history, selectedRunId, setSelectedRunId, lastRun, running, setRunning, errors,
     setError(id: string, error: string) { setErrors(previous => ({ ...previous, [id]: error })); },
     edit(id: string, config: Config, base: Config) {
       setEdits(previous => ({ ...previous, [id]: { config, base: previous[id]?.base ?? JSON.stringify(base) } }));

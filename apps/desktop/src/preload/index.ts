@@ -27,6 +27,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     testLlmConnection: (input) => ipcRenderer.invoke('config:test-llm', input),
   },
   bots: {
+    remove: (input) => ipcRenderer.invoke('bots:remove', input),
     list: () => ipcRenderer.invoke('bots:list'),
     createDraft: (input) => ipcRenderer.invoke('bots:create-draft', input),
   },

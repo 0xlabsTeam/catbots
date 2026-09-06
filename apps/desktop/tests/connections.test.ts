@@ -35,3 +35,39 @@ it('preserves the last successful snapshot when refresh fails',async()=>{
  await expect(service.command({action:'refresh',id:saved.connections[0].id})).rejects.toThrow('offline');
  expect(await service.command({action:'list'})).toEqual(saved);
 });
+
+it('persists an explicit target, rejects a cross-account target and never claims runtime readiness',async()=>{
+ const account={id:'sub',address:'sub',name:'Sub',kind:'subaccount' as const,equity:'100',withdrawable:'100',positions:0};
+ const adapter:ExchangeAdapter={descriptor:{id:'test',name:'Test',environments:['testnet'],authentication:['public-address'],capabilities:{accountDiscovery:true,markets:['perpetual'],trading:false}},normalizeOwner:v=>v,discover:async()=>[account]};
+ const path=file(),service=new ConnectionsService(path,[adapter]);const connected=await service.command({action:'connect',adapterId:'test',name:'A',environment:'testnet',owner:'owner'});
+ const target={botId:'00000000-0000-4000-8000-000000000001',connectionId:connected.connections[0].id,accountId:'sub',market:'ETH-PERP',maxPositionUsd:500,maxOrderUsd:100};
+ await expect(service.command({action:'save_target',target:{...target,accountId:'other'}})).rejects.toThrow('belonging');
+ await expect(service.command({action:'save_target',target:{...target,maxOrderUsd:600}})).rejects.toThrow();
+ await service.command({action:'save_target',target});
+ const restored=await new ConnectionsService(path,[adapter]).command({action:'get_target',botId:target.botId});
+ expect(restored.executionTarget).toMatchObject({target,environment:'testnet',accountName:'Sub',ready:false});
+ const checked=await service.command({action:'check_target',botId:target.botId});expect(checked.executionTarget?.checks).toEqual(expect.arrayContaining([expect.objectContaining({label:'Trading account',passed:true}),expect.objectContaining({label:'Workflow execution runtime',passed:false})]));
+ await expect(service.command({action:'remove',id:target.connectionId})).rejects.toThrow('selected by a bot');
+});
+
+it('shares account snapshots across bots without assigning manual orders to a bot and isolates failures',async()=>{
+ const activity=vi.fn(async()=>({fetchedAt:new Date().toISOString(),positions:[{market:'SOL-PERP',size:'-0.14',entryPrice:'100',unrealizedPnl:'1'}],orders:[{id:'123',market:'SOL-PERP',side:'Buy',size:'0.14',price:'99'}]}));
+ const adapter:ExchangeAdapter={descriptor:{id:'test',name:'Test',environments:['testnet'],authentication:['public-address'],capabilities:{accountDiscovery:true,markets:['perpetual'],trading:false}},normalizeOwner:v=>v,discover:async()=>[{id:'sub',address:'sub',name:'Sub',kind:'subaccount',equity:'100',withdrawable:'100',positions:1}],activity};
+ const service=new ConnectionsService(file(),[adapter]);
+ const connected=await service.command({action:'connect',adapterId:'test',name:'A',environment:'testnet',owner:'owner'});
+ const botIds=['00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'];
+ for(const botId of botIds)await service.command({action:'save_target',target:{botId,connectionId:connected.connections[0].id,accountId:'sub',market:'SOL-PERP',maxPositionUsd:50,maxOrderUsd:20}});
+ const view=await service.command({action:'bot_overview',botIds});
+ expect(activity).toHaveBeenCalledTimes(1);
+ expect(activity).toHaveBeenCalledWith('sub','testnet');
+ expect(view.botOverview?.[0]).toMatchObject({environment:'testnet',activity:{orders:[{id:'123'}]}});
+ expect(view.botOverview?.[0].deployment).toBeUndefined();
+ await service.command({action:'bot_overview',botIds});expect(activity).toHaveBeenCalledTimes(1);
+ const offline=new ConnectionsService(file(),[{...adapter,activity:async()=>{throw new Error('secret upstream error');}}]);
+ const c=await offline.command({action:'connect',adapterId:'test',name:'B',environment:'testnet',owner:'owner'});
+ await offline.command({action:'save_target',target:{botId:botIds[0],connectionId:c.connections[0].id,accountId:'sub',market:'SOL-PERP',maxPositionUsd:50,maxOrderUsd:20}});
+ const failed=await offline.command({action:'bot_overview',botIds});
+ expect(failed.botOverview?.[0].activity).toBeUndefined();
+ expect(failed.botOverview?.[0].activityError).toBe('Exchange data unavailable. Retry refresh.');
+ expect(failed.botOverview?.[1].activityError).toBeUndefined();
+});

@@ -1,7 +1,7 @@
 import { useNodePositions } from './use-node-positions';
 import { prepareFlow, runtimeNodePackages } from '@catbots/strategy-runtime/node-examples';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Banner, Button, Dialog, Input } from '@cloudflare/kumo';
+import { Badge, Banner, Button, Dialog } from '@cloudflare/kumo';
 import { Background, BackgroundVariant, MarkerType, ReactFlow, type Edge, type ReactFlowInstance } from '@xyflow/react';
 import { graphlib, layout } from '@dagrejs/dagre';
 import type { CatbotsDesktopApi, ChatFlowDraft } from '@catbots/contracts';
@@ -23,7 +23,9 @@ export function ChatFlowGraph({ draft, disabled, onSave, nodeApi, workspace: sha
   const debugRun = workspace.lastRun?.documentKey === flowDocumentKey(draft) && workspace.lastRun.run.market === workspace.market && !Object.keys(workspace.edits).length ? workspace.lastRun.run : null;
   const [selected, setSelected] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance<StrategyFlowNode> | null>(null);
+  const missingTypes = [...new Set(document.nodes.filter(node => !editorDefinitions.has(node.type)).map(node => node.type))];
   const graph = useMemo(() => {
+    if (document.nodes.some(node => !editorDefinitions.has(node.type))) return { nodes: [] as StrategyFlowNode[], edges: [] as Edge[] };
     const diagram = new graphlib.Graph();
     diagram.setGraph({ rankdir: 'LR', ranksep: 48, nodesep: 48, marginx: 20, marginy: 20 });
     diagram.setDefaultEdgeLabel(() => ({}));
@@ -54,12 +56,12 @@ export function ChatFlowGraph({ draft, disabled, onSave, nodeApi, workspace: sha
       <Badge variant={draft.status === 'valid' ? 'success' : 'info'}>Flow v{draft.version} · {draft.status === 'valid' ? 'Validated' : 'Building'}</Badge>
       {onValidate && <Button size="sm" variant="secondary" loading={validating} disabled={disabled || !!Object.keys(workspace.edits).length || validating} onClick={async () => { setValidating(true); setValidationError(''); try { prepareFlow(document, runtimeNodePackages); await onValidate(); } catch (error) { setValidationError(error instanceof Error ? error.message : 'Check required input connections and settings, then retry.'); } finally { setValidating(false); } }}>Validate flow</Button>}
       <span role="status">{document.nodes.length} nodes · {document.edges.length} connections · Saved</span>
-      <Input size="sm" label="Run market" value={workspace.market} onChange={event => workspace.setMarket(event.target.value)} />
       <Button size="sm" variant="secondary" onClick={() => void instance?.fitView({ padding: 0.15, maxZoom: 1 })}>Fit flow</Button>
       <Button size="sm" variant="ghost" onClick={() => void instance?.zoomTo(1)}>100%</Button>
       <Button size="sm" variant="secondary" onClick={nodeLayout.reset}>Auto layout</Button>
       <Button size="sm" variant="ghost" disabled={!selected} onClick={() => void instance?.fitView({ nodes: graph.nodes.filter(item => item.id === selected), minZoom: 0.75, maxZoom: 1, padding: 0.2 })}>Focus node</Button>
     </header>
+    {missingTypes.length > 0 && <Banner variant="alert" title="Node package needs a reload" description={`This view cannot render ${missingTypes.join(', ')}. Reload the app after updating node packages. Deploy and Logs remain available.`} />}
     {nodeLayout.storageError && <Banner variant="alert" title="Layout not saved" description={nodeLayout.storageError} />}
     {validationError && <Banner variant="error" title="Flow needs attention" description={validationError} />}
     <div className="graph-reading-guide"><span>Drag nodes to arrange your flow. Click a node to configure it. Layout is saved on this device.</span></div>
@@ -71,7 +73,7 @@ export function ChatFlowGraph({ draft, disabled, onSave, nodeApi, workspace: sha
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
       </ReactFlow>
     </div>
-    <Dialog.Root open={!!node} onOpenChange={open => { if (!open) setSelected(null); }}><Dialog className="node-editor-dialog" aria-label="Node editor"><Dialog.Title className="sr-only">Node details</Dialog.Title>{node && <NodeConfiguration key={`${node.id}:${draft.version}`} draft={draft} node={node} nodeApi={nodeApi} disabled={disabled} onSave={onSave} onClose={() => setSelected(null)} workspace={workspace} onSelectNode={setSelected} />}</Dialog></Dialog.Root>
+    <Dialog.Root open={!!node && editorDefinitions.has(node.type)} onOpenChange={open => { if (!open) setSelected(null); }}><Dialog className="node-editor-dialog" aria-label="Node editor"><Dialog.Title className="sr-only">Node details</Dialog.Title>{node && <NodeConfiguration key={`${node.id}:${draft.version}`} draft={draft} node={node} nodeApi={nodeApi} disabled={disabled} onSave={onSave} onClose={() => setSelected(null)} workspace={workspace} onSelectNode={setSelected} />}</Dialog></Dialog.Root>
     </div>
   </section>;
 }

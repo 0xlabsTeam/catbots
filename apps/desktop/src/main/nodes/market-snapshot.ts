@@ -28,3 +28,14 @@ export async function fetchMarketSnapshot(input: unknown, request: typeof fetch 
   if (Date.now() - at > 60000) throw new Error('Snapshot fetch took too long');
   return { market: args.market, source: 'Hyperliquid mainnet', fetchedAt: new Date(at).toISOString(), price: context.markPx, funding: context.funding, candles };
 }
+
+let catalogCache: { expires: number; markets: string[] } | undefined;
+export async function fetchMarketCatalog(): Promise<string[]> {
+  if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.markets;
+  const response = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'meta' }), signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error('Market catalog unavailable');
+  const meta = z.object({ universe: z.array(z.object({ name: z.string(), isDelisted: z.boolean().optional() })) }).parse(await response.json());
+  const markets = meta.universe.filter(item => !item.isDelisted && /^[A-Z0-9]{1,20}$/.test(item.name)).map(item => `${item.name}-PERP`).sort();
+  catalogCache = { expires: Date.now() + 300000, markets };
+  return markets;
+}

@@ -59,3 +59,14 @@ describe('BotRepository', () => {
     expect(() => new BotRepository(db).list()).toThrow();
   });
 });
+
+it('removes a bot from the list without deleting its audit identity or other bots', () => {
+  const database=createDatabase();
+  const bots=new BotRepository(database);
+  const removed=bots.createDraft({name:'Remove me',dex:'hyperliquid'});
+  const kept=bots.createDraft({name:'Keep me',dex:'hyperliquid'});
+  bots.remove(removed.id);
+  bots.remove(removed.id);
+  expect(bots.list()).toEqual([kept]);
+  expect(database.prepare('SELECT deleted_at FROM bots WHERE id = ?').get(removed.id)).toMatchObject({deleted_at:expect.any(String)});
+});

@@ -1,12 +1,13 @@
+import { BotExecutionActivity, ExecutionBadge } from './BotExecutionActivity';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Banner, Button, Empty, LayerCard, Table, Input, Select } from '@cloudflare/kumo';
+import { Banner, Button, Empty, LayerCard, Table, Input, Select, Dialog } from '@cloudflare/kumo';
 import { PlusIcon, MagnifyingGlassIcon, ChatCircleTextIcon, GraphIcon, FlaskIcon } from '@phosphor-icons/react';
-import type { BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
+import type { BotExecutionOverview, BotSummary, CatbotsDesktopApi } from '@catbots/contracts';
 import { BrandLogo } from '../components/BrandLogo';
 import { StatusBadge } from '../components/StatusBadge';
 import { CreateDraftBotDialog } from './CreateDraftBotDialog';
 
-type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots']; onOpenBot?(bot: BotSummary): void };
+type BotsHomeScreenProps = { api: CatbotsDesktopApi['bots']; connections?: CatbotsDesktopApi['connections']; onOpenBot?(bot: BotSummary): void };
 
 const DEX_DISPLAY_NAMES: Record<BotSummary['dex'], string> = {
   hyperliquid: 'Hyperliquid',
@@ -18,13 +19,24 @@ export function formatUpdatedAt(value: string, locale = 'en-US', timeZone = 'UTC
   return `Updated ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone, timeZoneName: 'short' }).format(timestamp)}`;
 }
 
+function latestBotUpdate(bot: BotSummary, execution?: BotExecutionOverview): string {
+  const lastRunAt = execution?.deployment?.lastRunAt;
+  return lastRunAt && Date.parse(lastRunAt) > Date.parse(bot.updatedAt) ? lastRunAt : bot.updatedAt;
+}
+
 function mergeBots(listedBots: readonly BotSummary[], locallyCreatedBots: ReadonlyMap<string, BotSummary>): BotSummary[] {
   const merged = new Map(listedBots.map((bot) => [bot.id, bot]));
-  for (const [id, bot] of locallyCreatedBots) merged.set(id, bot);
+  for (const [id, bot] of locallyCreatedBots) if (!merged.has(id)) merged.set(id, bot);
   return [...merged.values()];
 }
 
-export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
+export function BotsHomeScreen({ api, connections, onOpenBot }: BotsHomeScreenProps) {
+  const [execution, setExecution] = useState<Record<string,BotExecutionOverview>>({});
+  const [executionError,setExecutionError]=useState(false);
+  const [selectedActivity,setSelectedActivity]=useState<string|null>(null);
+  const [deleting,setDeleting]=useState<BotSummary|null>(null);
+  const [deleteBusy,setDeleteBusy]=useState(false);
+  const [deleteError,setDeleteError]=useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [bots, setBots] = useState<BotSummary[] | null>(null);
@@ -64,7 +76,24 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
     onOpenBot?.(created);
   };
 
-  const filteredBots = bots?.filter((bot) => bot.name.toLowerCase().includes(query.trim().toLowerCase()) && (status === 'all' || bot.status === status)) ?? [];
+  const botIds=bots?.map(bot=>bot.id).join(',')??'';
+  useEffect(()=>{
+    if(!botIds)return;
+    if(!connections){setExecution(Object.fromEntries(botIds.split(',').map(botId=>[botId,{botId}])));return;}
+    let disposed=false;
+    let timer:ReturnType<typeof setTimeout>;
+    const refresh=async()=>{
+      try {
+        const result=await connections.command({action:'bot_overview',botIds:botIds.split(',')});
+        if(!disposed){setExecution(Object.fromEntries((result.botOverview??[]).map(view=>[view.botId,view])));setExecutionError(false);}
+      }catch{if(!disposed)setExecutionError(true);}
+      if(!disposed)timer=setTimeout(refresh,15000);
+    };
+    void refresh();
+    return ()=>{disposed=true;clearTimeout(timer);};
+  },[connections,botIds]);
+  const displayStatus=(bot:BotSummary)=>execution[bot.id]?.deployment?.status==='failed'?'error':execution[bot.id]?.deployment?.status??(execution[bot.id]?.target?'not_started':bot.status);
+  const filteredBots = bots?.filter((bot) => bot.name.toLowerCase().includes(query.trim().toLowerCase()) && (status === 'all' || displayStatus(bot) === status)).sort((a, b) => Date.parse(latestBotUpdate(b, execution[b.id])) - Date.parse(latestBotUpdate(a, execution[a.id])) || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)) ?? [];
 
   return (
     <section className="bots-home page-container" aria-labelledby="bots-home-title">
@@ -87,14 +116,23 @@ export function BotsHomeScreen({ api, onOpenBot }: BotsHomeScreenProps) {
       {bots !== null && bots.length > 0 ? <>
         <div className="bots-toolbar">
           <Input size="base" aria-label="Search bots" placeholder="Search bots…" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <Select<string> size="base" aria-label="Filter by status" value={status} onValueChange={(value) => setStatus(value ?? 'all')} items={{ all: 'All statuses', draft: 'Draft', paper: 'Paper', live: 'Live', paused: 'Paused', stopped: 'Stopped', error: 'Error', recovering: 'Recovering' }}>
-            <Select.Option value="all">All statuses</Select.Option>{['draft', 'paper', 'live', 'paused', 'stopped', 'error', 'recovering'].map((value) => <Select.Option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</Select.Option>)}
+          <Select<string> size="base" aria-label="Filter by status" value={status} onValueChange={(value) => setStatus(value ?? 'all')} items={{ all: 'All statuses', draft: 'Draft', not_started:'Not started', running:'Running', stopping:'Stopping', interrupted:'Interrupted', paper: 'Paper', live: 'Live', paused: 'Paused', stopped: 'Stopped', error: 'Error', recovering: 'Recovering' }}>
+            <Select.Option value="all">All statuses</Select.Option>{['not_started', 'running', 'stopping', 'interrupted', 'draft', 'paper', 'live', 'paused', 'stopped', 'error', 'recovering'].map((value) => <Select.Option key={value} value={value}>{(value.charAt(0).toUpperCase() + value.slice(1)).replaceAll('_',' ')}</Select.Option>)}
           </Select>
           <span className="bots-result-count" role="status">{filteredBots.length} of {bots.length} bots</span>
         </div>
-        {filteredBots.length ? <BotsTable bots={filteredBots} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button size="base" variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
+        {filteredBots.length ? <BotsTable bots={filteredBots} execution={execution} executionError={executionError} onActivity={setSelectedActivity} onDelete={api.remove ? bot=>{setDeleting(bot);setDeleteError('');} : undefined} onOpenBot={onOpenBot} /> : <div className="bots-state"><h2>No matching bots</h2><p>Try another name or status.</p><Button size="base" variant="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</Button></div>}
       </> : null}
 
+      {executionError && <Banner variant="error" title="Runtime status unavailable" description="Displayed data may be out of date. Retrying automatically."/>}
+      {selectedActivity && execution[selectedActivity] && <BotExecutionActivity name={bots?.find(bot=>bot.id===selectedActivity)?.name??'Bot'} view={execution[selectedActivity]} onClose={()=>setSelectedActivity(null)}/>}
+      <Dialog.Root open={!!deleting} onOpenChange={open=>{if(!open&&!deleteBusy)setDeleting(null);}}><Dialog aria-label="Delete bot"><Dialog.Title>Delete {deleting?.name}?</Dialog.Title><p>Remove this bot from your list. Trading history is retained.</p><p>This does not close positions or cancel exchange orders.</p>{deleteError&&<Banner variant="error" title="Could not delete bot" description={deleteError}/>}<div className="provider-actions"><Button size="base" variant="secondary" disabled={deleteBusy} onClick={()=>setDeleting(null)}>Cancel</Button><Button size="base" variant="primary" loading={deleteBusy} disabled={deleteBusy} onClick={async()=>{
+        if(!deleting||!api.remove)return;
+        setDeleteBusy(true);setDeleteError('');
+        try{await api.remove({botId:deleting.id});locallyCreatedBotsRef.current.delete(deleting.id);setBots(previous=>previous?.filter(bot=>bot.id!==deleting.id)??[]);setDeleting(null);}
+        catch{setDeleteError('Stop any active or paused run and resolve uncertain orders first. If already stopped, retry after updating the local backend.');}
+        finally{setDeleteBusy(false);}
+      }}>Delete bot</Button></div></Dialog></Dialog.Root>
       <CreateDraftBotDialog api={api} open={isCreateOpen} onOpenChange={setIsCreateOpen} onCreated={addCreatedBot} />
     </section>
   );
@@ -117,7 +155,7 @@ function EmptyBots({ onCreate }: { onCreate(): void }) {
   );
 }
 
-function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot?(bot: BotSummary): void }) {
+function BotsTable({ bots, execution, executionError, onActivity, onDelete, onOpenBot }: { onDelete?(bot:BotSummary):void; execution:Record<string,BotExecutionOverview>; executionError:boolean; onActivity(id:string):void; bots: readonly BotSummary[]; onOpenBot?(bot: BotSummary): void }) {
   return (
     <LayerCard className="bots-table-wrap">
       <Table aria-label="Local bots">
@@ -127,8 +165,8 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
             <Table.Head>DEX</Table.Head>
             <Table.Head>Status</Table.Head>
             <Table.Head>Updated</Table.Head>
-            <Table.Head className="metric-heading">PnL</Table.Head>
-            <Table.Head className="metric-heading">Drawdown</Table.Head>
+            <Table.Head>Account position</Table.Head>
+            <Table.Head>Account orders</Table.Head><Table.Head><span className="sr-only">Actions</span></Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -136,10 +174,11 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
             <Table.Row key={bot.id}>
               <Table.Cell><Button size="base" type="button" variant="ghost" className="bot-name-button" onClick={() => onOpenBot?.(bot)}>{bot.name}</Button></Table.Cell>
               <Table.Cell>{DEX_DISPLAY_NAMES[bot.dex]}</Table.Cell>
-              <Table.Cell><StatusBadge status={bot.status} /></Table.Cell>
-              <Table.Cell><time dateTime={bot.updatedAt}>{formatUpdatedAt(bot.updatedAt)}</time></Table.Cell>
-              <Table.Cell className="unavailable-metric" aria-label="PnL unavailable">PnL unavailable</Table.Cell>
-              <Table.Cell className="unavailable-metric" aria-label="Drawdown unavailable">Drawdown unavailable</Table.Cell>
+              <Table.Cell>{executionError ? 'Status unavailable' : execution[bot.id]?.target ? <ExecutionBadge view={execution[bot.id]}/> : connectionsPlaceholder(execution[bot.id],bot.status)}</Table.Cell>
+              <Table.Cell><time dateTime={latestBotUpdate(bot, execution[bot.id])}>{formatUpdatedAt(latestBotUpdate(bot, execution[bot.id]))}</time></Table.Cell>
+              <Table.Cell>{execution[bot.id]?.target ? <Button size="base" variant="ghost" onClick={()=>onActivity(bot.id)}>{execution[bot.id].activity ? execution[bot.id].activity!.positions.filter(item=>item.market===execution[bot.id].target?.market).map(item=>`${Number(item.size)>0?'Long':'Short'} ${Math.abs(Number(item.size))}`).join(', ')||'Flat' : 'Unavailable'} · {execution[bot.id].target?.market}</Button>:'—'}</Table.Cell>
+              <Table.Cell>{execution[bot.id]?.target ? <Button size="base" variant="ghost" onClick={()=>onActivity(bot.id)}>{execution[bot.id].activity ? `${execution[bot.id].activity!.orders.filter(item=>item.market===execution[bot.id].target?.market).length} open` : 'Unavailable'} · Details</Button>:'—'}</Table.Cell>
+              <Table.Cell>{onDelete&&<Button size="sm" variant="ghost" aria-label={`Delete ${bot.name}`} disabled={!!execution[bot.id]?.deployment && ['running','stopping','interrupted'].includes(execution[bot.id].deployment!.status)} onClick={()=>onDelete(bot)}>Delete</Button>}</Table.Cell>
             </Table.Row>
           ))}
         </Table.Body>
@@ -147,3 +186,5 @@ function BotsTable({ bots, onOpenBot }: { bots: readonly BotSummary[]; onOpenBot
     </LayerCard>
   );
 }
+
+function connectionsPlaceholder(view:BotExecutionOverview|undefined,status:BotSummary['status']) {return view ? <StatusBadge status={status}/> : <span>Loading status…</span>;}

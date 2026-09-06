@@ -1,8 +1,10 @@
+import { HttpTransport, InfoClient } from '@nktkas/hyperliquid';
 import { z } from 'zod';
-import type { AdapterDescriptor, TradingAccount } from '@catbots/contracts';
+import type { AdapterDescriptor, TradingAccount, ExchangeActivity } from '@catbots/contracts';
 export interface ExchangeAdapter {
  descriptor: AdapterDescriptor;
  normalizeOwner(owner:string):string;
+ activity?(account:string,environment:'production'|'testnet'):Promise<ExchangeActivity>;
  discover(owner:string,environment:'production'|'testnet'):Promise<TradingAccount[]>;
 }
 const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
@@ -12,6 +14,12 @@ export class HyperliquidAdapter implements ExchangeAdapter {
  descriptor:AdapterDescriptor={id:'hyperliquid',name:'Hyperliquid',environments:['production','testnet'],authentication:['public-address','wallet'],capabilities:{accountDiscovery:true,markets:['perpetual'],trading:false}};
  normalizeOwner(owner:string){return address.parse(owner).toLowerCase();}
  constructor(private request:typeof fetch=fetch){}
+ async activity(account:string,environment:'production'|'testnet'):Promise<ExchangeActivity> {
+  const user=address.parse(account) as `0x${string}`;
+  const info=new InfoClient({transport:new HttpTransport({isTestnet:environment==='testnet',timeout:10000})});
+  const [state,orders]=await Promise.all([info.clearinghouseState({user}),info.openOrders({user})]);
+  return {fetchedAt:new Date().toISOString(),positions:state.assetPositions.filter(({position})=>Number(position.szi)!==0).map(({position})=>({market:`${position.coin}-PERP`,size:position.szi,entryPrice:position.entryPx,unrealizedPnl:position.unrealizedPnl})),orders:orders.map(order=>({id:String(order.oid),market:`${order.coin}-PERP`,side:order.side==='B'?'Buy':'Sell',size:order.sz,price:order.limitPx}))};
+ }
  async discover(input:string,environment:'production'|'testnet') {
   const owner=address.parse(input).toLowerCase();
   const url=environment==='production'?'https://api.hyperliquid.xyz/info':'https://api.hyperliquid-testnet.xyz/info';

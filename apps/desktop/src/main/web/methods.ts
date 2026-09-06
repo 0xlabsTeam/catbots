@@ -10,6 +10,7 @@ export const webMethods = {
   'config:get-bootstrap-state': 'getBootstrapState',
   'config:patch-settings': 'patchLocalSettings',
   'config:test-llm': 'testLlmConnection',
+  'bots:remove': 'removeBot',
   'bots:list': 'listBots',
   'bots:create-draft': 'createDraftBot',
   'workbench:get': 'getWorkbench',

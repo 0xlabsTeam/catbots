@@ -1,4 +1,4 @@
-import { fetchMarketSnapshot } from '../nodes/market-snapshot';
+import { fetchMarketSnapshot, fetchMarketCatalog } from '../nodes/market-snapshot';
 import { NodePackageCommandSchema } from '@catbots/contracts';
 import { toRendererSafeTraceDetails } from '../../shared/trace-projection';
 import {
@@ -79,7 +79,7 @@ export type IpcHandlerDependencies = {
   nodePackages?: Pick<import('../nodes/package-service').NodePackageService, 'command'>;
   providerService?: Pick<import('../providers/provider-service').ProviderService, 'command'>;
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
-  botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
+  botRepository: Pick<BotRepository, 'list' | 'createDraft'> & Partial<Pick<BotRepository, 'remove'>>;
   workbenchService: Pick<WorkbenchService, 'get' | 'stopAgent' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'> & Partial<Pick<WorkbenchService, 'configureNode'>>;
   deploymentService: Pick<DeploymentService, 'startPaper' | 'getPaperDeployment' | 'pause' | 'stop' | 'prepareLive' | 'startLive' | 'getLiveDeployment' | 'getActiveDeployment'>;
   runtime: RuntimePort;
@@ -92,7 +92,7 @@ export function createApplicationHandlers(dependencies: IpcHandlerDependencies) 
   return {
     connectionCommand: async (input: unknown) => { if (!dependencies.connections) throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); return dependencies.connections.command(input); },
     nodePackageCommand: async (input: unknown) => {
-      try { const command = NodePackageCommandSchema.parse(input); if (command.action === 'market_snapshot') return { packages: [], marketSnapshot: await fetchMarketSnapshot(command) }; if (!dependencies.nodePackages) throw new Error(); return dependencies.nodePackages.command(input); } catch { throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); }
+      try { const command = NodePackageCommandSchema.parse(input); if (command.action === 'market_catalog') return { packages: [], markets: await fetchMarketCatalog() }; if (command.action === 'market_snapshot') return { packages: [], marketSnapshot: await fetchMarketSnapshot(command) }; if (!dependencies.nodePackages) throw new Error(); return dependencies.nodePackages.command(input); } catch { throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); }
     },
     providerCommand: async (input: unknown) => {
       try { if (!dependencies.providerService) throw new Error(); return await dependencies.providerService.command(input); }
@@ -192,6 +192,17 @@ export function createApplicationHandlers(dependencies: IpcHandlerDependencies) 
         return BotSummarySchema.array().parse(dependencies.botRepository.list());
       } catch {
         throw new IpcRequestError('BOT_LIST_FAILED');
+      }
+    },
+
+    removeBot: async (input: unknown) => {
+      const request = parseRequest(GetWorkbenchInputSchema, input);
+      try {
+        dependencies.connections?.assertBotRemovable(request.botId);
+        if (!dependencies.botRepository.remove) throw new Error('Unavailable');
+        dependencies.botRepository.remove(request.botId);
+      } catch (error) {
+        throw new IpcRequestError(error instanceof Error && ['BOT_ACTIVE','BOT_UNRESOLVED'].includes(error.message) ? error.message : 'BOT_DELETE_FAILED');
       }
     },
 

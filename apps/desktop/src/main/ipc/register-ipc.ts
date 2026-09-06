@@ -103,6 +103,7 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['config:get-bootstrap-state', handlers.getBootstrapState],
     ['config:patch-settings', handlers.patchLocalSettings],
     ['config:test-llm', handlers.testLlmConnection],
+    ['bots:remove', handlers.removeBot],
     ['bots:list', handlers.listBots],
     ['bots:create-draft', handlers.createDraftBot],
     ['workbench:get', handlers.getWorkbench],

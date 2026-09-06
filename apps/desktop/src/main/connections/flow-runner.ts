@@ -1,0 +1,808 @@
+import {
+  protectionPlan,
+  installProtection,
+  type ProtectionState,
+} from "./native-protection";
+import { perpSize } from "./hyperliquid-precision";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  mkdirSync,
+} from "node:fs";
+import { dirname } from "node:path";
+import {
+  compileFlow,
+  runtimeNodePackages,
+  type FlowDocument,
+  type Fill,
+  type OrderPlan,
+  type FlowContext,
+  type FlowRun,
+} from "@catbots/strategy-runtime";
+import type { ExecutionTarget, FlowDeployment } from "@catbots/contracts";
+import {
+  OrderRejectedError,
+  type FlowVenue,
+  type VenueSnapshot,
+} from "./flow-venue";
+export function validateExecutableFlow(document: FlowDocument) {
+  compileFlow(document, runtimeNodePackages);
+  if (
+    document.nodes.some((node) => node.type === "strategy.dca") &&
+    document.nodes.filter(
+      (node) =>
+        node.type.startsWith("strategy.") || node.type.startsWith("action."),
+    ).length !== 1
+  )
+    throw new Error(
+      "Native DCA protection requires one execution controller per workflow",
+    );
+  if (
+    !document.nodes.some(
+      (node) =>
+        node.type.startsWith("action.") ||
+        ["strategy.dca", "strategy.smart_order", "strategy.directional"].includes(node.type),
+    )
+  )
+    throw new Error("Workflow needs an order action");
+  for (const node of document.nodes)
+    if (
+      (node.type.startsWith("strategy.") &&
+        !["strategy.dca", "strategy.smart_order", "strategy.directional"].includes(node.type)) ||
+      node.type.startsWith("process.orders_") ||
+      node.type === "output.persist"
+    )
+      throw new Error(
+        `Node ${node.id} (${node.type}) requires a runtime capability not supported yet`,
+      );
+}
+export function validateFlowTarget(
+  document: FlowDocument,
+  target: ExecutionTarget,
+  environment: "production" | "testnet" = "production",
+) {
+  validateExecutableFlow(document);
+  const directional = document.nodes.filter(node => node.type === "strategy.directional");
+  if (directional.length) {
+    if (environment !== "testnet") throw new Error("Long/Short controller is Testnet only; native exchange protection is not supported yet");
+    if (directional.length !== 1 || document.nodes.filter(node => node.type.startsWith("strategy.") || node.type.startsWith("action.")).length !== 1) throw new Error("Long/Short controller must own the only order path");
+    for (const node of directional) {
+      const quote = Number(node.config.quotePerOrder);
+      if (quote < 12) throw new Error("Use at least $12 per order to allow for lot rounding above the $10 minimum");
+      if (quote * 1.006 > Math.min(target.maxOrderUsd, target.maxPositionUsd)) throw new Error(`${node.id}: order size including price tolerance exceeds the target limits`);
+    }
+  }
+  for (const node of document.nodes) {
+    if (node.type === "strategy.dca") {
+      if((node.config.side==='short'&&Number(node.config.takeProfitPercent)>=100)||(node.config.side!=='short'&&Number(node.config.stopLossPercent)>=100))throw new Error(`${node.id}: native trigger must have a positive price`);
+      const maximum =
+        Number(node.config.quotePerOrder) *
+        Math.pow(
+          Number(node.config.volumeMultiplier ?? 1),
+          Number(node.config.maxExtraOrders ?? 0),
+        );
+      if (maximum * 1.006 > target.maxOrderUsd)
+        throw new Error(
+          `${node.id}: order size including price tolerance exceeds target $${target.maxOrderUsd}`,
+        );
+    }
+    if (
+      node.type.startsWith("strategy.") &&
+      Number(node.config.maxNotional) > target.maxPositionUsd
+    )
+      throw new Error(
+        `${node.id}: maxNotional exceeds target $${target.maxPositionUsd}`,
+      );
+  }
+}
+export function guardOrder(
+  order: OrderPlan,
+  snapshot: VenueSnapshot,
+  target: ExecutionTarget,
+): OrderPlan {
+  if (
+    snapshot.context.market !== target.market ||
+    !Number.isFinite(snapshot.context.price) ||
+    snapshot.context.price <= 0 ||
+    ![snapshot.position, snapshot.available].every(Number.isFinite) ||
+    !Number.isInteger(snapshot.sizeDecimals) ||
+    snapshot.sizeDecimals < 0 ||
+    snapshot.sizeDecimals > 6
+  )
+    throw new Error("Invalid market or account snapshot");
+  if (order.limitPrice !== undefined)
+    throw new Error("Only market IOC orders are supported");
+  const quantity = perpSize(order.quantity, snapshot.sizeDecimals);
+  if (!Number.isFinite(quantity) || quantity <= 0)
+    throw new Error("Order quantity is below market precision");
+  const notional = quantity * snapshot.context.price * 1.006;
+  if (
+    !order.reduceOnly &&
+    (notional > target.maxOrderUsd || quantity * snapshot.context.price < 10)
+  )
+    throw new Error("Order outside configured limit or exchange minimum");
+  const signed = order.side === "buy" ? quantity : -quantity;
+  if (order.reduceOnly) {
+    if (
+      snapshot.position * signed >= 0 ||
+      quantity > Math.abs(snapshot.position)
+    )
+      throw new Error("Reduce-only order does not match current position");
+  } else if (
+    Math.abs(snapshot.position + signed) * snapshot.context.price * 1.006 >
+      target.maxPositionUsd ||
+    notional > snapshot.available
+  )
+    throw new Error("Position or collateral limit exceeded");
+  if (snapshot.openOrders)
+    throw new Error(
+      "Existing open orders must be resolved before running this bot",
+    );
+  return { ...order, quantity };
+}
+type Stored = {
+  view: FlowDeployment;
+  document: FlowDocument;
+  target: ExecutionTarget;
+  state: Record<string, unknown>;
+  fills: Fill[];
+  cancelled?: string[];
+  lastBucket: number;
+  protection?: ProtectionState;
+  protectionGeneration?: number;
+  protectionSeen?: string[];
+  nativePartial?: boolean;
+  nativeCompleted?: boolean;
+  nativeExitPending?: boolean;
+  queued?: string[];
+  pending?: string;
+  pendingOrder?: OrderPlan;
+  expectedPosition?: number;
+  lastRiskAt?: number;
+};
+export class FlowRunner {
+  private reconciling = new Set<string>();
+  private archives: Stored[] = [];
+  private records: Record<string, Stored> = {};
+  private active = new Map<
+    string,
+    {
+      venue: FlowVenue;
+      timer?: ReturnType<typeof setTimeout>;
+      task?: Promise<void>;
+      stop: boolean;
+      evaluate: ReturnType<typeof compileFlow>;
+    }
+  >();
+  constructor(private path: string) {
+    if (existsSync(`${path}.history`))
+      this.archives = JSON.parse(readFileSync(`${path}.history`, "utf8"));
+    if (existsSync(path)) this.records = JSON.parse(readFileSync(path, "utf8"));
+    for (const item of Object.values(this.records))
+      if (item.view.status === "running" || item.view.status === "stopping") {
+        item.cancelled = [
+          ...new Set([
+            ...(item.cancelled ?? []),
+            ...(item.queued ?? []).filter(
+              (id) => id !== item.pendingOrder?.clientOrderId,
+            ),
+          ]),
+        ];
+        item.queued = [];
+        item.view.status = "interrupted";
+        item.view.error =
+          "Backend restarted. Review account orders and positions before starting again.";
+      }
+    this.persist();
+  }
+  private persist() {
+    mkdirSync(dirname(this.path), { recursive: true });
+    writeFileSync(`${this.path}.tmp`, JSON.stringify(this.records), {
+      mode: 0o600,
+    });
+    renameSync(`${this.path}.tmp`, this.path);
+  }
+  history(botId: string) {
+    return this.archives
+      .filter((item) => item.view.botId === botId)
+      .map((item) => structuredClone(item.view));
+  }
+  get(botId: string) {
+    return this.records[botId]
+      ? structuredClone(this.records[botId].view)
+      : undefined;
+  }
+  async start(
+    botId: string,
+    version: number,
+    document: FlowDocument,
+    target: ExecutionTarget,
+    environment: "production" | "testnet",
+    venue: FlowVenue,
+  ) {
+    if (this.active.has(botId) || this.reconciling.has(botId))
+      throw new Error("Bot is already running or reconciling");
+    if (this.records[botId]?.pending)
+      throw new Error(
+        "Previous order outcome is unresolved. Exchange reconciliation is required before restart.",
+      );
+    validateFlowTarget(document, target, environment);
+    for (const other of Object.values(this.records))
+      if (
+        other.pending &&
+        other.view.environment === environment &&
+        (other.target.accountId === target.accountId ||
+          other.target.connectionId === target.connectionId)
+      )
+        throw new Error("Account has an unresolved order");
+    for (const [id] of this.active) {
+      const other = this.records[id];
+      if (
+        other.view.environment === environment &&
+        (other.target.accountId === target.accountId ||
+          other.target.connectionId === target.connectionId)
+      )
+        throw new Error("Another bot is using this account");
+    }
+    const initial = await venue.snapshot(this.timeframes(document));
+    if (this.foreignOrders(botId, initial))
+      throw new Error("Resolve unrelated open orders first");
+    if (this.records[botId]?.nativePartial && initial.position !== 0)
+      throw new Error(
+        "Partial native exit requires reconciliation before resuming",
+      );
+    if (this.records[botId]?.protection && venue.protection) {
+      if (!(await this.syncProtection(this.records[botId], venue, initial)))
+        return this.get(botId)!;
+    }
+    if (initial.available <= 0 || !Number.isFinite(initial.available))
+      throw new Error("No available collateral");
+    // Recheck after asynchronous preflight to prevent duplicate starts.
+    if (
+      this.active.has(botId) ||
+      [...this.active.keys()].some(
+        (id) =>
+          this.records[id].view.environment === environment &&
+          (this.records[id].target.accountId === target.accountId ||
+            this.records[id].target.connectionId === target.connectionId),
+      )
+    )
+      throw new Error("Account already running");
+    const prior = this.records[botId];
+    const same =
+      prior &&
+      !prior.nativeCompleted &&
+      prior.view.version === version &&
+      JSON.stringify(prior.document) === JSON.stringify(document) &&
+      JSON.stringify(prior.target) === JSON.stringify(target) &&
+      prior.view.environment === environment;
+    if (same && prior.expectedPosition !== undefined) {
+      if (Math.abs(initial.position - prior.expectedPosition) > 1e-8)
+        throw new Error(
+          "Account position changed outside this deployment. Reconcile before resuming.",
+        );
+      prior.view.status = "running";
+      delete prior.view.error;
+    } else {
+      if (initial.position !== 0)
+        throw new Error(
+          "A new workflow requires a flat market position. Resume the original deployment or close the position first.",
+        );
+      if (prior) {
+        this.archives.push(structuredClone(prior));
+        writeFileSync(
+          `${this.path}.history.tmp`,
+          JSON.stringify(this.archives),
+          { mode: 0o600 },
+        );
+        renameSync(`${this.path}.history.tmp`, `${this.path}.history`);
+      }
+      const view: FlowDeployment = {
+        id: randomUUID(),
+        botId,
+        version,
+        environment,
+        target: structuredClone(target),
+        status: "running",
+        startedAt: new Date().toISOString(),
+        cycles: 0,
+        orders: [],
+        events: [],
+        position: 0,
+      };
+      this.records[botId] = {
+        view,
+        document: structuredClone(document),
+        target: structuredClone(target),
+        state: {},
+        fills: [],
+        lastBucket: -1,
+        expectedPosition: 0,
+      };
+    }
+    await this.syncProtection(this.records[botId], venue, initial);
+    this.persist();
+    this.active.set(botId, {
+      venue,
+      stop: false,
+      evaluate: compileFlow(document, runtimeNodePackages, true),
+    });
+    this.schedule(botId);
+    return this.get(botId)!;
+  }
+  private timeframes(doc: FlowDocument) {
+    return [
+      ...new Set(
+        doc.nodes
+          .filter(
+            (node) =>
+              node.type === "data.candles" || node.type === "data.candle_items",
+          )
+          .map((node) => String(node.config.timeframe)),
+      ),
+    ];
+  }
+  private schedule(botId: string) {
+    const active = this.active.get(botId);
+    if (!active || active.stop) return;
+    active.timer = setTimeout(() => {
+      active.task = this.tick(botId)
+        .catch(() => {
+          active.stop = true;
+          this.active.delete(botId);
+        })
+        .finally(() => {
+          active.task = undefined;
+          if (!active.stop) this.schedule(botId);
+        });
+    }, 1000);
+  }
+  private async tick(botId: string) {
+    const active = this.active.get(botId)!;
+    const record = this.records[botId];
+    try {
+      const times = this.timeframes(record.document);
+      const interval = times.length
+        ? Math.min(
+            ...times.map(
+              (value) =>
+                parseInt(value) *
+                (value.endsWith("m")
+                  ? 60000
+                  : value.endsWith("h")
+                    ? 3600000
+                    : 86400000),
+            ),
+          )
+        : 60000;
+      const bucket = Math.floor(Date.now() / interval);
+      const signal = record.lastBucket !== bucket;
+      if (
+        !signal &&
+        (Date.now() - (record.lastRiskAt ?? 0) < 5000 ||
+          !record.document.nodes.some((node) => node.type === "strategy.dca"))
+      )
+        return;
+      const snapshot = await active.venue.snapshot(signal ? times : []);
+      if (active.stop) return;
+      if (!(await this.syncProtection(record, active.venue, snapshot))) {
+        active.stop = true;
+        this.active.delete(botId);
+        return;
+      }
+      const context = {
+        ...snapshot.context,
+        nativeProtection: !!active.venue.protection,
+        runId: `${record.view.id}:${bucket}`,
+        deploymentId: record.view.id,
+        fills: record.fills,
+        cancelledOrderIds: record.cancelled ?? [],
+      };
+      if (
+        record.expectedPosition !== undefined &&
+        Math.abs(snapshot.position - record.expectedPosition) > 1e-8
+      )
+        throw new Error("Account position changed outside this deployment");
+      const run = signal
+        ? active.evaluate(context, record.state)
+        : this.riskRun(record, context);
+      record.lastRiskAt = Date.now();
+      record.view.riskCheckedAt = new Date().toISOString();
+      if (run.cancelOrderIds.length)
+        throw new Error("Resting order controllers are not supported");
+      if (run.orders.length > 10)
+        throw new Error("Too many orders in one evaluation");
+      record.state = run.state;
+      record.fills = [];
+      record.cancelled = [];
+      if (signal) record.lastBucket = bucket;
+      record.view.cycles++;
+      record.view.lastRunAt = new Date().toISOString();
+      record.queued = run.orders.map((order) => order.clientOrderId);
+      record.view.trace = run.trace;
+      record.view.events = run.trace
+        .map((node) => `${node.nodeId}: ${node.status}`)
+        .slice(0, 200);
+      this.persist();
+      for (const proposal of run.orders) {
+        if (active.stop) break;
+        const fresh = await active.venue.snapshot([]);
+        if (active.stop) break;
+        const order = guardOrder(
+          proposal,
+          { ...fresh, openOrders: this.foreignOrders(botId, fresh) },
+          record.target,
+        );
+        const cloid =
+          `0x${createHash("sha256").update(proposal.clientOrderId).digest("hex").slice(0, 32)}` as `0x${string}`;
+        record.pending = cloid;
+        record.pendingOrder = order;
+        record.view.orders.push({
+          id: cloid,
+          status: "submitting",
+          at: new Date().toISOString(),
+        });
+        this.persist();
+        const fill = await active.venue.place(order, cloid, fresh);
+        if (fill) {
+          record.fills.push(fill);
+          record.expectedPosition =
+            (record.expectedPosition ?? fresh.position) +
+            (fill.side === "buy" ? fill.quantity : -fill.quantity);
+          record.view.position = record.expectedPosition;
+        }
+        record.cancelled!.push(proposal.clientOrderId);
+        record.view.orders[record.view.orders.length - 1] = {
+          id: cloid,
+          status: fill ? "filled" : "cancelled",
+          at: new Date().toISOString(),
+          quantity: fill?.quantity,
+          price: fill?.price,
+          fee: fill?.fee,
+          side: order.side,
+          exchangeOrderId: fill?.id,
+        };
+        record.pending = undefined;
+        record.pendingOrder = undefined;
+        record.queued = record.queued?.filter(
+          (id) => id !== proposal.clientOrderId,
+        );
+        this.persist();
+        if (active.venue.protection) {
+          const after = await active.venue.snapshot([]);
+          if (!(await this.syncProtection(record, active.venue, after))) {
+            active.stop = true;
+            this.active.delete(botId);
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      record.cancelled = [
+        ...new Set([
+          ...(record.cancelled ?? []),
+          ...(record.queued ?? []).filter(
+            (id) => id !== record.pendingOrder?.clientOrderId,
+          ),
+        ]),
+      ];
+      record.queued = [];
+      record.view.status = "failed";
+      if (record.pending && record.view.orders.length) {
+        record.view.orders[record.view.orders.length - 1].status =
+          error instanceof OrderRejectedError ? "rejected" : "uncertain";
+        if (error instanceof OrderRejectedError) {
+          record.cancelled ??= [];
+          if (record.pendingOrder)
+            record.cancelled.push(record.pendingOrder.clientOrderId);
+          record.pending = undefined;
+          record.pendingOrder = undefined;
+        }
+      }
+      record.view.error =
+        error instanceof Error ? error.message : "Runtime failed";
+      active.stop = true;
+      this.active.delete(botId);
+      this.persist();
+    }
+  }
+  connectionRunning(connectionId: string) {
+    return [...this.active.keys()].some(
+      (id) => this.records[id].target.connectionId === connectionId,
+    );
+  }
+  foreignOrders(botId: string, snapshot: VenueSnapshot) {
+    const protection = this.records[botId]?.protection;
+    if (!protection || !snapshot.openOrderIds) return snapshot.openOrders;
+    const owned = new Set(
+      [...protection.orders, ...protection.retiring].map(
+        (order) => order.exchangeId,
+      ),
+    );
+    return snapshot.openOrderIds.filter((id) => !owned.has(id)).length;
+  }
+  private async syncProtection(
+    record: Stored,
+    venue: FlowVenue,
+    snapshot: VenueSnapshot,
+  ): Promise<boolean> {
+    const node = record.document.nodes.find(
+      (node) => node.type === "strategy.dca",
+    );
+    if (!node || !venue.protection) return true;
+    const persist = () => {
+      record.view.protection = {
+        mode: "exchange",
+        status: record.protection?.orders.every(
+          (order) => order.state === "open",
+        )
+          ? "protected"
+          : "needs-attention",
+        orders: [
+          ...(record.protection?.orders ?? []),
+          ...(record.protection?.retiring ?? []),
+        ].map((order) => ({
+          id: order.cloid,
+          kind: order.kind,
+          triggerPrice: order.triggerPrice,
+          status: order.state,
+        })),
+      };
+      this.persist();
+    };
+    let executed = record.nativeExitPending ?? false;
+    if (record.protection) {
+      for (const order of [
+        ...record.protection.orders,
+        ...record.protection.retiring,
+      ]) {
+        if (order.state === "planned") continue;
+        const status = await venue.protection.inspectProtection(order);
+        order.state = status.state;
+        order.exchangeId = status.exchangeId ?? order.exchangeId;
+        persist();
+        if (status.state === "unknown")
+          throw new Error(
+            "Native protection outcome unknown. Reconcile with exchange.",
+          );
+        if (status.fill && !record.protectionSeen?.includes(status.fill.id)) {
+          const fill = status.fill;
+          record.protectionSeen ??= [];
+          record.protectionSeen.push(fill.id);
+          record.expectedPosition =
+            (record.expectedPosition ?? 0) +
+            (fill.side === "buy" ? fill.quantity : -fill.quantity);
+          record.view.position = record.expectedPosition;
+          record.view.orders.push({
+            id: order.cloid,
+            status: "filled",
+            at: new Date().toISOString(),
+            quantity: fill.quantity,
+            price: fill.price,
+            fee: fill.fee,
+            side: fill.side,
+            exchangeOrderId: fill.id,
+          });
+          executed = true;
+          record.nativeExitPending = true;
+          persist();
+        }
+      }
+    }
+    if (
+      record.expectedPosition !== undefined &&
+      Math.abs(snapshot.position - record.expectedPosition) > 1e-8
+    )
+      throw new Error(
+        "Position differs from confirmed native/entry fills. Reconcile before continuing.",
+      );
+    if (snapshot.position === 0) {
+      if (record.protection) {
+        for (const order of [
+          ...record.protection.orders,
+          ...record.protection.retiring,
+        ])
+          if (order.state === "open")
+            await venue.protection.cancelProtection(order);
+        record.protection = undefined;
+        record.view.protection = {
+          mode: "exchange",
+          status: "flat",
+          orders: [],
+        };
+      }
+      if (executed || record.nativePartial) {
+        record.state = {};
+        record.fills = [];
+        record.cancelled = [];
+        record.nativePartial = false;
+        record.nativeCompleted = true;
+        record.nativeExitPending = false;
+        record.lastBucket = -1;
+        record.view.status = "stopped";
+        record.view.error =
+          "Native protection closed the position. Start/resume to begin another cycle.";
+        this.persist();
+        return false;
+      }
+      this.persist();
+      return true;
+    }
+    if (
+      !Number.isFinite(snapshot.entryPrice) ||
+      !snapshot.entryPrice ||
+      snapshot.entryPrice <= 0
+    )
+      throw new Error("Exchange entry price required for native protection");
+    if (record.protection?.orders.some((order) => order.state === "planned"))
+      await installProtection(record.protection, venue.protection, persist);
+    const current = record.protection;
+    const changed =
+      !current ||
+      Math.abs(current.quantity - Math.abs(snapshot.position)) > 1e-8 ||
+      Math.abs(current.entry - snapshot.entryPrice) > 1e-8 ||
+      current.orders.some((order) => order.state === "terminal");
+    if (changed) {
+      const next = protectionPlan(
+        record.view.id,
+        Math.max(record.protectionGeneration ?? 0, current?.generation ?? 0) + 1,
+        snapshot.position,
+        snapshot.entryPrice,
+        Number(node.config.takeProfitPercent),
+        Number(node.config.stopLossPercent),
+      );
+      next.retiring = current
+        ? [...current.orders, ...current.retiring].filter(
+            (order) => order.state === "open",
+          )
+        : [];
+      record.protectionGeneration = next.generation;
+      record.protection = next;
+      persist();
+      await installProtection(next, venue.protection, persist);
+    }
+    if (executed) {
+      record.nativePartial = true;
+      record.nativeExitPending = false;
+      record.view.status = "failed";
+      record.view.error =
+        "Native order partially closed the position. Remaining size is protected; reconcile before resuming.";
+      persist();
+      return false;
+    }
+    return true;
+  }
+  private riskRun(record: Stored, context: FlowContext): FlowRun {
+    const run: FlowRun = {
+      runId: context.runId,
+      market: context.market,
+      at: context.at,
+      state: structuredClone(record.state),
+      orders: [],
+      cancelOrderIds: [],
+      trace: [],
+    };
+    for (const node of record.document.nodes.filter(
+      (node) => node.type === "strategy.dca",
+    )) {
+      const definition = runtimeNodePackages
+        .flatMap((pkg) => pkg.definitions)
+        .find((def) => def.type === node.type)!;
+      const input = {
+        signal: {
+          type: "condition" as const,
+          quality: "ready" as const,
+          value: false,
+        },
+      };
+      const result = definition.evaluate(
+        input,
+        definition.config.parse(node.config),
+        { ...context, evaluationMode: "risk" },
+        run.state[node.id],
+        node.id,
+      );
+      if (result.state !== undefined) run.state[node.id] = result.state;
+      run.orders.push(...(result.orders ?? []));
+      run.cancelOrderIds.push(...(result.cancelOrderIds ?? []));
+      run.trace.push({
+        nodeId: node.id,
+        status: "executed",
+        inputs: input,
+        outputs: result.outputs,
+      });
+    }
+    return run;
+  }
+  async reconcile(botId: string, venue: FlowVenue) {
+    if (this.reconciling.has(botId))
+      throw new Error("Reconciliation already in progress");
+    this.reconciling.add(botId);
+    try {
+      if (this.active.has(botId))
+        throw new Error("Stop the bot before reconciling");
+      const record = this.records[botId];
+      if (record?.protection && venue.protection)
+        await this.syncProtection(record, venue, await venue.snapshot([]));
+      if (!record?.pending) {
+        if (
+          record?.view.protection?.status === "protected" &&
+          !record.nativePartial
+        ) {
+          record.view.status = "stopped";
+          delete record.view.error;
+          this.persist();
+        }
+        return this.get(botId);
+      }
+      if (!record.pendingOrder || !venue.reconcile)
+        throw new Error(
+          "This legacy pending order requires manual reconciliation",
+        );
+      const fill = await venue.reconcile(
+        record.pendingOrder,
+        record.pending as `0x${string}`,
+      );
+      if (fill === undefined)
+        throw new Error(
+          "Exchange has not confirmed a terminal outcome. No order was resent.",
+        );
+      if (fill) {
+        record.fills.push(fill);
+        record.expectedPosition =
+          (record.expectedPosition ?? 0) +
+          (fill.side === "buy" ? fill.quantity : -fill.quantity);
+        record.view.position = record.expectedPosition;
+      }
+      record.cancelled ??= [];
+      record.cancelled.push(record.pendingOrder.clientOrderId);
+      Object.assign(record.view.orders.at(-1)!, {
+        status: fill ? "filled" : "cancelled",
+        quantity: fill?.quantity,
+        price: fill?.price,
+        fee: fill?.fee,
+        side: record.pendingOrder.side,
+        exchangeOrderId: fill?.id,
+      });
+      record.pending = undefined;
+      record.pendingOrder = undefined;
+      record.view.status = "stopped";
+      delete record.view.error;
+      this.persist();
+      return this.get(botId);
+    } finally {
+      this.reconciling.delete(botId);
+    }
+  }
+  async stop(botId: string) {
+    const active = this.active.get(botId);
+    if (active) {
+      active.stop = true;
+      clearTimeout(active.timer);
+      this.records[botId].view.status = "stopping";
+      this.persist();
+      await active.task;
+      const record = this.records[botId];
+      record.cancelled = [
+        ...new Set([
+          ...(record.cancelled ?? []),
+          ...(record.queued ?? []).filter(
+            (id) => id !== record.pendingOrder?.clientOrderId,
+          ),
+        ]),
+      ];
+      record.queued = [];
+      this.active.delete(botId);
+      if (this.get(botId)?.status !== "failed")
+        this.records[botId].view.status = "stopped";
+      this.persist();
+    }
+    return this.get(botId);
+  }
+  async dispose() {
+    await Promise.all([...this.active.keys()].map((id) => this.stop(id)));
+  }
+}

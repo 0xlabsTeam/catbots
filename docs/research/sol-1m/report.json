@@ -1,0 +1,695 @@
+{
+  "method": "27 candidates ranked on first 48h only; winner evaluated once on untouched final 24h. Stress uses same frozen winner.",
+  "settings": {
+    "market": "SOL-PERP",
+    "from": "2026-09-03T16:00:00.000Z",
+    "to": "2026-09-06T16:00:00.000Z",
+    "timeframe": "1m",
+    "startingCapital": 1000,
+    "feeBps": 4.5,
+    "slippageBps": 2
+  },
+  "split": "2026-09-05T16:00:00.000Z",
+  "selected": {
+    "fast": 9,
+    "slow": 21,
+    "threshold": 60,
+    "rewardRisk": 3,
+    "flow": {
+      "schemaVersion": "3.0",
+      "nodes": [
+        {
+          "id": "minute",
+          "type": "trigger.tick",
+          "version": 1,
+          "config": {}
+        },
+        {
+          "id": "sol_1m",
+          "type": "data.candles",
+          "version": 1,
+          "config": {
+            "timeframe": "1m",
+            "count": 100
+          }
+        },
+        {
+          "id": "fast",
+          "type": "indicator.ema",
+          "version": 1,
+          "config": {
+            "period": 9
+          }
+        },
+        {
+          "id": "slow",
+          "type": "indicator.ema",
+          "version": 1,
+          "config": {
+            "period": 21
+          }
+        },
+        {
+          "id": "rsi",
+          "type": "indicator.rsi",
+          "version": 1,
+          "config": {
+            "period": 14
+          }
+        },
+        {
+          "id": "atr",
+          "type": "indicator.atr",
+          "version": 1,
+          "config": {
+            "period": 14
+          }
+        },
+        {
+          "id": "long_short",
+          "type": "strategy.directional",
+          "version": 1,
+          "config": {
+            "quotePerOrder": 100,
+            "rsiThreshold": 60,
+            "stopAtr": 2,
+            "rewardRisk": 3,
+            "minAtrPercent": 0.08,
+            "maxHoldMinutes": 30,
+            "cooldownMinutes": 5
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "minute",
+          "sourcePort": "tick",
+          "target": "sol_1m",
+          "targetPort": "tick"
+        },
+        {
+          "source": "sol_1m",
+          "sourcePort": "candles",
+          "target": "fast",
+          "targetPort": "candles"
+        },
+        {
+          "source": "fast",
+          "sourcePort": "value",
+          "target": "long_short",
+          "targetPort": "fast"
+        },
+        {
+          "source": "sol_1m",
+          "sourcePort": "candles",
+          "target": "slow",
+          "targetPort": "candles"
+        },
+        {
+          "source": "slow",
+          "sourcePort": "value",
+          "target": "long_short",
+          "targetPort": "slow"
+        },
+        {
+          "source": "sol_1m",
+          "sourcePort": "candles",
+          "target": "rsi",
+          "targetPort": "candles"
+        },
+        {
+          "source": "rsi",
+          "sourcePort": "value",
+          "target": "long_short",
+          "targetPort": "rsi"
+        },
+        {
+          "source": "sol_1m",
+          "sourcePort": "candles",
+          "target": "atr",
+          "targetPort": "candles"
+        },
+        {
+          "source": "atr",
+          "sourcePort": "value",
+          "target": "long_short",
+          "targetPort": "atr"
+        }
+      ]
+    },
+    "train": {
+      "net": -9.362749736553496,
+      "returnPercent": -0.9362749736553488,
+      "drawdown": 0.9555070199545025,
+      "fees": 3.2401004990686313,
+      "funding": -0.0022670221368481943,
+      "fills": 72,
+      "closed": 36,
+      "longEntries": 13,
+      "shortEntries": 23,
+      "rejected": 0,
+      "endingPosition": 0
+    }
+  },
+  "holdout": {
+    "net": -5.062265562052971,
+    "returnPercent": -0.5062265562053025,
+    "drawdown": 0.5817631565786937,
+    "fees": 2.4745940520130687,
+    "funding": 0.002506622003325136,
+    "fills": 55,
+    "closed": 27,
+    "longEntries": 19,
+    "shortEntries": 9,
+    "rejected": 0,
+    "endingPosition": 0.9441087613293051
+  },
+  "stress": {
+    "net": -5.5047538495772415,
+    "returnPercent": -0.5504753849577271,
+    "drawdown": 0.6132499586072777,
+    "fees": 2.609776448557814,
+    "funding": 0.001256879146242069,
+    "fills": 58,
+    "closed": 29,
+    "longEntries": 19,
+    "shortEntries": 10,
+    "rejected": 0,
+    "endingPosition": 0
+  },
+  "candidates": [
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 60,
+      "rewardRisk": 3,
+      "train": {
+        "net": -9.362749736553496,
+        "returnPercent": -0.9362749736553488,
+        "drawdown": 0.9555070199545025,
+        "fees": 3.2401004990686313,
+        "funding": -0.0022670221368481943,
+        "fills": 72,
+        "closed": 36,
+        "longEntries": 13,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 60,
+      "rewardRisk": 3,
+      "train": {
+        "net": -9.381969531024538,
+        "returnPercent": -0.9381969531024548,
+        "drawdown": 0.9650142536369125,
+        "fees": 3.240135031505912,
+        "funding": -0.0022670221368481943,
+        "fills": 72,
+        "closed": 36,
+        "longEntries": 13,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 60,
+      "rewardRisk": 2,
+      "train": {
+        "net": -9.7642660657325,
+        "returnPercent": -0.9764266065732552,
+        "drawdown": 0.9956508579094833,
+        "fees": 3.419734456257763,
+        "funding": -0.0022670221368481943,
+        "fills": 76,
+        "closed": 38,
+        "longEntries": 15,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 60,
+      "rewardRisk": 2,
+      "train": {
+        "net": -9.783485860203541,
+        "returnPercent": -0.97834858602035,
+        "drawdown": 1.0051550169928445,
+        "fees": 3.4197689886950444,
+        "funding": -0.0022670221368481943,
+        "fills": 76,
+        "closed": 38,
+        "longEntries": 15,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 60,
+      "rewardRisk": 3,
+      "train": {
+        "net": -9.840967553190467,
+        "returnPercent": -0.9840967553190416,
+        "drawdown": 0.996681414136339,
+        "fees": 3.2398943408852587,
+        "funding": -0.0010186942919972633,
+        "fills": 72,
+        "closed": 36,
+        "longEntries": 14,
+        "shortEntries": 22,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 55,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -10.42398571650665,
+        "returnPercent": -1.04239857165066,
+        "drawdown": 1.0657681774114622,
+        "fees": 4.318691784160585,
+        "funding": 0.0002500575881625509,
+        "fills": 96,
+        "closed": 48,
+        "longEntries": 23,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 60,
+      "rewardRisk": 2,
+      "train": {
+        "net": -10.661117693541541,
+        "returnPercent": -1.06611176935415,
+        "drawdown": 1.0786860042805795,
+        "fees": 3.5096667722595654,
+        "funding": -0.0010186942919972633,
+        "fills": 78,
+        "closed": 39,
+        "longEntries": 16,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 60,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -10.767229390785815,
+        "returnPercent": -1.0767229390785782,
+        "drawdown": 1.0959277190724048,
+        "fees": 3.6903390576822663,
+        "funding": -0.0035207470123708017,
+        "fills": 82,
+        "closed": 41,
+        "longEntries": 16,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 60,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -10.786449185256856,
+        "returnPercent": -1.0786449185256841,
+        "drawdown": 1.1054241979946846,
+        "fees": 3.6903735901195476,
+        "funding": -0.0035207470123708017,
+        "fills": 82,
+        "closed": 41,
+        "longEntries": 16,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 55,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -10.804508193286665,
+        "returnPercent": -1.080450819328671,
+        "drawdown": 1.1344958052247194,
+        "fees": 4.498672627676784,
+        "funding": 0.0002507968678534553,
+        "fills": 100,
+        "closed": 50,
+        "longEntries": 24,
+        "shortEntries": 26,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 55,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -10.833042923048765,
+        "returnPercent": -1.0833042923048763,
+        "drawdown": 1.1373492782009293,
+        "fees": 4.498651235193801,
+        "funding": 0.0002507968678534553,
+        "fills": 100,
+        "closed": 50,
+        "longEntries": 24,
+        "shortEntries": 26,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 55,
+      "rewardRisk": 2,
+      "train": {
+        "net": -10.877788249416994,
+        "returnPercent": -1.0877788249416986,
+        "drawdown": 1.1046608287883373,
+        "fees": 4.048682167460188,
+        "funding": -0.0009997452710828454,
+        "fills": 90,
+        "closed": 45,
+        "longEntries": 23,
+        "shortEntries": 22,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 55,
+      "rewardRisk": 3,
+      "train": {
+        "net": -10.902781648233713,
+        "returnPercent": -1.0902781648233661,
+        "drawdown": 1.1071601686700092,
+        "fees": 3.8685244343857583,
+        "funding": -0.0022686082343157084,
+        "fills": 86,
+        "closed": 43,
+        "longEntries": 22,
+        "shortEntries": 21,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 55,
+      "rewardRisk": 3,
+      "train": {
+        "net": -11.11389192824231,
+        "returnPercent": -1.1113891928242303,
+        "drawdown": 1.128271196670869,
+        "fees": 3.868549059520196,
+        "funding": -0.002268609497525936,
+        "fills": 86,
+        "closed": 43,
+        "longEntries": 21,
+        "shortEntries": 22,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 55,
+      "rewardRisk": 3,
+      "train": {
+        "net": -11.11389192824231,
+        "returnPercent": -1.1113891928242303,
+        "drawdown": 1.128271196670869,
+        "fees": 3.868549059520196,
+        "funding": -0.002268609497525936,
+        "fills": 86,
+        "closed": 43,
+        "longEntries": 21,
+        "shortEntries": 22,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 50,
+      "rewardRisk": 3,
+      "train": {
+        "net": -11.154485468066355,
+        "returnPercent": -1.11544854680663,
+        "drawdown": 1.1167347934862846,
+        "fees": 4.048820225854338,
+        "funding": -0.0022700435800532496,
+        "fills": 90,
+        "closed": 45,
+        "longEntries": 22,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 60,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -11.245447207422785,
+        "returnPercent": -1.124544720742282,
+        "drawdown": 1.1371115289954845,
+        "fees": 3.690132899498894,
+        "funding": -0.0022724191675198716,
+        "fills": 82,
+        "closed": 41,
+        "longEntries": 17,
+        "shortEntries": 24,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 55,
+      "rewardRisk": 2,
+      "train": {
+        "net": -11.61555690147918,
+        "returnPercent": -1.1615556901479196,
+        "drawdown": 1.178437693994556,
+        "fees": 4.228457717607637,
+        "funding": -0.0009992577032287445,
+        "fills": 94,
+        "closed": 47,
+        "longEntries": 24,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 55,
+      "rewardRisk": 2,
+      "train": {
+        "net": -11.644091631241281,
+        "returnPercent": -1.164409163124125,
+        "drawdown": 1.181291166970766,
+        "fees": 4.228436325124654,
+        "funding": -0.0009992577032287445,
+        "fills": 94,
+        "closed": 47,
+        "longEntries": 24,
+        "shortEntries": 23,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 50,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -11.921769468544198,
+        "returnPercent": -1.1921769468544174,
+        "drawdown": 1.193463193534069,
+        "fees": 4.768864350337521,
+        "funding": 0.0002494333840762973,
+        "fills": 106,
+        "closed": 53,
+        "longEntries": 25,
+        "shortEntries": 28,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 50,
+      "rewardRisk": 3,
+      "train": {
+        "net": -12.252024422426189,
+        "returnPercent": -1.2252024422426233,
+        "drawdown": 1.2264886889222681,
+        "fees": 4.048660741427813,
+        "funding": -0.0022862287278135798,
+        "fills": 90,
+        "closed": 45,
+        "longEntries": 21,
+        "shortEntries": 24,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 12,
+      "slow": 36,
+      "threshold": 50,
+      "rewardRisk": 2,
+      "train": {
+        "net": -12.474468249824099,
+        "returnPercent": -1.2474468249824122,
+        "drawdown": 1.248733071662059,
+        "fees": 4.498865963610321,
+        "funding": -0.0010185531190039648,
+        "fills": 100,
+        "closed": 50,
+        "longEntries": 24,
+        "shortEntries": 26,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 50,
+      "rewardRisk": 2,
+      "train": {
+        "net": -12.615995909419894,
+        "returnPercent": -1.2615995909419864,
+        "drawdown": 1.2628858376216385,
+        "fees": 4.498691650328466,
+        "funding": -0.0009993638616167533,
+        "fills": 100,
+        "closed": 50,
+        "longEntries": 25,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 9,
+      "slow": 21,
+      "threshold": 50,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -12.728495894296202,
+        "returnPercent": -1.2728495894296254,
+        "drawdown": 1.2741358361092694,
+        "fees": 4.768611996205095,
+        "funding": 0.00025099079390665936,
+        "fills": 106,
+        "closed": 53,
+        "longEntries": 25,
+        "shortEntries": 28,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 50,
+      "rewardRisk": 3,
+      "train": {
+        "net": -12.755261787666313,
+        "returnPercent": -1.2755261787666283,
+        "drawdown": 1.2768124254462805,
+        "fees": 4.138795010986593,
+        "funding": -0.0022863351939507197,
+        "fills": 92,
+        "closed": 46,
+        "longEntries": 21,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 50,
+      "rewardRisk": 2,
+      "train": {
+        "net": -12.775867454024706,
+        "returnPercent": -1.2775867454024703,
+        "drawdown": 1.2788729920821198,
+        "fees": 4.408622150847519,
+        "funding": -0.0009999569406674701,
+        "fills": 98,
+        "closed": 49,
+        "longEntries": 24,
+        "shortEntries": 25,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    },
+    {
+      "fast": 5,
+      "slow": 13,
+      "threshold": 50,
+      "rewardRisk": 1.5,
+      "train": {
+        "net": -13.279686565217276,
+        "returnPercent": -1.3279686565217275,
+        "drawdown": 1.3292549032013767,
+        "fees": 4.7687917016499135,
+        "funding": 0.00025039595304987366,
+        "fills": 106,
+        "closed": 53,
+        "longEntries": 25,
+        "shortEntries": 28,
+        "rejected": 0,
+        "endingPosition": 0
+      }
+    }
+  ]
+}

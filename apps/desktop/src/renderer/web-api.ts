@@ -37,7 +37,7 @@ export async function createWebApi(): Promise<CatbotsDesktopApi> {
       patchSettings: (input) => invoke('config:patch-settings', input),
       testLlmConnection: (input) => invoke('config:test-llm', input),
     },
-    bots: { list: () => invoke('bots:list'), createDraft: (input) => invoke('bots:create-draft', input) },
+    bots: { remove: (input) => invoke('bots:remove', input), list: () => invoke('bots:list'), createDraft: (input) => invoke('bots:create-draft', input) },
     workbench: {
       get: (input) => invoke('workbench:get', input),
       stopAgent: (input) => invoke('workbench:stop-agent', input),

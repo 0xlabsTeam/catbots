@@ -1,3 +1,4 @@
+import { directionalDefinition } from './directional';
 import { z } from 'zod';
 import { definePackage, ready, type FlowContext, type OrderPlan, type FlowDefinition } from '@catbots/node-kit';
 
@@ -54,12 +55,12 @@ function strategyDefinition(type:'dca'|'grid'|'smart_order'):FlowDefinition {
         const order:OrderPlan={clientOrderId:JSON.stringify([context.deploymentId,context.market,nodeId,state.cycle,++state.sequence]),side:purpose==='entry'?entrySide:entrySide==='buy'?'sell':'buy',quantity,limitPrice:price,reduceOnly:purpose==='exit',purpose};
         lot.pending={order,filled:0};orders.push(order);
       };
-      if(state.stage==='idle'&&input.signal.quality==='ready'&&input.signal.value===true){state.stage='active';state.anchor=context.price;state.cycle++;}
+      if(context.evaluationMode!=='risk'&&state.stage==='idle'&&input.signal.quality==='ready'&&input.signal.value===true){state.stage='active';state.anchor=context.price;state.cycle++;}
       if(state.stage==='active'){
         const held=state.lots.reduce((sum,lot)=>sum+lot.quantity,0);
         const cost=state.lots.reduce((sum,lot)=>sum+lot.cost,0);
-        if(type!=='smart_order'&&held>0&&sign*(context.price-cost/held)/(cost/held)*100<=-config.stopLossPercent){state.stage='closing';state.closeReason='stop_loss';}
-        if(type==='dca'&&held>0&&sign*(context.price-cost/held)/(cost/held)*100>=config.takeProfitPercent){state.stage='closing';state.closeReason='take_profit';}
+        if(!context.nativeProtection&&type!=='smart_order'&&held>0&&sign*(context.price-cost/held)/(cost/held)*100<=-config.stopLossPercent){state.stage='closing';state.closeReason='stop_loss';}
+        if(!context.nativeProtection&&type==='dca'&&held>0&&sign*(context.price-cost/held)/(cost/held)*100>=config.takeProfitPercent){state.stage='closing';state.closeReason='take_profit';}
       }
       if(state.stage==='closing'){
         for(const lot of state.lots){
@@ -67,7 +68,7 @@ function strategyDefinition(type:'dca'|'grid'|'smart_order'):FlowDefinition {
           submit(lot,'exit',lot.quantity);
         }
         if(state.lots.every(lot=>lot.quantity===0&&!lot.pending))state.stage='completed';
-      }else if(state.stage==='active'){
+      }else if(state.stage==='active'&&context.evaluationMode!=='risk'){
         if(type==='smart_order'){
           const held=state.lots.reduce((sum,lot)=>sum+lot.quantity,0);
           if(held>=config.quantity-1e-9)state.stage='completed';
@@ -94,4 +95,4 @@ function strategyDefinition(type:'dca'|'grid'|'smart_order'):FlowDefinition {
     },
   };
 }
-export const strategyPackage=definePackage('@catbots/nodes-strategy',(['dca','grid','smart_order'] as const).map(strategyDefinition));
+export const strategyPackage=definePackage('@catbots/nodes-strategy',[...(['dca','grid','smart_order'] as const).map(strategyDefinition), directionalDefinition]);

@@ -195,6 +195,7 @@ const migrations: readonly Migration[] = [
         ON audit_traces (deployment_id, market, created_at);
     `,
   },
+  { version: 7, sql: `ALTER TABLE bots ADD COLUMN deleted_at TEXT;` },
 ];
 
 export function migrateDatabase(database: Database.Database): void {
