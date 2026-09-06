@@ -72,6 +72,7 @@ export interface CatbotsDesktopApi {
     stopAgent(input: StopWorkbenchAgentInput): Promise<void>;
     sendMessage(input: SendWorkbenchMessageInput): Promise<WorkbenchState>;
     runBacktest(input: RunWorkbenchBacktestInput): Promise<BacktestSummary>;
+    configureNode?(input: import('./workbench').ConfigureLegacyNodeInput): Promise<WorkbenchState>;
     approveRevision(input: ApproveStrategyRevisionInput): Promise<StrategyRevision>;
     getTrace(input: GetTraceInput): Promise<TraceDetail>;
     subscribeActivity(listener: (activity: AgentToolActivity) => void): () => void;

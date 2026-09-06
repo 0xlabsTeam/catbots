@@ -1,4 +1,4 @@
-import { StopWorkbenchAgentInputSchema, type StopWorkbenchAgentInput } from '@catbots/contracts';
+import { ConfigureLegacyNodeInputSchema, StopWorkbenchAgentInputSchema, type StopWorkbenchAgentInput } from '@catbots/contracts';
 import { randomUUID } from 'node:crypto';
 import {
   AgentToolActivitySchema,
@@ -52,9 +52,27 @@ export class WorkbenchService {
 
   constructor(private readonly dependencies: WorkbenchServiceDependencies) {}
 
+  private withFlow(state: WorkbenchState): WorkbenchState {
+    const flowDraft = this.dependencies.nodePackages?.flowStore().get(state.bot.id);
+    return flowDraft ? { ...state, flowDraft } : state;
+  }
+
+  async configureNode(input: import('@catbots/contracts').ConfigureLegacyNodeInput): Promise<WorkbenchState> {
+    const request = ConfigureLegacyNodeInputSchema.parse(input);
+    if (this.#active.has(request.botId)) throw new Error('AGENT_BUSY');
+    const current = this.dependencies.repository.getState(request.botId);
+    if (current.currentRevision?.version !== request.version) throw new Error('Revision changed. Reload before saving.');
+    const document = this.dependencies.repository.getStrategyDocument(request.botId, request.version);
+    const node = document.nodes.find(node => node.id === request.nodeId);
+    if (!node) throw new Error('Node not found');
+    const candidate = { ...document, nodes: document.nodes.map(node => node.id === request.nodeId ? { ...node, config: request.config } : node) };
+    this.dependencies.repository.createValidatedRevision(request.botId, candidate as typeof document);
+    return this.withFlow(this.dependencies.repository.getState(request.botId));
+  }
+
   async get(input: GetWorkbenchInput): Promise<WorkbenchState> {
     const request = GetWorkbenchInputSchema.parse(input);
-    return this.dependencies.repository.getState(request.botId, request.version);
+    return this.withFlow(this.dependencies.repository.getState(request.botId, request.version));
   }
 
   async sendMessage(input: SendWorkbenchMessageInput): Promise<WorkbenchState> {
@@ -71,6 +89,8 @@ export class WorkbenchService {
       const onActivity = (activity: AgentToolActivity) => this.publish(activity);
       const tools = createAgentToolCatalog({
         botId: request.botId,
+        flowStore: this.dependencies.nodePackages?.flowStore(),
+        onFlowUpdated: (flowDraft) => onActivity(AgentToolActivitySchema.parse({ botId: request.botId, requestId, phase: 'flow_updated', message: `Flow updated: ${flowDraft.document.nodes.length} nodes, ${flowDraft.document.edges.length} connections.`, flowDraft })),
         dex: state.bot.dex,
         backtestDatasetCatalog: bundledSampleDatasetCatalog,
         repository: this.dependencies.repository,
@@ -87,15 +107,17 @@ export class WorkbenchService {
           progress: total === 0 ? 1 : completed / total,
         })),
       });
-      return await runAgentTurn({ botId: request.botId, message: request.message, signal: controller.signal }, {
+      const result = await runAgentTurn({ botId: request.botId, message: request.message, signal: controller.signal }, {
         provider: transport ?? (this.dependencies.providerFactory ?? createProvider)(config!.llm),
         repository: this.dependencies.repository,
         tools,
+        flowDraft: this.dependencies.nodePackages?.flowStore().get(request.botId),
         requestId,
         onActivity,
       });
+      return this.withFlow(result);
     } catch (error) {
-      if (controller.signal.aborted) return this.dependencies.repository.getState(request.botId);
+      if (controller.signal.aborted) return this.withFlow(this.dependencies.repository.getState(request.botId));
       throw error;
     } finally { this.#active.delete(request.botId); }
   }

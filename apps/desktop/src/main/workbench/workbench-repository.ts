@@ -288,6 +288,7 @@ function toStrategyRevision(row: unknown, legacyMarketHint: string | null): Stra
         version: node.version,
         title: definition.visualization.title,
         summary: definition.visualization.summary(node.config),
+        config: node.config,
       };
     }),
     edges: document.edges,

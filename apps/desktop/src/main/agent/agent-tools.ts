@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import {
+  ChatFlowEditSchema,
   BacktestAssumptionsViewSchema,
   BacktestMarketUniverseSchema,
   type DexId,
 } from '@catbots/contracts';
 import {
   createBuiltinRegistry,
-  listRuntimePackages,
+  listRuntimePackages, runtimeNodePackages,
   StrategyV2DocumentSchema,
   validateStrategy,
 } from '@catbots/strategy-runtime';
@@ -20,6 +21,7 @@ import {
 import type { WorkbenchRepository } from '../workbench/workbench-repository';
 
 const allowedToolNames = [
+  'get_flow', 'edit_flow', 'validate_flow',
   'list_nodes',
   'list_data_products',
   'validate_strategy',
@@ -38,6 +40,8 @@ export type AgentToolCatalog = Readonly<{
 
 export type AgentToolDependencies = Readonly<{
   botId: string;
+  flowStore?: import('../nodes/chat-flow-store').ChatFlowStore;
+  onFlowUpdated?: (draft: import('@catbots/contracts').ChatFlowDraft) => void;
   dex: DexId;
   backtestDatasetCatalog: BundledSampleDatasetCatalog;
   repository: WorkbenchRepository;
@@ -121,6 +125,11 @@ const strategyDocumentJsonSchema: JsonValue = {
 };
 
 const definitions: readonly AgentToolDefinition[] = [
+  definition('get_flow', 'Read this bot’s saved packaged flow and all available typed node definitions. Call before editing.', {}),
+  definition('edit_flow', 'Create or edit this bot’s flow incrementally. Each operation is persisted and immediately displayed in chat’s graph. Missing connections are allowed while building. Operations are sequential; successful operations remain saved if a later one fails. Call get_flow after an error.', {
+    baseVersion: { type: 'integer', minimum: 0 }, operations: { type: 'array', minItems: 1, maxItems: 32, items: jsonSchemaFor(ChatFlowEditSchema.shape.operation) },
+  }, ['baseVersion', 'operations']),
+  definition('validate_flow', 'Validate the complete packaged flow and mark it valid for simulation, never for live deployment.', { baseVersion: { type: 'integer', minimum: 1 } }, ['baseVersion']),
   definition('list_nodes', 'List the available trigger, condition, and action nodes.', {}),
   definition('list_data_products', 'List the data products available to this milestone.', {}),
   definition('validate_strategy', 'Validate a complete candidate strategy and save a draft revision only when valid.', {
@@ -150,6 +159,31 @@ export function createAgentToolCatalog(dependencies: AgentToolDependencies): Age
     execute(name, argumentsValue) {
       if (!allowedToolNames.includes(name as AgentToolName)) return failure('UNKNOWN_TOOL', 'Tool is not available.');
       try {
+        if (name === 'get_flow') {
+          noArguments.parse(argumentsValue);
+          return { ok: true, flow: dependencies.flowStore?.get(dependencies.botId) ?? null,
+            definitions: runtimeNodePackages.flatMap(pkg => pkg.definitions.map(def => ({ type: def.type, version: def.version, category: def.category, title: def.title, configSchema: jsonSchemaFor(def.config), inputs: def.inputs, outputs: def.outputs, activation: def.activation ?? null }))),
+            notice: 'Packaged flow is simulation-only. Solid Flow ports control activation. Data ports carry typed snapshot values. Preserve existing nodes when editing. Not connected to Paper/Live approval.' } as unknown as AgentToolResult;
+        }
+        if (name === 'edit_flow' || name === 'validate_flow') {
+          if (!dependencies.flowStore) return failure('FLOW_STORE_UNAVAILABLE', 'Flow storage unavailable.');
+          try {
+            let draft;
+            if (name === 'edit_flow') {
+              const input = z.object({ baseVersion: z.number().int().nonnegative(), operations: z.array(ChatFlowEditSchema.shape.operation).min(1).max(32) }).strict().parse(argumentsValue);
+              let version = input.baseVersion;
+              for (const operation of input.operations) {
+                if (dependencies.shouldCancel?.()) throw new Error('Flow edit cancelled');
+                draft = dependencies.flowStore.edit(dependencies.botId, { baseVersion: version, operation });
+                version = draft.version; dependencies.onFlowUpdated?.(draft);
+              }
+            } else {
+              const input = z.object({ baseVersion: z.number().int().positive() }).strict().parse(argumentsValue);
+              draft = dependencies.flowStore.validate(dependencies.botId, input.baseVersion); dependencies.onFlowUpdated?.(draft);
+            }
+            return { ok: true, flow: draft } as unknown as AgentToolResult;
+          } catch (error) { return { ok: false, error: { code: 'FLOW_EDIT_FAILED', message: error instanceof Error ? error.message.slice(0, 400) : 'Flow edit failed. Call get_flow.' } }; }
+        }
         if (name === 'list_nodes') {
           noArguments.parse(argumentsValue);
           return { ok: true, simulationPackages: listRuntimePackages(), simulationNotice: 'Runtime v3 packages are simulation-only in Nodes. Only nodes in the nodes array may be used with validate_strategy or deployed.', nodes: registry.list().map((node) => ({

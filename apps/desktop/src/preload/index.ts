@@ -34,6 +34,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     stopAgent: (input) => ipcRenderer.invoke('workbench:stop-agent', input),
     sendMessage: (input) => ipcRenderer.invoke('workbench:send-message', input),
     runBacktest: (input) => ipcRenderer.invoke('workbench:run-backtest', input),
+    configureNode: (input) => ipcRenderer.invoke('workbench:configure-node', input),
     approveRevision: (input) => ipcRenderer.invoke('workbench:approve-revision', input),
     getTrace: (input) => ipcRenderer.invoke('workbench:get-trace', input),
     subscribeActivity: (listener: (activity: AgentToolActivity) => void): (() => void) => {

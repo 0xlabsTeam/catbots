@@ -15,6 +15,7 @@ export const webMethods = {
   'workbench:stop-agent': 'stopWorkbenchAgent',
   'workbench:send-message': 'sendWorkbenchMessage',
   'workbench:run-backtest': 'runWorkbenchBacktest',
+  'workbench:configure-node': 'configureLegacyNode',
   'workbench:approve-revision': 'approveStrategyRevision',
   'workbench:get-trace': 'getWorkbenchTrace',
   'deployments:start-paper': 'startPaperDeployment',

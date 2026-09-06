@@ -1,6 +1,9 @@
+import { fetchMarketSnapshot } from '../nodes/market-snapshot';
+import { NodePackageCommandSchema } from '@catbots/contracts';
 import { toRendererSafeTraceDetails } from '../../shared/trace-projection';
 import {
   CreateDraftBotInputSchema,
+  ConfigureLegacyNodeInputSchema,
   AgentToolActivitySchema,
   AuditEventTypeSchema,
   ApproveStrategyRevisionInputSchema,
@@ -76,7 +79,7 @@ export type IpcHandlerDependencies = {
   providerService?: Pick<import('../providers/provider-service').ProviderService, 'command'>;
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
   botRepository: Pick<BotRepository, 'list' | 'createDraft'>;
-  workbenchService: Pick<WorkbenchService, 'get' | 'stopAgent' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'>;
+  workbenchService: Pick<WorkbenchService, 'get' | 'stopAgent' | 'sendMessage' | 'runBacktest' | 'approveRevision' | 'getTrace' | 'subscribeActivity'> & Partial<Pick<WorkbenchService, 'configureNode'>>;
   deploymentService: Pick<DeploymentService, 'startPaper' | 'getPaperDeployment' | 'pause' | 'stop' | 'prepareLive' | 'startLive' | 'getLiveDeployment' | 'getActiveDeployment'>;
   runtime: RuntimePort;
   testLlmConnection?: (provider: LocalConfig['llm']) => Promise<ConnectionTestResult>;
@@ -87,7 +90,7 @@ export type ApplicationHandlers = ReturnType<typeof createApplicationHandlers>;
 export function createApplicationHandlers(dependencies: IpcHandlerDependencies) {
   return {
     nodePackageCommand: async (input: unknown) => {
-      try { if (!dependencies.nodePackages) throw new Error(); return dependencies.nodePackages.command(input); } catch { throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); }
+      try { const command = NodePackageCommandSchema.parse(input); if (command.action === 'market_snapshot') return { packages: [], marketSnapshot: await fetchMarketSnapshot(command) }; if (!dependencies.nodePackages) throw new Error(); return dependencies.nodePackages.command(input); } catch { throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); }
     },
     providerCommand: async (input: unknown) => {
       try { if (!dependencies.providerService) throw new Error(); return await dependencies.providerService.command(input); }
@@ -230,6 +233,12 @@ export function createApplicationHandlers(dependencies: IpcHandlerDependencies) 
       } catch {
         throw new IpcRequestError('WORKBENCH_BACKTEST_FAILED');
       }
+    },
+
+    configureLegacyNode: async (input: unknown) => {
+      const request = parseRequest(ConfigureLegacyNodeInputSchema, input);
+      if (!dependencies.workbenchService.configureNode) throw new IpcRequestError('WORKBENCH_UNAVAILABLE');
+      return WorkbenchStateSchema.parse(await dependencies.workbenchService.configureNode(request));
     },
 
     approveStrategyRevision: async (input: unknown) => {

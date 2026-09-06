@@ -54,11 +54,11 @@ beforeEach(() => {
 afterEach(() => database.close());
 
 describe('Agent tool catalog', () => {
-  it('exposes exactly the six approved tools with strict object schemas', () => {
+  it('exposes the approved legacy and packaged flow tools with strict object schemas', () => {
     const catalog = createCatalog();
 
     expect(catalog.definitions.map(({ name }) => name)).toEqual([
-      'list_nodes', 'list_data_products', 'validate_strategy', 'backtest_strategy', 'explain_strategy', 'compare_versions',
+      'get_flow', 'edit_flow', 'validate_flow', 'list_nodes', 'list_data_products', 'validate_strategy', 'backtest_strategy', 'explain_strategy', 'compare_versions',
     ]);
     expect(catalog.definitions.every(({ inputSchema }) => inputSchema.additionalProperties === false)).toBe(true);
   });

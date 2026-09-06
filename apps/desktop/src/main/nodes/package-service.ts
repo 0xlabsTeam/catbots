@@ -1,3 +1,4 @@
+import { ChatFlowStore } from './chat-flow-store';
 import { FlowJournal } from './flow-journal';
 import { randomUUID } from 'node:crypto';
 import { createPackageExample, exampleContext } from '@catbots/strategy-runtime';
@@ -17,9 +18,12 @@ export class NodePackageService {
       this.catalog();
     }
   }
+  flowStore() { return new ChatFlowStore(`${this.path}.chat-flows.json`); }
   catalog() { return new CommunityNodeCatalog(this.packages); }
   command(input: unknown): NodePackageStatus {
     const command = NodePackageCommandSchema.parse(input);
+    if (command.action === 'edit_flow') return { packages: [], flowDraft: this.flowStore().edit(command.botId, command.edit) };
+    if (command.action === 'market_snapshot') throw new Error('Use asynchronous market handler');
     if (command.action === 'list') return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages() };
     if (command.action === 'simulate') {
       const journal = new FlowJournal(`${this.path}.simulations.json`);

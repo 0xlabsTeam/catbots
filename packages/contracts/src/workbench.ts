@@ -1,3 +1,4 @@
+import { ChatFlowDraftSchema } from './chat-flow';
 import { z } from 'zod';
 
 import { BotSummarySchema } from './bots';
@@ -14,6 +15,7 @@ export const WorkbenchNodeSchema = z.object({
   version: z.number().int().positive(),
   title: z.string().trim().min(1),
   summary: z.string().trim().min(1),
+  config: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 export const WorkbenchEdgeSchema = z.object({
@@ -74,6 +76,7 @@ export const ChatMessageSchema = z.object({
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 export const AgentToolNameSchema = z.enum([
+  'get_flow', 'edit_flow', 'validate_flow',
   'list_nodes',
   'list_data_products',
   'validate_strategy',
@@ -85,10 +88,11 @@ export const AgentToolNameSchema = z.enum([
 export const AgentToolActivitySchema = z.object({
   botId: BotIdSchema,
   requestId: z.string().uuid(),
-  phase: z.enum(['text_delta', 'thinking', 'tool_started', 'tool_completed', 'backtest_progress', 'completed', 'failed']),
+  phase: z.enum(['flow_updated', 'text_delta', 'thinking', 'tool_started', 'tool_completed', 'backtest_progress', 'completed', 'failed']),
   tool: AgentToolNameSchema.optional(),
   message: z.string().trim().min(1).max(500),
   progress: z.number().min(0).max(1).optional(),
+  flowDraft: ChatFlowDraftSchema.optional(),
   delta: z.string().max(4096).optional(),
 }).strict();
 
@@ -226,6 +230,7 @@ export const TraceDetailSchema = z.object({
 export type TraceDetail = z.infer<typeof TraceDetailSchema>;
 
 export const WorkbenchStateSchema = z.object({
+  flowDraft: ChatFlowDraftSchema.optional(),
   bot: BotSummarySchema,
   currentRevision: StrategyRevisionSchema.nullable(),
   revisions: z.array(StrategyRevisionSummarySchema),
@@ -268,3 +273,9 @@ export type GetTraceInput = z.infer<typeof GetTraceInputSchema>;
 
 export const StopWorkbenchAgentInputSchema = z.object({ botId: BotIdSchema, requestId: z.string().uuid() }).strict();
 export type StopWorkbenchAgentInput = z.infer<typeof StopWorkbenchAgentInputSchema>;
+
+export const ConfigureLegacyNodeInputSchema = z.object({
+  botId: z.string().uuid(), version: z.number().int().positive(), nodeId: z.string().min(1).max(120),
+  config: z.record(z.string(), z.unknown()),
+}).strict();
+export type ConfigureLegacyNodeInput = z.infer<typeof ConfigureLegacyNodeInputSchema>;

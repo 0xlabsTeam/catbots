@@ -34,17 +34,18 @@ export type RunAgentTurnDependencies = Readonly<{
   repository: WorkbenchRepository;
   tools: AgentToolCatalog;
   requestId: string;
+  flowDraft?: import('@catbots/contracts').ChatFlowDraft;
   onActivity?: (activity: AgentToolActivity) => void;
 }>;
 
 const MAX_TOOL_ROUNDS = 8;
 const toolNames = new Set<AgentToolName>([
-  'list_nodes', 'list_data_products', 'validate_strategy', 'backtest_strategy', 'explain_strategy', 'compare_versions',
+  'get_flow', 'edit_flow', 'validate_flow', 'list_nodes', 'list_data_products', 'validate_strategy', 'backtest_strategy', 'explain_strategy', 'compare_versions',
 ]);
 
 export async function runAgentTurn(input: RunAgentTurnInput, dependencies: RunAgentTurnDependencies): Promise<WorkbenchState> {
   if (input.signal.aborted) throw new AgentLoopError('AGENT_ABORTED');
-  const initial = dependencies.repository.getState(input.botId);
+  const initial = { ...dependencies.repository.getState(input.botId), flowDraft: dependencies.flowDraft };
   dependencies.repository.appendChatMessage(input.botId, 'user', input.message);
   // A greeting is not authorization to resume old strategy work. Keep this
   // narrow: mixed messages such as “hi, change RSI to 30” still reach the agent.
@@ -144,15 +145,18 @@ function systemPrompt(state: WorkbenchState): string {
     'Create, modify, validate, or backtest a strategy only when the user asks for that work. Ask a concise clarification when their intent or required rules are missing; do not invent them.',
     'Never invent results, prices, performance, or completed changes. Use tool results for factual claims about the saved strategy; use explain_strategy when asked about its current rules.',
     'Use only the provided tools. Never request or reveal credentials, execute code, approve revisions, or enable Paper/Live trading.',
-    'Create only Strategy schema 2.0 documents with marketScope { type: "dex_universe" }.',
-    'A strategy must follow Trigger → Condition → Action and may combine conditions.',
-    'For a named pair, add a predicate.compare guard with left {"ref":"market.symbol"}, operator "eq", and right {"literal":"ETH-PERP"} (using the named symbol) to every entry and exit Flow for that pair.',
+    'For new workflows or requests for flow programming, use get_flow, then edit_flow to build the graph visibly during chat. Add nodes first, then connect typed ports in small meaningful batches. Never wait until your final reply to construct the graph. Finish with validate_flow. This creates a saved, simulation-only flow attached to this bot.',
+    'Use only definitions returned by get_flow. Do not fabricate RSI data or silently approximate a missing indicator. Use condition.branch and action.flow_order for explicit Flow activation. Treat DCA/Grid as independent order controllers, not data feeding a second duplicate order action.',
+    'For edits to an existing legacy strategy or explicit legacy backtest requests, retain schema 2.0 and validate_strategy. Do not migrate or replace an existing strategy unless asked. Packaged flow validation does not enable legacy Backtest, Paper or Live.',
+    'A legacy 2.0 strategy must follow Trigger → Condition → Action and may combine conditions.',
+    'For a named pair in a legacy 2.0 strategy, add a predicate.compare guard with left {"ref":"market.symbol"}, operator "eq", and right {"literal":"ETH-PERP"} (using the named symbol) to every entry and exit Flow for that pair.',
     'For a broad requirement, build a screener from current-market price, funding, volume, rank, or indicator Conditions; explain that it can create positions in multiple markets.',
     'Ordinary “buy” means open/increase a long. Ordinary “sell ETH” means close/reduce an ETH long; opening a short requires explicit short intent.',
     'Validate every complete structural change before describing it as a draft.',
     `Backtests use Bundled sample data covering only BTC-PERP and ETH-PERP from ${bundledSampleDatasetCatalog.from} through ${bundledSampleDatasetCatalog.to}; never claim broader coverage. They are not investment promises.`,
     `Bot: ${state.bot.name}; DEX: Hyperliquid; market scope: dynamic (dex_universe).`,
     revision,
+    state.flowDraft ? `A packaged flow already exists: v${state.flowDraft.version}, ${state.flowDraft.status}. Use get_flow to inspect it and edit_flow for requested changes; do not switch to the legacy strategy. Its market data comes from the simulation snapshot, not a pair selector.` : 'No packaged flow has been saved.',
   ].join('\n');
 }
 

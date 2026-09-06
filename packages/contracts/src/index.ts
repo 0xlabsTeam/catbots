@@ -6,3 +6,6 @@ export * from './workbench';
 export * from './providers';
 export * from './node-packages';
 export * from './example-node-package';
+export * from './chat-flow';
+
+export * from './market-snapshot';

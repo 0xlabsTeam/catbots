@@ -108,6 +108,7 @@ function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpc
     ['workbench:stop-agent', handlers.stopWorkbenchAgent],
     ['workbench:send-message', handlers.sendWorkbenchMessage],
     ['workbench:run-backtest', handlers.runWorkbenchBacktest],
+    ['workbench:configure-node', handlers.configureLegacyNode],
     ['workbench:approve-revision', handlers.approveStrategyRevision],
     ['workbench:get-trace', handlers.getWorkbenchTrace],
     ['deployments:start-paper', handlers.startPaperDeployment],
