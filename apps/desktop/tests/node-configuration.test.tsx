@@ -28,8 +28,7 @@ it('saves node-specific settings only after explicit save', async () => {
 it('debug shows typed output without a live data claim', async () => {
   const debug = vi.fn();
   render(<NodeConfiguration draft={draft} node={node} onClose={() => {}} onDebug={debug} />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Data & debug' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Run node' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Execute step' }));
   await waitFor(() => expect(debug).toHaveBeenCalled());
   expect(screen.getByText('30')).toBeTruthy();
   expect(screen.getByText('ready')).toBeTruthy();

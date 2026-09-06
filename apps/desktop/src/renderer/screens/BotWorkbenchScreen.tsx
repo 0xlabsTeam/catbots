@@ -225,7 +225,7 @@ export function BotWorkbenchScreen({ bot, api, nodeApi, deploymentApi, onBack, o
       <WorkbenchHeader state={state} approving={approving} onBack={onBack} onSelectVersion={(version) => void selectVersion(version)} onApprove={approve} />
       {error === null ? null : <Banner variant="error" title="Workbench unavailable" description={error} />}
       <div className="mobile-workbench-switch"><Button size="sm" variant={showChat ? 'secondary' : 'ghost'} onClick={() => setShowChat(true)}>Chat</Button><Button size="sm" variant={!showChat ? 'secondary' : 'ghost'} onClick={() => setShowChat(false)}>Flow & results</Button></div>
-      <div className={`workbench-grid${showChat ? '' : ' chat-hidden'}${inspectorVisible ? '' : ' inspector-hidden'}`}>
+      <div className={`workbench-grid${showChat ? '' : ' chat-hidden'}${inspectorVisible && !selectedNode ? '' : ' inspector-hidden'}`}>
         <div id="workbench-chat" className="workbench-chat-region" hidden={!showChat}><ChatPanel streamingText={streamingText} key={bot.id} botId={bot.id} activities={activities} stopping={stopping} onStop={stopAgent} result={state.flowDraft ? <div className="chat-result"><Badge variant="secondary">Flow v{state.flowDraft.version} · {state.flowDraft.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open flow</Button></div> : state.currentRevision ? <div className="chat-result"><Badge variant="secondary">Strategy v{state.currentRevision.version} · {state.currentRevision.status}</Badge><Button size="sm" variant="secondary" onClick={() => setTab('flow')}>Open strategy</Button>{state.backtests.some((run) => run.revisionVersion === state.currentRevision?.version) && <Button size="sm" variant="secondary" onClick={() => setTab('backtest')}>View backtest</Button>}</div> : null} messages={state.messages} activity={activity} sending={sending} onSend={send} /></div>
         <section className="workbench-canvas" aria-label="Strategy workspace">
       <div className="workbench-view-tools" aria-label="Workspace panels">
@@ -255,7 +255,7 @@ export function BotWorkbenchScreen({ bot, api, nodeApi, deploymentApi, onBack, o
                 onCompleted={(backtest) => setState((previous) => previous === null ? previous : { ...previous, backtests: [backtest, ...previous.backtests] })}
               />}
         </section>
-        <div id="workbench-inspector" className="workbench-inspector-region" hidden={!inspectorVisible}><InspectorPanel nodeApi={nodeApi} node={selectedNode} revision={state.currentRevision} disabled={sending} onSave={api.configureNode && selectedNode && state.currentRevision ? async config => {
+        <div id="workbench-inspector" className="workbench-inspector-region" hidden={!inspectorVisible}><InspectorPanel onClose={() => { setSelectedNode(null); setShowInspector(false); }} nodeApi={nodeApi} node={selectedNode} revision={state.currentRevision} disabled={sending} onSave={api.configureNode && selectedNode && state.currentRevision ? async config => {
           const next = await api.configureNode!({ botId: bot.id, version: state.currentRevision!.version, nodeId: selectedNode.id, config });
           setState(next); setSelectedNode(next.currentRevision?.nodes.find(node => node.id === selectedNode.id) ?? null);
         } : undefined} /></div>

@@ -27,16 +27,16 @@ function Harness() {
 }
 beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function select(id: string) { fireEvent.click(screen.getByRole('button',{name:'Select '+id})); }
+function select(id: string) { const back = screen.queryByRole('button', {name: 'Back to canvas'}); if (back) fireEvent.click(back); fireEvent.click(screen.getByRole('button',{name:'Select '+id})); }
 it('retains unsaved config and shared market across nodes, close and tabs, then saves only selected config', async () => {
   render(<Harness />); select('first');
   fireEvent.change(screen.getByRole('spinbutton',{name:'Value'}), {target:{value:'15'}});
   fireEvent.change(screen.getByRole('textbox',{name:'Run market'}), {target:{value:'SOL-PERP'}});
   select('second'); select('first');
   expect((screen.getByRole('spinbutton',{name:'Value'}) as HTMLInputElement).value).toBe('15');
-  fireEvent.click(screen.getByRole('button',{name:'Close'})); select('first');
+  fireEvent.click(screen.getByRole('button',{name:'Back to canvas'})); select('first');
   expect(screen.getByText('Unsaved changes')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Toggle flow tab'})); fireEvent.click(screen.getByRole('button',{name:'Toggle flow tab'})); select('first');
+  fireEvent.click(screen.getByRole('button',{name:'Back to canvas'})); fireEvent.click(screen.getByRole('button',{name:'Toggle flow tab'})); fireEvent.click(screen.getByRole('button',{name:'Toggle flow tab'})); select('first');
   expect((screen.getByRole('textbox',{name:'Run market'}) as HTMLInputElement).value).toBe('SOL-PERP');
   expect((screen.getByRole('spinbutton',{name:'Value'}) as HTMLInputElement).value).toBe('15');
   fireEvent.click(screen.getByRole('button',{name:'Save configuration'}));
@@ -50,8 +50,8 @@ const result = {
 it('retains run provenance and upstream outputs without refetching; marks changed context stale', async () => {
   vi.mocked(runLiveNode).mockResolvedValue(result);
   render(<Harness/>); fireEvent.change(screen.getByRole('textbox',{name:'Run market'}),{target:{value:'SOL-PERP'}}); select('second');
-  fireEvent.click(screen.getByRole('button',{name:'Run node'})); await screen.findByText('Run ID: run-sol');
-  select('first'); fireEvent.click(screen.getByRole('tab',{name:'Data & debug'}));
+  fireEvent.click(screen.getByRole('button',{name:'Execute step'})); await screen.findByText('Run ID: run-sol');
+  select('first');
   expect(screen.getByText('42')).toBeTruthy(); expect(screen.getByText('Run ID: run-sol')).toBeTruthy();
   expect(runLiveNode).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByRole('textbox',{name:'Run market'}),{target:{value:'ETH-PERP'}});
@@ -61,13 +61,13 @@ it('retains run provenance and upstream outputs without refetching; marks change
 it('preserves in-flight results after switching selection', async () => {
   let finish!: (value: typeof result) => void;
   vi.mocked(runLiveNode).mockImplementation(() => new Promise(resolve => { finish=resolve; }));
-  render(<Harness/>); select('first'); fireEvent.click(screen.getByRole('button',{name:'Run node'})); select('second');
+  render(<Harness/>); select('first'); fireEvent.click(screen.getByRole('button',{name:'Execute step'})); select('second');
   await act(async () => finish(result));
-  fireEvent.click(screen.getByRole('tab',{name:'Data & debug'})); expect(screen.getByText('Run ID: run-sol')).toBeTruthy();
+   expect(screen.getByText('Run ID: run-sol')).toBeTruthy();
 });
 it('keeps local edits on remote changes and requires explicit reset before overwrite', () => {
   render(<Harness/>); select('first'); fireEvent.change(screen.getByRole('spinbutton',{name:'Value'}),{target:{value:'15'}});
-  fireEvent.click(screen.getByRole('button',{name:'External edit'}));
+  fireEvent.click(screen.getByRole('button',{name:'External edit',hidden:true}));
   expect((screen.getByRole('spinbutton',{name:'Value'}) as HTMLInputElement).value).toBe('15');
   expect(screen.getByText('Saved configuration changed')).toBeTruthy();
   expect((screen.getByRole('button',{name:'Save configuration'}) as HTMLButtonElement).disabled).toBe(true);
@@ -89,4 +89,19 @@ it('imports a sandbox into a shared bot and reuses that bot when retrying a fail
   expect(createDraft).toHaveBeenCalledTimes(1);
   expect(command).toHaveBeenLastCalledWith({ action: 'import_flow', botId: draft.botId, document: draft.document });
   localStorage.clear();
+});
+it('keeps a bounded execution history and selects one run for all node panels', () => {
+  function History() {
+    const workspace = useFlowWorkspaceState();
+    return <><button onClick={() => { for (let i=0;i<25;i++) workspace.record({ ...result, run: {...result.run,runId:`run-${i}`},documentKey:'doc' }); }}>Record runs</button><output>{workspace.history.length}:{workspace.selectedRunId}:{workspace.history.at(-1)?.run.runId}</output></>;
+  }
+  render(<History />); fireEvent.click(screen.getByRole('button',{name:'Record runs'}));
+  expect(screen.getByText('20:run-24:run-5')).toBeTruthy();
+});
+it('does not substitute another run when the selected execution lacks the current node', async () => {
+  vi.mocked(runLiveNode).mockResolvedValue({ ...result, run: { ...result.run, trace: result.run.trace.slice(0,1) } });
+  render(<Harness />); select('first'); fireEvent.click(screen.getByRole('button',{name:'Execute step'}));
+  await screen.findByText('Run ID: run-sol'); select('second');
+  expect(screen.getByText('This node was not evaluated in the selected execution.')).toBeTruthy();
+  expect(screen.queryByText('42')).toBeNull();
 });

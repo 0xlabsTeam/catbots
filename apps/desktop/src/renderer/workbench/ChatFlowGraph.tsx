@@ -1,6 +1,6 @@
 import { prepareFlow, runtimeNodePackages } from '@catbots/strategy-runtime/node-examples';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Banner, Button, Input } from '@cloudflare/kumo';
+import { Badge, Banner, Button, Dialog, Input } from '@cloudflare/kumo';
 import { Background, BackgroundVariant, MarkerType, ReactFlow, type Edge, type ReactFlowInstance } from '@xyflow/react';
 import { graphlib, layout } from '@dagrejs/dagre';
 import type { CatbotsDesktopApi, ChatFlowDraft } from '@catbots/contracts';
@@ -59,7 +59,7 @@ export function ChatFlowGraph({ draft, disabled, onSave, nodeApi, workspace: sha
     </header>
     {validationError && <Banner variant="error" title="Flow needs attention" description={validationError} />}
     <div className="graph-reading-guide"><span>AI changes appear here as they are saved. Solid wires activate nodes; dashed wires carry data.</span></div>
-    <div className={node ? "chat-flow-layout has-selection" : "chat-flow-layout"}><div className="strategy-graph">
+    <div className="chat-flow-layout"><div className="strategy-graph">
       <ReactFlow<StrategyFlowNode, Edge> nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} onInit={setInstance}
         defaultViewport={{ x: 20, y: 20, zoom: 0.85 }} minZoom={0.1} maxZoom={1.5} colorMode="system"
         nodesDraggable={false} nodesConnectable={false} deleteKeyCode={null}
@@ -67,7 +67,7 @@ export function ChatFlowGraph({ draft, disabled, onSave, nodeApi, workspace: sha
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
       </ReactFlow>
     </div>
-    {node && <NodeConfiguration key={`${node.id}:${draft.version}`} draft={draft} node={node} nodeApi={nodeApi} disabled={disabled} onSave={onSave} onClose={() => setSelected(null)} workspace={workspace} />}
+    <Dialog.Root open={!!node} onOpenChange={open => { if (!open) setSelected(null); }}><Dialog className="node-editor-dialog" aria-label="Node editor"><Dialog.Title className="sr-only">Node details</Dialog.Title>{node && <NodeConfiguration key={`${node.id}:${draft.version}`} draft={draft} node={node} nodeApi={nodeApi} disabled={disabled} onSave={onSave} onClose={() => setSelected(null)} workspace={workspace} onSelectNode={setSelected} />}</Dialog></Dialog.Root>
     </div>
   </section>;
 }

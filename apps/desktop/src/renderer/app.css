@@ -1501,3 +1501,46 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .compatible-fields:not([hidden]) { display: grid; gap: var(--cb-space-4); }
 .runtime-actions-only .paper-controls > div:first-child { display: none; }
+
+/* Node detail view: Input | Parameters | Output share one execution context. */
+.node-editor-dialog { width: calc(100vw - 3rem) !important; max-width: 100rem !important; height: calc(100dvh - 8rem); max-height: calc(100dvh - 8rem); padding: 0 !important; overflow: hidden; }
+.node-detail-layout { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--color-kumo-base); color: var(--text-color-kumo-default); }
+.node-detail-header { display: flex; align-items: center; gap: var(--cb-space-4); padding: var(--cb-space-4); border-bottom: 1px solid var(--color-kumo-line); flex-wrap: wrap; }
+.node-detail-header > div:first-child { display: flex; align-items: center; gap: var(--cb-space-2); }
+.node-detail-header h2 { font-size: var(--cb-text-subheading); }
+.node-detail-header > button:last-child { margin-left: auto; }
+.node-detail-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem) minmax(0, 1fr); min-height: 0; }
+.node-detail-input, .node-detail-output, .node-detail-parameters { min-width: 0; overflow: auto; padding: var(--cb-space-4); }
+.node-detail-parameters { border-inline: 1px solid var(--color-kumo-line); background: var(--color-kumo-base); display: flex; flex-direction: column; gap: var(--cb-space-4); }
+.node-detail-input, .node-detail-output { background: var(--color-kumo-elevated); }
+.node-parameters-heading, .node-data-panel > header { display: flex; align-items: center; justify-content: space-between; gap: var(--cb-space-2); }
+.node-parameters-heading h3, .node-data-panel h3 { font-size: var(--cb-text-body); font-weight: var(--cb-weight-semibold); }
+.node-parameter-fields, .node-data-panel, .node-run-context { display: flex; flex-direction: column; gap: var(--cb-space-4); min-width: 0; }
+.node-data-empty { padding-block: var(--cb-space-8); color: var(--text-color-kumo-subtle); }
+.node-data-empty h4 { color: var(--text-color-kumo-default); margin-bottom: var(--cb-space-2); }
+.node-data-connections { overflow-wrap: anywhere; }
+.node-data-connections button { max-width: 100%; height: auto; white-space: normal; text-align: left; }
+.node-data-content { min-width: 0; overflow: auto; }
+.node-data-content pre { font-family: var(--cb-font-code); font-size: var(--cb-text-caption); line-height: var(--cb-leading-relaxed); }
+.node-data-content td, .node-data-content th { white-space: nowrap; vertical-align: top; }
+.node-data-count, .node-data-pagination { display: flex; align-items: center; gap: var(--cb-space-2); flex-wrap: wrap; }
+.node-run-context { border-top: 1px solid var(--color-kumo-line); padding-top: var(--cb-space-4); margin-top: auto; font-size: var(--cb-text-caption); overflow-wrap: anywhere; }
+.node-contract-details dd { margin: 0 0 var(--cb-space-4); overflow-wrap: anywhere; }
+.node-contract-details dt { font-weight: var(--cb-weight-semibold); }
+.node-detail-mobile-tabs { display: none; }
+@media (max-width: 1000px) {
+  .node-editor-dialog { width: calc(100vw - 1rem) !important; height: calc(100dvh - 4rem); max-height: calc(100dvh - 4rem); }
+  .node-detail-mobile-tabs { display: block; padding: var(--cb-space-2) var(--cb-space-4); border-bottom: 1px solid var(--color-kumo-line); }
+  .node-detail-panes { display: block; overflow: auto; }
+  .node-detail-input, .node-detail-output, .node-detail-parameters { display: none; border: 0; }
+  .node-detail-show-input .node-detail-input, .node-detail-show-output .node-detail-output { display: block; }
+  .node-detail-show-parameters .node-detail-parameters { display: flex; }
+  .node-detail-header { gap: var(--cb-space-2); }
+}
+.flow-program-layout { grid-template-columns: 12rem minmax(0, 1fr); }
+.node-sandbox-connections { display: grid; gap: var(--cb-space-3); border-top: 1px solid var(--color-kumo-line); padding-top: var(--cb-space-4); }
+@media (max-width: 1100px) { .flow-program-layout { grid-template-columns: minmax(0, 1fr); } }
+
+@media (min-width: 1001px) { .node-data-panel { height: 100%; } .node-data-panel > * { flex-shrink: 0; } .node-data-panel > .node-data-content { flex: 1; min-height: 0; } }
+.node-detail-header > * { min-width: 0; max-width: 100%; }
+.node-detail-header h2 { overflow-wrap: anywhere; }

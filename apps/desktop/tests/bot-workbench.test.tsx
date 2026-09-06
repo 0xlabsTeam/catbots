@@ -202,6 +202,7 @@ describe('BotWorkbenchScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mock strategy graph' }));
     expect(screen.getByRole('heading', { name: 'Compare' })).toBeTruthy();
     expect(screen.getByText('ETF flow > 0')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Back to canvas' }));
 
     await user.click(screen.getByRole('button', { name: 'Approve v1' }));
     expect(workbenchApi.approveRevision).not.toHaveBeenCalled();

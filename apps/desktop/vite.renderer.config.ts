@@ -20,7 +20,8 @@ export default defineConfig(({ command }) => ({
   plugins: [contentSecurityPolicyPlugin(command === 'serve'), react()],
   root: resolve(__dirname, 'src/renderer'),
   base: './',
-  optimizeDeps: { exclude: ['@catbots/contracts', '@catbots/strategy-runtime'] },
+  // Workspace source changes frequently; prebundling these can retain stale exports.
+  optimizeDeps: { exclude: ['@catbots/contracts', '@catbots/strategy-runtime', '@catbots/node-kit', ...['trigger', 'data', 'indicator', 'process', 'condition', 'strategy', 'risk', 'action', 'output'].map(name => `@catbots/nodes-${name}`)] },
   build: {
     outDir: resolve(__dirname, '.vite/renderer/main_window'),
   },
