@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./backtest-replay": "./src/backtest-replay.ts",
-    "./fixtures": "./src/fixtures/btc-etf-rsi-inputs.ts"
+    "./fixtures": "./src/fixtures/btc-etf-rsi-inputs.ts",
+    "./node-examples": "./src/node-examples.ts",
+    "./node-inspection": "./src/node-inspection.ts"
   },
   "scripts": {
     "test": "vitest run",

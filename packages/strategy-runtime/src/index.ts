@@ -17,3 +17,4 @@ export * from './triggers';
 export * from './community-nodes';
 export * from './node-packages';
 export * from './package-examples';
+export * from './all-category-example';

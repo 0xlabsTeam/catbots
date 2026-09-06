@@ -116,7 +116,7 @@ export const conditionDefinitions: readonly NodeDefinition[] = [
 ];
 
 import { definePackage, ready, unavailable } from '@catbots/node-kit';
-export const conditionPackage = definePackage('@catbots/nodes-condition', [{
+const conditionNodes = definePackage('@catbots/nodes-condition', [{
   type: 'condition.compare', version: 1, category: 'condition', title: 'Compare values',
   config: z.object({ operator: z.enum(['lt','lte','gt','gte','eq']) }).strict(), inputs: { left:'number', right:'number' }, outputs: { result:'condition' },
   evaluate(input, config) {
@@ -131,5 +131,14 @@ export const conditionPackage = definePackage('@catbots/nodes-condition', [{
     if(values.some(value=>value.quality==='ready'&&value.value===determining))return {outputs:{result:ready('condition',determining)}};
     if(values.some(value=>value.quality!=='ready'))return {outputs:{result:unavailable('condition','Condition is unknown')}};
     return {outputs:{result:ready('condition',!determining)}};
+  },
+}]);
+
+export const conditionPackage = definePackage('@catbots/nodes-condition', [...conditionNodes.definitions, {
+  type: 'condition.branch', version: 1, category: 'condition', title: 'Branch', activation: 'flow',
+  config: z.object({}).strict(), inputs: { flow: 'flow', condition: 'condition' }, outputs: { true: 'flow', false: 'flow' },
+  evaluate(input) {
+    if (input.condition.quality !== 'ready') return { outputs: { true: unavailable('flow', 'Condition unavailable'), false: unavailable('flow', 'Condition unavailable') } };
+    return { outputs: { true: ready('flow', input.condition.value === true), false: ready('flow', input.condition.value === false) } };
   },
 }]);

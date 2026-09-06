@@ -95,6 +95,6 @@ export const triggerDefinitions: readonly NodeDefinition[] = [
 import { definePackage, ready } from '@catbots/node-kit';
 export const triggerPackage = definePackage('@catbots/nodes-trigger', [{
   type: 'trigger.tick', version: 1, category: 'trigger', title: 'Evaluation tick',
-  config: z.object({}).strict(), inputs: {}, outputs: { tick: 'event' },
-  evaluate: () => ({ outputs: { tick: ready('event', true) } }),
+  config: z.object({}).strict(), inputs: {}, outputs: { tick: 'event', flow: 'flow' },
+  evaluate: () => ({ outputs: { tick: ready('event', true), flow: ready('flow', true) } }),
 }]);

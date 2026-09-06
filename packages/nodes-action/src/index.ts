@@ -90,12 +90,21 @@ export const actionDefinitions: readonly NodeDefinition[] = [
 ];
 
 import { definePackage, ready, type OrderPlan } from '@catbots/node-kit';
-export const actionPackage = definePackage('@catbots/nodes-action', [{
+const actionNodes = definePackage('@catbots/nodes-action', [{
   type:'action.order',version:1,category:'action',title:'Propose order',
   config:z.object({side:z.enum(['buy','sell']),reduceOnly:z.boolean().default(false)}).strict(),inputs:{signal:'condition',quantity:'number'},outputs:{orders:'orders'},
   evaluate(input,config,context,_state,nodeId){
     const quantity=input.quantity.value as number;
     const orders:OrderPlan[]=input.signal.quality==='ready'&&input.signal.value===true&&input.quantity.quality==='ready'&&Number.isFinite(quantity)&&quantity>0?[{clientOrderId:JSON.stringify([context.deploymentId,context.market,nodeId,context.runId]),side:config.side,quantity,reduceOnly:config.reduceOnly,purpose:config.reduceOnly?'exit':'entry'}]:[];
     return {orders,outputs:{orders:ready('orders',orders)}};
+  },
+}]);
+
+export const actionPackage = definePackage('@catbots/nodes-action', [...actionNodes.definitions, {
+  type: 'action.flow_order', version: 1, category: 'action', title: 'Propose order on flow', activation: 'flow',
+  config: z.object({ side: z.enum(['buy', 'sell']), reduceOnly: z.boolean().default(false) }).strict(),
+  inputs: { flow: 'flow', quantity: 'number' }, outputs: { orders: 'orders' },
+  evaluate(input, config, context, state, nodeId) {
+    return actionNodes.definitions[0].evaluate({ signal: ready('condition', true), quantity: input.quantity }, config, context, state, nodeId);
   },
 }]);
