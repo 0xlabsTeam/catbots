@@ -51,6 +51,7 @@ export type ConnectionTestResult =
   | { ok: false; code: string; message: string };
 
 export interface CatbotsDesktopApi {
+  connections?: { command(input: import('./connections').ConnectionCommand): Promise<import('./connections').ConnectionsView> };
   nodes?: { command(input: import('./node-packages').NodePackageCommand): Promise<import('./node-packages').NodePackageStatus> };
   providers?: { command(input: import('./providers').ProviderCommand): Promise<import('./providers').ProviderStatus> };
   app: {

@@ -18,6 +18,7 @@ const catbots: CatbotsDesktopApi = deepFreeze({
     showMainWindow: (): Promise<void> => ipcRenderer.invoke('app:show-main-window'),
     quitApplication: (): Promise<void> => ipcRenderer.invoke('app:quit-application'),
   },
+  connections: { command: (input) => ipcRenderer.invoke('connections:command', input) },
   nodes: { command: (input) => ipcRenderer.invoke('nodes:command', input) },
   providers: { command: (input) => ipcRenderer.invoke('providers:command', input) },
   config: {

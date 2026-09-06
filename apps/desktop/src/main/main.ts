@@ -1,3 +1,5 @@
+import { ConnectionAuthorization } from './connections/authorization';
+import { ConnectionsService } from './connections/service';
 import { NodePackageService } from './nodes/package-service';
 import { safeStorage, shell } from 'electron';
 import { ProviderService } from './providers/provider-service';
@@ -146,6 +148,7 @@ void app.whenReady()
       configRepository,
       providerService,
       nodePackages,
+      connections: new ConnectionsService(join(dataDirectory, 'exchange-connections.json'), undefined, new ConnectionAuthorization(join(dataDirectory, 'exchange-credentials.enc'), { encrypt: value => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable'); return safeStorage.encryptString(value); }, decrypt: value => safeStorage.decryptString(value) }), async () => { if (!webServer) throw new Error('Start the local web workspace to connect a browser wallet'); await shell.openExternal(`${webServer.origin}/#connections`); }),
       botRepository,
       workbenchService,
       deploymentService,

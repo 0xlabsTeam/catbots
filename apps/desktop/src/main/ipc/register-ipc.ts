@@ -94,6 +94,7 @@ export function registerIpcHandlers(dependencies: IpcHandlerDependencies): () =>
 function installIpcHandlers(dependencies: IpcHandlerDependencies): RegisteredIpcHandlers {
   const handlers = createIpcHandlers(dependencies);
   const channels: ReadonlyArray<readonly [string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown]> = [
+    ['connections:command', handlers.connectionCommand],
     ['nodes:command', handlers.nodePackageCommand],
     ['providers:command', handlers.providerCommand],
     ['app:get-version', handlers.getVersion],

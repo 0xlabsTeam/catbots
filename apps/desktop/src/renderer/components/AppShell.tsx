@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { Badge, Button } from '@cloudflare/kumo';
-import { ActivityIcon, DesktopIcon, SidebarSimpleIcon, CaretRightIcon, DatabaseIcon, GearSixIcon, RobotIcon } from '@phosphor-icons/react';
+import { PlugsConnectedIcon, ActivityIcon, DesktopIcon, SidebarSimpleIcon, CaretRightIcon, DatabaseIcon, GearSixIcon, RobotIcon } from '@phosphor-icons/react';
 
-export const appDestinations = ['bots', 'nodes', 'data', 'activity', 'settings'] as const;
+export const appDestinations = ['bots', 'connections', 'nodes', 'data', 'activity', 'settings'] as const;
 export type AppDestination = (typeof appDestinations)[number];
 
 type AppShellProps = {
@@ -16,6 +16,7 @@ type AppShellProps = {
 
 const navigationItems: ReadonlyArray<{ destination: AppDestination; label: string; icon: typeof RobotIcon }> = [
   { destination: 'bots', label: 'Bots', icon: RobotIcon },
+  { destination: 'connections', label: 'Connections', icon: PlugsConnectedIcon },
   { destination: 'nodes', label: 'Nodes', icon: DatabaseIcon },
   { destination: 'data', label: 'Data', icon: DatabaseIcon },
   { destination: 'activity', label: 'Activity', icon: ActivityIcon },

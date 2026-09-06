@@ -1,6 +1,7 @@
 import type { ApplicationHandlers } from '../ipc/application-handlers';
 
 export const webMethods = {
+  'connections:command': 'connectionCommand',
   'nodes:command': 'nodePackageCommand',
   'providers:command': 'providerCommand',
   'app:get-version': 'getVersion',

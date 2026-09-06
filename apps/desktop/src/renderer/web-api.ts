@@ -29,7 +29,8 @@ export async function createWebApi(): Promise<CatbotsDesktopApi> {
       showMainWindow: () => invoke('app:show-main-window'),
       quitApplication: () => invoke('app:quit-application'),
     },
-    nodes: { command: (input) => invoke('nodes:command', input) },
+    connections: { command: (input) => invoke('connections:command', input) },
+  nodes: { command: (input) => invoke('nodes:command', input) },
   providers: { command: (input) => invoke('providers:command', input) },
   config: {
       getBootstrapState: () => invoke('config:get-bootstrap-state'),

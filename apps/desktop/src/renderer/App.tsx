@@ -1,3 +1,4 @@
+import { ConnectionsScreen } from './screens/ConnectionsScreen';
 import { NodesScreen } from './screens/NodesScreen';
 import { ProviderConnections } from './components/ProviderConnections';
 import { useEffect, useState } from 'react';
@@ -23,7 +24,7 @@ export default function App({ api, preview = false, surface = 'desktop' }: AppPr
   const [databaseState, setDatabaseState] = useState<DatabaseState | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
-  const [destination, setDestination] = useState<AppDestination>('bots');
+  const [destination, setDestination] = useState<AppDestination>(() => window.location.hash === '#connections' ? 'connections' : 'bots');
   const [selectedBot, setSelectedBot] = useState<BotSummary | null>(null);
   useEffect(() => {
     let active = true;
@@ -60,6 +61,7 @@ export default function App({ api, preview = false, surface = 'desktop' }: AppPr
     <AppShell focused={destination === 'bots' && selectedBot !== null} surface={surface} destination={destination} onNavigate={(next) => { setDestination(next); if (next === 'bots') setSelectedBot(null); }}>
       {destination === 'bots' && selectedBot === null ? <BotsHomeScreen api={api.bots} onOpenBot={setSelectedBot} /> : null}
       {destination === 'bots' && selectedBot !== null ? <BotWorkbenchScreen key={selectedBot.id} bot={selectedBot} api={api.workbench} nodeApi={api.nodes} deploymentApi={api.deployments} onBack={() => setSelectedBot(null)} onOpenSettings={() => setDestination('settings')} /> : null}
+      {destination === 'connections' ? api.connections ? <ConnectionsScreen api={api.connections} /> : <PlaceholderScreen title="Connections" description="Exchange connections require the local backend." onOpenBots={() => setDestination('bots')} /> : null}
       {destination === 'settings' ? <SettingsScreen connections={api.providers && <ProviderConnections api={api.providers} onSelected={() => setSubscriptionReady(true)} />} api={api.config} config={'config' in bootstrap ? bootstrap.config : undefined} embedded onSaved={(config) => setBootstrap({ state: 'ready', config })} /> : null}
       {destination === 'nodes' && api.nodes ? <NodesScreen api={api.nodes} bots={api.bots} onOpenBot={bot => { setSelectedBot(bot); setDestination('bots'); }} /> : null}
       {destination === 'data' ? <PlaceholderScreen onOpenBots={() => { setSelectedBot(null); setDestination('bots'); }} title="Data" description="The data catalog is coming soon. To inspect current Hyperliquid prices and candles, open a bot, select a node and choose Run node." /> : null}

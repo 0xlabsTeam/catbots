@@ -75,6 +75,7 @@ type ApplicationPort = {
 
 export type IpcHandlerDependencies = {
   app: ApplicationPort;
+  connections?: import('../connections/service').ConnectionsService;
   nodePackages?: Pick<import('../nodes/package-service').NodePackageService, 'command'>;
   providerService?: Pick<import('../providers/provider-service').ProviderService, 'command'>;
   configRepository: Pick<ConfigRepository, 'getRedacted' | 'patchSettings' | 'resolveSettingsPatch'>;
@@ -89,6 +90,7 @@ export type ApplicationHandlers = ReturnType<typeof createApplicationHandlers>;
 
 export function createApplicationHandlers(dependencies: IpcHandlerDependencies) {
   return {
+    connectionCommand: async (input: unknown) => { if (!dependencies.connections) throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); return dependencies.connections.command(input); },
     nodePackageCommand: async (input: unknown) => {
       try { const command = NodePackageCommandSchema.parse(input); if (command.action === 'market_snapshot') return { packages: [], marketSnapshot: await fetchMarketSnapshot(command) }; if (!dependencies.nodePackages) throw new Error(); return dependencies.nodePackages.command(input); } catch { throw new IpcRequestError('NODE_PACKAGE_OPERATION_FAILED'); }
     },

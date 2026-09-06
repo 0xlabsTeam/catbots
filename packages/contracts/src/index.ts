@@ -10,3 +10,5 @@ export * from './chat-flow';
 
 export * from './market-snapshot';
 export * from './flow-backtest';
+
+export * from './connections';
