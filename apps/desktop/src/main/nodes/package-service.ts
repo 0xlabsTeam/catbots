@@ -1,3 +1,4 @@
+import { FlowBacktestService } from '../backtest/service';
 import { ChatFlowStore } from './chat-flow-store';
 import { FlowJournal } from './flow-journal';
 import { randomUUID } from 'node:crypto';
@@ -8,6 +9,9 @@ import { dirname } from 'node:path';
 import { NodePackageCommandSchema, type InstalledNodePackage, type NodePackageStatus } from '@catbots/contracts';
 import { CommunityNodeCatalog, listRuntimePackages, serializeCanonicalJson, validateNodePackage, type JsonValue } from '@catbots/strategy-runtime';
 export class NodePackageService {
+  private backtests?: FlowBacktestService;
+  backtestCommand(input: unknown) { this.backtests ??= new FlowBacktestService(`${this.path}.backtest-cache`, botId => this.flowStore().get(botId)); return { packages: [], backtest: this.backtests.command(input) }; }
+  dispose() { this.backtests?.dispose(); }
   private packages: InstalledNodePackage[];
   constructor(private path: string) {
     this.packages = [];
@@ -25,6 +29,7 @@ export class NodePackageService {
     if (command.action === 'validate_flow') return { packages: [], flowDraft: this.flowStore().validate(command.botId, command.baseVersion) };
     if (command.action === 'import_flow') return { packages: [], flowDraft: this.flowStore().import(command.botId, command.document) };
     if (command.action === 'edit_flow') return { packages: [], flowDraft: this.flowStore().edit(command.botId, command.edit) };
+    if (['backtest_flow','backtest_status','cancel_backtest'].includes(command.action)) return this.backtestCommand(input);
     if (command.action === 'market_snapshot') throw new Error('Use asynchronous market handler');
     if (command.action === 'list') return { packages: structuredClone(this.packages), runtimePackages: listRuntimePackages() };
     if (command.action === 'simulate') {
@@ -54,7 +59,7 @@ export class NodePackageService {
       next = next.map((item) => item.manifest.name === manifest.name ? { ...item, enabled: false } : item);
       const existing = next.find((item) => item.integrity === integrity);
       if (existing) existing.enabled = true; else { if (next.length >= 64) throw new Error('Package archive limit reached'); next.push({ manifest, integrity, enabled: true }); }
-    } else {
+    } else if (command.action === 'enable') {
       const item = next.find((item) => item.integrity === command.integrity); if (!item) throw new Error('Package not found');
       if (command.enabled) next.forEach((other) => { if (other.manifest.name === item.manifest.name) other.enabled = false; });
       item.enabled = command.enabled;

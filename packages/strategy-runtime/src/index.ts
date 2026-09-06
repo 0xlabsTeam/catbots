@@ -18,3 +18,5 @@ export * from './community-nodes';
 export * from './node-packages';
 export * from './package-examples';
 export * from './all-category-example';
+
+export * from './flow-backtest';

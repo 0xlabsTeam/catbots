@@ -52,15 +52,21 @@ export function requireInputs(inputs: Record<string, Value>): string | undefined
 export type FlowRun = { runId: string; market: string; at: number; state: Record<string, unknown>; orders: OrderPlan[]; cancelOrderIds: string[]; trace: { nodeId: string; status?: 'executed' | 'skipped' | 'unavailable'; inputs: Record<string, Value>; outputs: Record<string, Value> }[] };
 /** A deterministic evaluation. The host must commit state and orders in one transaction before dispatch. */
 export function evaluateFlow(document: FlowDocument, packages: readonly RuntimePackage[], context: FlowContext, previous: Record<string, unknown> = {}): FlowRun {
-  if (document.schemaVersion !== '3.0' || !context.runId || !context.market || !context.deploymentId || !Number.isFinite(context.at)) throw new Error('Invalid flow context');
-  if (document.nodes.length > 200 || document.edges.length > 1000) throw new Error('Flow size limit exceeded');
-  const { parsed, queue } = prepareFlow(document, packages);
+  return compileFlow(document, packages)(context, previous);
+}
+/** Compile topology/config once, reuse for historical ticks. Each evaluation still owns its state. */
+export function compileFlow(document: FlowDocument, packages: readonly RuntimePackage[], captureValues = true) {
+  const pinned = structuredClone(document);
+  const { parsed, queue } = prepareFlow(pinned, packages);
+  const incoming = new Map(queue.map(id => [id, pinned.edges.filter(edge => edge.target === id)]));
+  return (context: FlowContext, previous: Record<string, unknown> = {}): FlowRun => {
+  if (!context.runId || !context.market || !context.deploymentId || !Number.isFinite(context.at)) throw new Error('Invalid flow context');
   const snapshot = structuredClone(context);
   const run: FlowRun = { runId: context.runId, market: context.market, at: context.at, state: structuredClone(previous), orders: [], cancelOrderIds: [], trace: [] };
   const outputs = new Map<string, Record<string, Value>>();
   for (const id of queue) {
     const {definition, config} = parsed.get(id)!;
-    const input = Object.fromEntries(document.edges.filter(edge => edge.target === id).map(edge => [edge.targetPort, linkedInput(outputs.get(edge.source)![edge.sourcePort], edge)]));
+    const input = Object.fromEntries(incoming.get(id)!.map(edge => [edge.targetPort, linkedInput(outputs.get(edge.source)![edge.sourcePort], edge)]));
     const activation = definition.activation ? input[definition.activation] : undefined;
     const itemInputs = Object.values(input).filter(value => value.type === 'items');
     const status = itemInputs.some(value => value.quality === 'unavailable') ? 'unavailable' : !definition.acceptsEmptyItems && itemInputs.some(value => (value.value as ExecutionItem[]).length === 0) ? 'skipped' : activation?.quality === 'unavailable' ? 'unavailable' : activation?.value === false ? 'skipped' : 'executed';
@@ -80,12 +86,13 @@ export function evaluateFlow(document: FlowDocument, packages: readonly RuntimeP
     if (result.state !== undefined) run.state[id] = structuredClone(result.state);
     outputs.set(id, structuredClone(result.outputs));
     run.orders.push(...(result.orders ?? [])); run.cancelOrderIds.push(...(result.cancelOrderIds ?? []));
-    run.trace.push({ nodeId: id, status, inputs: input, outputs: structuredClone(result.outputs) });
+    run.trace.push({ nodeId: id, status, inputs: captureValues ? input : {}, outputs: captureValues ? structuredClone(result.outputs) : {} });
   }
   if (new Set(run.orders.map(order => order.clientOrderId)).size !== run.orders.length) throw new Error('Duplicate order ID');
   if (run.orders.some(order => run.cancelOrderIds.includes(order.clientOrderId))) throw new Error('Cannot propose and cancel the same order');
   run.cancelOrderIds = [...new Set(run.cancelOrderIds)];
   return run;
+  };
 }
 
 export function prepareFlow(document: FlowDocument, packages: readonly RuntimePackage[]) {

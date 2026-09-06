@@ -9,3 +9,4 @@ export * from './example-node-package';
 export * from './chat-flow';
 
 export * from './market-snapshot';
+export * from './flow-backtest';

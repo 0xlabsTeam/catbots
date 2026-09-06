@@ -44,6 +44,7 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       build: [
+        { entry: 'src/main/backtest/flow-backtest-worker.ts', config: 'vite.backtest-worker.config.ts' },
         {
           entry: 'src/main/main.ts',
           config: 'vite.main.config.ts',

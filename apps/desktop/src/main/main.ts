@@ -44,6 +44,7 @@ let shutdownPromise: Promise<void> | undefined;
 let marketUniverseRefreshOwner: AbortController | undefined;
 let stopMarketUniverseRefresh: (() => boolean) | undefined;
 let quitting = false;
+let disposeNodeBacktests: (() => void) | undefined;
 let e2eQuitResponse: number | undefined;
 let startupPhase = 'waiting-for-electron';
 
@@ -106,6 +107,7 @@ void app.whenReady()
     const configRepository = new ConfigRepository(dataDirectory);
     const botRepository = new BotRepository(connection);
     const nodePackages = new NodePackageService(join(dataDirectory, 'node-packages.json'));
+    disposeNodeBacktests = () => nodePackages.dispose();
     const workbenchRepository = new WorkbenchRepository(connection, undefined, undefined, () => nodePackages.catalog());
     const providerService = new ProviderService(new EncryptedCredentialStore(join(dataDirectory, 'provider-auth.enc'), {
       encrypt: (value) => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable'); return safeStorage.encryptString(value); },
@@ -463,6 +465,7 @@ function shutdown(): Promise<void> {
   shutdownPromise = (async () => {
     await webServer?.close();
     disposeMarketUniverseRefresh();
+    disposeNodeBacktests?.();
     try {
       await runtime.stop();
     } catch {
