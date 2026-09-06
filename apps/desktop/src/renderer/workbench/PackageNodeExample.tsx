@@ -51,7 +51,7 @@ export function PackageNodeExample({ nodeApi, bots, onOpenBot }: { bots?: Catbot
   const edit = (next: FlowDocument) => { setDocument(next); setRuns([]); setRunIndex(0); setSimulationId(crypto.randomUUID()); setNotice('Unsaved changes · run history cleared'); };
   const graph = useMemo(() => {
     const diagram = new graphlib.Graph();
-    diagram.setGraph({ rankdir: 'LR', ranksep: 96, nodesep: 48, marginx: 20, marginy: 20 });
+    diagram.setGraph({ rankdir: 'LR', ranksep: 48, nodesep: 48, marginx: 20, marginy: 20 });
     diagram.setDefaultEdgeLabel(() => ({}));
     document.nodes.forEach(node => diagram.setNode(node.id, { width: programNodeSize.width, height: programNodeSize.height }));
     document.edges.forEach(edge => diagram.setEdge(edge.source, edge.target));
@@ -65,7 +65,7 @@ export function PackageNodeExample({ nodeApi, bots, onOpenBot }: { bots?: Catbot
     const edges: Edge[] = document.edges.map((edge, index) => {
       const source = document.nodes.find(node => node.id === edge.source)!;
       const type = editorDefinitions.get(source.type)!.outputs[edge.sourcePort];
-      return { id: `wire-${index}`, source: edge.source, target: edge.target, sourceHandle: edge.sourcePort, targetHandle: edge.targetPort, type: 'default', markerEnd: { type: MarkerType.ArrowClosed }, className: type === 'flow' ? 'program-flow-wire' : 'program-data-wire', label: selected === edge.source || selected === edge.target ? `${edge.sourcePort} → ${edge.targetPort}` : undefined };
+      return { id: `wire-${index}`, source: edge.source, target: edge.target, sourceHandle: edge.sourcePort, targetHandle: edge.targetPort, type: 'default', markerEnd: { type: MarkerType.ArrowClosed }, className: type === 'items' ? 'program-item-wire' : type === 'flow' ? 'program-flow-wire' : 'program-data-wire', label: selected === edge.source || selected === edge.target ? `${edge.sourcePort} → ${edge.targetPort}` : undefined };
     });
     return { nodes, edges };
   }, [document, selected, positions]);
@@ -91,11 +91,10 @@ export function PackageNodeExample({ nodeApi, bots, onOpenBot }: { bots?: Catbot
       <Button size="sm" variant="secondary" onClick={() => { setPositions({}); }}>Auto layout</Button>
       <Button size="sm" variant="secondary" onClick={() => { try { localStorage.setItem(storageKey, JSON.stringify({ document, positions })); setNotice('Draft saved in this browser.'); } catch { setNotice('Could not save draft. Browser storage may be full or disabled.'); } }}>Save draft</Button>
       <Button size="sm" variant="secondary" disabled={running} onClick={() => { const example = itemFlowExample(`items-${crypto.randomUUID().slice(0, 8)}`); edit({ ...document, nodes: [...document.nodes, ...example.nodes], edges: [...document.edges, ...example.edges] }); setNotice('Added an RSI JSON-item example. Quantity is 0.001; execution only creates proposals.'); }}>Add JSON item example</Button>
-      <Button size="sm" loading={running} onClick={simulate}>Run with market data</Button>
+      <Button size="sm" variant="primary" loading={running} onClick={simulate}>Run with market data</Button>
     </div></header>
-    {bots && nodeApi && <div className="provider-actions"><Input size="sm" label="New bot name" value={botName} disabled={!!importBot || importing} onChange={event => setBotName(event.target.value)} /><Button size="sm" loading={importing} disabled={importing || !botName.trim()} onClick={async () => { setImporting(true); try { if (!document.nodes.length) throw new Error('Add nodes first'); prepareFlow(document, runtimeNodePackages); const created = importBot ?? await bots.createDraft({ name: botName.trim(), dex: 'hyperliquid' }); setImportBot(created); await nodeApi.command({ action: 'import_flow', botId: created.id, document }); onOpenBot?.(created); } catch { setNotice('Import failed. Connect every required input and check node settings, then retry. The sandbox is kept; retry uses the same bot.'); } finally { setImporting(false); } }}>Import into new bot</Button></div>}
-    <p>Flow wires activate nodes. Dashed Data wires carry values. Drag between matching ports, or connect them in the inspector. Sandbox drafts are stored only in this browser. Import into a new bot to save to the shared backend and continue in AI chat.</p>
-    <Input size="base" label="Market" value={market} onChange={event => { setMarket(event.target.value); setRuns([]); }} /><p>Hyperliquid mainnet · closed candles and mark price · account equity unavailable. Fresh manual state; no orders sent.</p>
+    <div className="flow-program-context"><Input size="sm" label="Market" value={market} onChange={event => { setMarket(event.target.value); setRuns([]); }} />{bots && nodeApi && <div className="provider-actions"><Input size="sm" label="New bot name" value={botName} disabled={!!importBot || importing} onChange={event => setBotName(event.target.value)} /><Button size="sm" loading={importing} disabled={importing || !botName.trim()} onClick={async () => { setImporting(true); try { if (!document.nodes.length) throw new Error('Add nodes first'); prepareFlow(document, runtimeNodePackages); const created = importBot ?? await bots.createDraft({ name: botName.trim(), dex: 'hyperliquid' }); setImportBot(created); await nodeApi.command({ action: 'import_flow', botId: created.id, document }); onOpenBot?.(created); } catch { setNotice('Import failed. Connect every required input and check node settings, then retry. The sandbox is kept; retry uses the same bot.'); } finally { setImporting(false); } }}>Import into new bot</Button></div>}</div>
+    <p className="flow-program-hint">Live market snapshots · proposals only. Save draft keeps this browser’s work; Import saves a bot for AI chat.</p>
     {notice && <Banner variant="default" title="Flow editor" description={notice} />}
     <div className={`flow-program-layout${paletteOpen ? ' palette-open' : ''}`}>
       <section className="flow-program-palette" aria-label="Node palette"><Select size="sm" label="Node role" value={role} onValueChange={value => setRole(String(value))}><Select.Option value="all">All nodes</Select.Option><Select.Option value="trigger">Triggers</Select.Option><Select.Option value="action">Actions</Select.Option></Select><Input size="base" label="Find a node" value={search} onChange={event => setSearch(event.target.value)} />
@@ -108,7 +107,7 @@ export function PackageNodeExample({ nodeApi, bots, onOpenBot }: { bots?: Catbot
         })}
       </section>
       <div className="strategy-graph flow-program-canvas">
-        <ReactFlow<StrategyFlowNode, Edge> nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.1} maxZoom={1.5} colorMode="system"
+        <ReactFlow<StrategyFlowNode, Edge> nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} nodesDraggable nodeDragThreshold={5} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.1} maxZoom={1.5} colorMode="system"
           onInit={instance => { flow.current = instance; }} onNodeClick={(_, node) => { setSelected(node.id); setWireSource(''); setWireTarget(''); }} onPaneClick={() => setSelected(null)}
           onNodesChange={changes => { for (const change of changes) if (change.type === 'position' && change.position) setPositions(current => ({ ...current, [change.id]: change.position! })); }}
           onEdgesChange={changes => { const removed = new Set(changes.filter(change => change.type === 'remove').map(change => change.id)); if (removed.size) edit({ ...document, edges: document.edges.filter((_, index) => !removed.has(`wire-${index}`)) }); }}

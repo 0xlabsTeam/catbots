@@ -1,3 +1,5 @@
+import { PlayIcon, ArrowLeftIcon } from '@phosphor-icons/react';
+import { nodePresentation, nodeVisualCategory } from './node-presentation';
 import { useState, type ReactNode } from 'react';
 import { Badge, Banner, Button, Input, Select, Switch, Tabs } from '@cloudflare/kumo';
 import type { CatbotsDesktopApi, ChatFlowDraft } from '@catbots/contracts';
@@ -12,6 +14,8 @@ export function NodeConfiguration({ draft, node, disabled, onSave, onClose, onDe
   connections?: ReactNode; workspace?: FlowWorkspaceState; nodeApi?: CatbotsDesktopApi['nodes']; initialRun?: FlowRun | null; draft: ChatFlowDraft; node: Node; disabled?: boolean; onSave?: (node: Node) => Promise<void>; onClose(): void; onDebug?(run: FlowRun): void; onSelectNode?(id: string): void;
 }) {
   const def = editorDefinitions.get(node.type)!;
+  const visual = nodePresentation[nodeVisualCategory(def.category, node.type)];
+  const NodeIcon = visual.icon;
   const localWorkspace = useFlowWorkspaceState();
   const workspace = sharedWorkspace ?? localWorkspace;
   const config = workspace.edits[node.id]?.config ?? node.config;
@@ -36,7 +40,7 @@ export function NodeConfiguration({ draft, node, disabled, onSave, onClose, onDe
     connections: draft.document.edges.filter(edge => direction === 'inputs' ? edge.target === node.id && edge.targetPort === name : edge.source === node.id && edge.sourcePort === name).map(edge => {
       const nodeId = direction === 'inputs' ? edge.source : edge.target;
       const connected = draft.document.nodes.find(item => item.id === nodeId);
-      return { nodeId, label: `${editorDefinitions.get(connected?.type ?? '')?.title ?? nodeId} (${nodeId})`, port: direction === 'inputs' ? edge.sourcePort : edge.targetPort };
+      return { nodeId, label: editorDefinitions.get(connected?.type ?? '')?.title ?? nodeId, port: direction === 'inputs' ? edge.sourcePort : edge.targetPort };
     }),
   }));
   const execute = async () => {
@@ -54,11 +58,11 @@ export function NodeConfiguration({ draft, node, disabled, onSave, onClose, onDe
     finally { setSaving(false); }
   };
   return <NodeDetailLayout header={<header className="node-detail-header">
-    <div><h2>{def.title}</h2><Badge variant="secondary">{(def.role ?? (def.category === 'trigger' ? 'trigger' : 'action')) === 'trigger' ? 'Trigger' : 'Action'}</Badge><Badge variant="secondary">{def.category}</Badge></div>
-    {onSelectNode && <Select size="sm" label="Node" value={node.id} onValueChange={id => onSelectNode(String(id))} renderValue={id => String(id)}>{draft.document.nodes.map(item => <Select.Option key={item.id} value={item.id}>{editorDefinitions.get(item.type)?.title ?? item.type} · {item.id}</Select.Option>)}</Select>}
-    <Button size="sm" variant="ghost" onClick={onClose}>Back to canvas</Button>
+    <div className={`node-detail-identity node-category-${nodeVisualCategory(def.category, node.type)}`}><span className="strategy-node-icon"><NodeIcon size={22} weight="duotone" aria-hidden="true" /></span><h2>{def.title}</h2><Badge variant="secondary">{visual.label}</Badge></div>
+    {onSelectNode && <Select size="sm" label="Node" value={node.id} onValueChange={id => onSelectNode(String(id))} renderValue={id => editorDefinitions.get(draft.document.nodes.find(item => item.id === id)?.type ?? '')?.title ?? String(id)}>{draft.document.nodes.map(item => <Select.Option key={item.id} value={item.id}>{editorDefinitions.get(item.type)?.title ?? item.type} · {item.id}</Select.Option>)}</Select>}
+    <Button size="sm" variant="ghost" onClick={onClose}><ArrowLeftIcon size={14} aria-hidden="true" />Back to canvas</Button>
   </header>} input={<NodeDataPanel key={`in:${node.id}:${run?.runId}`} direction="input" ports={ports('inputs')} trigger={def.category === 'trigger'} onSelectNode={onSelectNode} />} output={<NodeDataPanel key={`out:${node.id}:${run?.runId}`} direction="output" ports={ports('outputs')} onSelectNode={onSelectNode} />} parameters={<>
-    <div className="node-parameters-heading"><h3>{def.title}</h3><Button size="sm" loading={running} disabled={anyDirty || disabled || running || saving || !market.trim()} onClick={() => void execute()}>Execute step</Button></div>
+    <div className="node-parameters-heading"><h3>Configuration</h3><Button size="sm" variant="primary" loading={running} disabled={anyDirty || disabled || running || saving || !market.trim()} onClick={() => void execute()}><PlayIcon size={14} weight="fill" aria-hidden="true" />Execute step</Button></div>
     <Tabs tabs={[{ value: 'parameters', label: 'Parameters' }, { value: 'settings', label: 'Settings' }]} value={tab} onValueChange={setTab} />
     {error && <Banner variant="error" title="Node needs attention" description={error} />}
     {conflict && <Banner variant="alert" title="Saved configuration changed" description="Your edits are kept. Review them against the latest flow or Reset before saving." />}

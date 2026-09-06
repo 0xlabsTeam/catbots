@@ -14,8 +14,10 @@ export const nodePresentation = {
   output: { label: 'Output', icon: EyeIcon },
 } as const;
 export type NodeVisualCategory = keyof typeof nodePresentation;
-export const programNodeSize = { width: 264, height: 196, firstPort: 108, portGap: 26 } as const;
+export const programNodeSize = { width: 208, height: 184, core: 112 } as const;
 export function nodeVisualCategory(kind: string, type: string): NodeVisualCategory {
   if (type.startsWith('combine.')) return 'logic';
   return Object.hasOwn(nodePresentation, kind) ? kind as NodeVisualCategory : 'condition';
 }
+
+export const programPortPosition = (index: number, count: number) => (index + 1) * programNodeSize.core / (count + 1);

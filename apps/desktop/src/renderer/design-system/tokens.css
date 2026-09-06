@@ -32,6 +32,8 @@
   --cb-weight-semibold: 600;
   --cb-tracking-heading: -.025em;
   --cb-tracking-label: .04em;
+  --cb-radius-node: 1.5rem;
+  --cb-radius-trigger: 2.5rem .75rem .75rem 2.5rem;
   --cb-radius-sm: .375rem;
   --cb-radius-md: .5rem;
   --cb-radius-lg: .75rem;

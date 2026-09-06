@@ -34,7 +34,7 @@ Native packaged nodes now cover Market evaluation → Get market candles → RSI
 
 Existing schema 3.0 documents, typed ports, node IDs and configurations remain valid without a destructive migration. Item definitions are additive and available to AI through the existing catalog; the prompt now explains item flow construction. Explicit number/candles/condition/orders adapters connect older typed nodes. The reverse adapter requires exactly one market-matching item, preventing accidental per-candle orders. Stateful DCA/Grid/Risk nodes retain their tested typed semantics and can use these adapters. The sandbox can add a native item example without replacing an existing graph.
 
-This uses n8n as a reference, not copied source or a compatible n8n engine. It does not load n8n packages or support arbitrary JavaScript expressions, binary attachments, cyclic workflows or pinned data. Historical backtesting and live execution of packaged workflows remain separate work; this change does not enable them.
+This uses n8n as a reference, not copied source or a compatible n8n engine. It does not load n8n packages or support arbitrary JavaScript expressions, binary attachments, cyclic workflows or pinned data. Historical backtesting is now implemented in the [packaged-flow replay](../flow-backtest/README.md). Live execution remains unavailable.
 
 Run history remains workspace-local and is cleared when that bot workspace is left/reloaded. Legacy run data retains its existing revision-local lifetime.
 
@@ -51,3 +51,13 @@ Item-runtime regression: native end-to-end flow, branch isolation, empty-branch 
 Native item UI verification: 27 renderer regression tests passed. A real Hyperliquid run returned one ETH-PERP item containing 200 closed candles, a numeric RSI and a valid source link; browser checks passed at 1440px and 390px with no page errors. Screenshots: [Item editor](items-desktop.png), [Mobile item output](items-mobile.png). Workspace typecheck/design checks and renderer build passed (existing bundle-size advisory remains).
 
 Try it: Nodes → Open flow editor → Add JSON item example. This adds a separate RSI example to the unsaved sandbox without replacing its graph. Click RSI · Items → Execute step to inspect live input/output. Save draft stores the sandbox in this browser; Import into new bot stores it in the shared backend.
+
+## Visual refinement
+
+Packaged flow nodes now use a compact icon tile with the title, configuration summary and category below it. Trigger tiles have an asymmetric silhouette; all categories retain their shared color/icon identity. Handle positions and Dagre dimensions share `programNodeSize`, including the tile inset. JSON items have solid connectors; typed data retains dashed connectors. Selection and keyboard focus highlight the icon tile. Port names remain available on the tile/tooltips and in the inspector.
+
+The sandbox toolbar and market/import row are compact, and the palette can be toggled on desktop as well as mobile. The editor uses a category icon, human-readable node selector, distinct configuration pane, primary Execute step button and bordered empty/data states. Kumo controls and shared typography, spacing and radius tokens remain in use.
+
+Validation: 20 relevant UI tests, full workspace typecheck/design checks and renderer build passed. Browser checks covered light/dark canvas, node selection, real Hyperliquid item execution and mobile output bounds. No browser errors were observed. Screenshots: [Light canvas](style-light.png), [Dark canvas](style-dark.png), [Node editor](style-editor.png).
+
+Node positioning: packaged chat flows and legacy graphs now support dragging with a five-pixel threshold separating drag from click-to-inspect. Layout is stored in local device/browser storage, scoped by bot (and revision for legacy graphs), independently of strategy configuration, validation and run data. Auto layout clears manual coordinates. The sandbox retains its existing Save draft workflow for positions. Browser verification passed drag, no modal on drag, reload persistence, reset and click-to-inspect; 13 relevant regression tests, desktop typecheck and design-system checks passed.
